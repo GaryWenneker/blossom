@@ -38,7 +38,7 @@ export class VisibleBrowserSession {
     return {
       filled:[],
       skipped:["lyrics","styles","exclude","title"].filter(k=>String(
-        k==="styles"?recipe.style:k==="exclude"?recipe.exclude:recipe[k]||"").trim()),
+        (k==="styles"?recipe.style:k==="exclude"?recipe.exclude:recipe[k])??"").trim()),
       submitted:false,
       note:"Sign in normally with Google on Suno. Copy the production blueprint from Blossom; third-party browser forms are not controlled."
     };
