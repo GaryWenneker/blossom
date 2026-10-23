@@ -54,3 +54,14 @@
 - [ ] CI deployment with production release controls and observability.
 
 All items marked complete were implemented in source; external services still require paid account access and real end-to-end validation.
+
+## Music DNA knowledge base
+- [x] Local reference catalog with provenance and versioned time-aligned analyses.
+- [x] FTS5 inverted search and indexed genre/instrument/mood/vocal filters.
+- [x] Persistent batch-import queue with job claims and completion.
+- [x] Authenticated REST and token-scoped MCP endpoints, with tests.
+- [x] PostgreSQL full-text/GIN/trigram/HNSW target DDL prepared.
+- [ ] Automated licensed audio inspection and analysis workers.
+- [ ] Studio reference profile picker, comparison and Suno parameter blending.
+- [ ] Tested PostgreSQL runtime adapter, backfill, vector embeddings, cutover and benchmarks.
+- [ ] Harden and deploy Cloudflare Tunnel/Access and verify ChatGPT MCP client interoperability.
