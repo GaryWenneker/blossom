@@ -58,6 +58,16 @@ function json(result) {
   return JSON.parse(result.body);
 }
 try {
+  step = "public homepage and health diagnostics";
+  for (const path of ["/", "/healthz", "/login"]) {
+    const page = await call(path);
+    const title = page.body.match(/<title[^>]*>([^<]*)/i)?.[1] || "(not HTML)";
+    console.log("CHECK " + path + ": HTTP " + page.response.status +
+      ", type=" + page.contentType + ", title=" + title +
+      ", server=" + (page.response.headers.get("server") || "(unknown)"));
+    if (path === "/" && page.response.status !== 200)
+      console.warn("WARN: Public homepage is not available. The gateway route may not be deployed or published by Cloudflare.");
+  }
   step = "authorization discovery";
   const discovery = await call("/.well-known/oauth-authorization-server");
   expectStatus(discovery, 200);
