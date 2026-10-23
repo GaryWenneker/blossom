@@ -1,11 +1,15 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { DomainError } from "./domain.mjs";
+import { StudioStore } from "./studio.mjs";
 
 const schema = properties => ({ type: "object", properties, additionalProperties: false });
 const str = { type: "string" };
 const int = { type: "integer" };
 const RECORD = { artist: str, title: str, releaseYear: int, sourceUrl: str, sourceKind: str, recordingSha256: str, sourceNote: str };
 const TOOLS = [
+  { name: "studio_projects", description: "List Blossom Studio projects.", inputSchema: schema({}) },
+  { name: "studio_project_get", description: "Read News to Song project article, URL and parameters.", inputSchema: { ...schema({ id: str }), required: ["id"] } },
+  { name: "studio_project_save_result", description: "Save an original ChatGPT-generated song brief to a Blossom Studio project. Provide concept, lyrics, style, exclusions, moods, titles, coverPrompt, artistPhotoPrompt, suggestedGenre and rationale.", inputSchema: { ...schema({ id: str, result: { type: "object" } }), required: ["id", "result"] }, write: true },
   { name: "music_dna_search", description: "Search the analyzed musical DNA library using indexed text and genre/instrument/mood/vocal filters.",
     inputSchema: schema({ q: str, genre: str, mood: str, instrument: str, vocal: str, limit: int, offset: int }) },
   { name: "music_dna_get", description: "Read a reference recording's latest versioned music DNA analysis.",
@@ -56,6 +60,7 @@ export class MusicDnaMCP {
   constructor(dna, { readToken = process.env.BLOSSOM_MCP_READ_TOKEN,
     writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN } = {}) {
     this.dna = dna;
+    this.studio = new StudioStore(dna.store);
     this.readToken = readToken;
     this.writeToken = writeToken;
   }
@@ -90,6 +95,17 @@ export class MusicDnaMCP {
         if (!tool || (tool.write && !write)) throw new DomainError("Unknown or unauthorized tool", 403);
         let value;
         switch (name) {
+          case "studio_projects": value = this.studio.projects(); break;
+          case "studio_project_get": value = this.studio.require(args.id); break;
+          case "studio_project_save_result": {
+            const result = args.result;
+            const required = ["concept","lyrics","style","exclusions","moods","titles","coverPrompt","artistPhotoPrompt","suggestedGenre","rationale"];
+            if (!result || required.some(k => !Object.hasOwn(result,k)) ||
+                ["concept","lyrics","style","coverPrompt","artistPhotoPrompt","suggestedGenre","rationale"].some(k => typeof result[k] !== "string") ||
+                ["exclusions","moods","titles"].some(k => !Array.isArray(result[k]) || result[k].some(v => typeof v !== "string")))
+              throw new DomainError("Invalid Studio song brief: required structured fields missing",400);
+            value = this.studio.setResult(args.id,result); break;
+          }
           case "music_dna_search": value = this.dna.search(args); break;
           case "music_dna_get": value = this.dna.get(args.id); break;
           case "music_dna_versions": value = this.dna.versions(args.id); break;
