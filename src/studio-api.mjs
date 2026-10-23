@@ -6,6 +6,7 @@ import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
 import { VisibleBrowserSession } from "./browser-connections.mjs";
 import { LocalComposer } from "./providers/local.mjs";
+import { ChatGptLyricsBrowser } from "./chatgpt-playwright.mjs";
 import { importArticle } from "./article-import.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -31,7 +32,7 @@ async function audioBuffer(req){
   return {bytes,mime:type==="audio/mpeg"?"audio/mpeg":"audio/wav",extension:type==="audio/mpeg"?"mp3":"wav"};
 }
 export class StudioAPI{
-  constructor({store,vault,composer,localComposer,articleImporter=importArticle,draw,sunoBrowser,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
+  constructor({store,vault,composer,localComposer,articleImporter=importArticle,draw,sunoBrowser,chatgptLyrics=null,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
     this.store=store;this.vault=vault;this.studio=new StudioStore(store);
     this.nativeChatgptOptions=nativeChatgptOptions;
     this.references=new StudioReferences(store,this.studio,new MusicDNA(store));
@@ -41,6 +42,7 @@ export class StudioAPI{
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
     this.sunoBrowser=sunoBrowser||new VisibleBrowserSession("suno");
+    this.chatgptLyrics=chatgptLyrics||new ChatGptLyricsBrowser();
   }
   async projectWithArticle(id) {
     const project=this.studio.require(id);
@@ -98,6 +100,15 @@ export class StudioAPI{
     if(localExtract){
       const project=await this.projectWithArticle(localExtract[1]);
       const composed=await this.localComposer.generate({
+        ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
+        referenceDna:this.references.generationContext(project.id)
+      });
+      return send(res,200,this.studio.setResult(project.id,composed));
+    }
+    const chatgptLyricsRoute=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-lyrics$/);
+    if(chatgptLyricsRoute){
+      const project=await this.projectWithArticle(chatgptLyricsRoute[1]);
+      const composed=await this.chatgptLyrics.generate({
         ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
         referenceDna:this.references.generationContext(project.id)
       });

@@ -67,6 +67,10 @@ test("ChatGPT OAuth consent, authorization code PKCE, read/write scope, rotated 
     resource,scope:"blossom:read blossom:write offline_access"};
   const req=await fetch(base+"/oauth/authorize?"+new URLSearchParams(args));
   assert.equal(req.status,200);
+  // Chrome enforces form-action on every hop after this POST, including
+  // chatgpt.com → platform.openai.com. 'self' alone drops the authorization code.
+  assert.match(req.headers.get("content-security-policy"),/form-action[^;]*https:\/\/chatgpt\.com/);
+  assert.match(req.headers.get("content-security-policy"),/form-action[^;]*https:\/\/platform\.openai\.com/);
   const html=await req.text();
   assert.match(html,/Blossom × ChatGPT/);
   const pending=html.match(/name="request" value="([^"]+)"/)?.[1];
@@ -77,6 +81,8 @@ test("ChatGPT OAuth consent, authorization code PKCE, read/write scope, rotated 
   const grant=await postForm(base,"/oauth/authorize",{request:pending,username:"admin",
     password:"very-long-local-blossom-password",decision:"approve"});
   assert.equal(grant.status,303);
+  assert.match(grant.headers.get("content-security-policy"),/form-action[^;]*https:\/\/chatgpt\.com/);
+  assert.match(grant.headers.get("content-security-policy"),/form-action[^;]*https:\/\/platform\.openai\.com/);
   const redirect=new URL(grant.headers.get("location"));
   assert.equal(redirect.origin,"https://chatgpt.com");
   assert.equal(redirect.searchParams.get("iss"),origin);
@@ -122,6 +128,27 @@ test("ChatGPT OAuth consent, authorization code PKCE, read/write scope, rotated 
     refresh_token:issued.refresh_token,resource});
   assert.equal(reused.status,400);
 });
+test("A consent post that sends both decisions does not burn the grant as a denial",async t=>{
+  const {base,store}=await withApp(t);
+  const reg=await postJson(base,"/oauth/register",{redirect_uris:[callback]});
+  const client=(await reg.json()).client_id;
+  const verifier="d".repeat(50);
+  const challenge=createHash("sha256").update(verifier).digest("base64url");
+  const args={response_type:"code",client_id:client,redirect_uri:callback,
+    code_challenge:challenge,code_challenge_method:"S256",state:"both-decisions-state",
+    resource,scope:"blossom:read blossom:write offline_access"};
+  const consent=await fetch(base+"/oauth/authorize?"+new URLSearchParams(args));
+  const nonce=(await consent.text()).match(/name="request" value="([^"]+)"/)?.[1];
+  const both=await fetch(base+"/oauth/authorize",{method:"POST",redirect:"manual",
+    headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({request:nonce,username:"admin",
+      password:"very-long-local-blossom-password",decision:"approve"}).toString()+"&decision=deny"});
+  assert.equal(both.status,303);
+  assert.equal(new URL(both.headers.get("location")).searchParams.get("error"),null);
+  assert.ok(new URL(both.headers.get("location")).searchParams.get("code"));
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM mcp_oauth_pending").get().count,0);
+});
+
 test("Expired OAuth consent requires a new request and cannot mint an authorization code",async t=>{
   const {base,store}=await withApp(t);
   const reg=await postJson(base,"/oauth/register",{redirect_uris:[callback]});

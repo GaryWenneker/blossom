@@ -85,6 +85,8 @@ Browser Apple Events and browser prompt autofill are best-effort and sensitive t
 
 ## Security
 
+The consent page and its 303 must send `form-action 'self' https://chatgpt.com https://platform.openai.com`. Chrome applies `form-action` to every hop after the consent POST. `form-action 'self'` drops the redirect at `chatgpt.com`, and allowing only `chatgpt.com` still drops the next hop to `platform.openai.com`. The code is issued, ChatGPT never receives it, and no token exchange is recorded.
+
 Never disable MCP authorization or make public write tools anonymous. The public hostname should expose only MCP/OAuth routes, not the rest of Blossom. OAuth authorization codes are single-use and short-lived; access tokens expire after one hour and refresh tokens rotate. Review Cloudflare Tunnel origin routing after any configuration change.
 \n\nIf the site is inaccessible, run `npm run tunnel:check` **on the Mac running Blossom**. It reports independent local server, Host-routing, DNS, cloudflared process, remote gateway and OAuth checks without displaying secrets. `setup.sh` installs the binary but does not provision/start an authenticated Cloudflare Tunnel connector. Cloudflare Zero Trust must show the preexisting tunnel connected; the public hostname must point to HTTP `127.0.0.1:8787` on that same Mac and preserve the public Host header. The landing page is not the admin application; local Studio remains at `http://127.0.0.1:8787/`.\n
 

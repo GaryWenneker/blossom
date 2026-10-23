@@ -1,5 +1,5 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload } from "./music-dna.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId } from "./studio.js";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
@@ -17,7 +17,12 @@ async function api(path,data){
   const res=await fetch("/api/"+path,opts);
   const body=await res.json().catch(()=>({error:"Unexpected server response"}));
   if(res.status===401){window.location.assign("/login");throw Error("Session expired");}
-  if(!res.ok)throw Error(body.error||"Request failed");
+  if(!res.ok){
+    const error=Error(body.error||"Request failed");
+    error.code=body.code||"";
+    error.status=res.status;
+    throw error;
+  }
   return body;
 }
 async function refresh(){
@@ -381,6 +386,13 @@ document.addEventListener("click",async event=>{
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
 document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-"))studioInput(e,state,refresh);});
+document.addEventListener("paste",event=>{
+ const field=event.target?.id==="studio-source"?"url":event.target?.id==="studio-article"?"article":"";
+ if(!field)return;
+ const text=event.clipboardData?.getData("text")??"";
+ if(!pasteStartsLyrics(field,text))return;
+ setTimeout(()=>{void studioPaste(field,state,api,refresh,message).catch(error=>message(error.message,true));},0);
+});
 document.addEventListener("change",async e=>{
  if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);

@@ -203,7 +203,9 @@ Spotify follows the same native Safari browser login as Suno: initially Blossom 
 
 ## Fully automatic local AI for News to Song (no new browser window)
 
-Blossom now supports **Ollama on the Mac** for legitimate background inference. This is a **local model, not ChatGPT**, and does not use the ChatGPT Plus website login, Safari cookies, AppleScript, unofficial APIs or Playwright. The old **Extract with ChatGPT** button is replaced by **Genereer automatisch (lokaal)** unless an official OpenAI API key is configured. The legacy ChatGPT Extract endpoint is implemented through the same headless local engine for compatibility with older cached frontends.
+Blossom now supports **Ollama on the Mac** for legitimate background inference. Prepare all still uses that local model, or the official OpenAI API when a key is configured. A ChatGPT website login is not an API key.
+
+**Generate with ChatGPT** and a paste of an article URL or a text block of at least 80 characters use a separate persistent Chrome profile (`.data/chatgpt-playwright-profile`). The first run opens a visible window on https://chatgpt.com/ so you can sign in once. Later runs reuse that profile in the background and write the song brief onto the project. Blossom does not read Safari cookies, passwords, or the manual Connections confirmation. `POST /api/studio/projects/{id}/chatgpt-extract` stays the local Ollama compatibility route and does not launch a browser. `POST /api/studio/projects/{id}/chatgpt-lyrics` is the Playwright route.
 
 ### First-time local setup (one command, downloads several GB)
 

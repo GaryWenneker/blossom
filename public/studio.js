@@ -37,8 +37,7 @@ const panels=(p,assets,state)=>{
  const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
  const projectReferences=state.data.studioReferences||[];
  const image=assets.find(a=>a.kind==="cover"),photo=assets.find(a=>a.kind==="artist-photo");
- const localAI=state.data.studioStatus?.localAI||{};
- const automaticLabel=state.data.studioStatus?.openaiConfigured?"✦ Genereer automatisch (OpenAI API)":"✦ Genereer automatisch (lokaal)";
+ const automaticLabel="✦ Generate with ChatGPT";
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
  return '<div class="studio-toolbar">'+
@@ -55,8 +54,8 @@ const panels=(p,assets,state)=>{
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
  field("Artikel-URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'">')+
  '<button type="button" class="secondary studio-import-button" data-action="studio-import-article">Haal artikel op</button>'+
- '<div class="studio-panel-bottom"><small>AI draait op je Mac, zonder nieuw browservenster of API-key. '+esc(localAI.message||"Controleer of Ollama draait.")+'</small><button data-action="studio-chatgpt" class="primary">'+automaticLabel+'</button></div></section>'+
- '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-chatgpt">Opnieuw genereren</button></div>'+
+ '<div class="studio-panel-bottom"><small>The first run opens Chrome so you can sign in to ChatGPT once. Later pastes run in the background.</small><button data-action="studio-chatgpt" class="primary">'+automaticLabel+'</button></div></section>'+
+ '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-chatgpt">Generate again</button></div>'+
  '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Importeer een artikel of vul een URL in en laat Blossom automatisch originele lyrics maken.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
  '<div class="studio-label">Suggested titles</div><div class="studio-ideas">'+(result.titles?.length?result.titles.map((title,i)=>'<div><span>'+(i+1)+'. '+esc(title)+'</span><button class="secondary mini" data-action="studio-use-title" data-title="'+esc(title)+'">Use</button></div>').join(""):'<div class="studio-muted">Title suggestions appear here</div>')+'</div>'+
@@ -118,7 +117,7 @@ export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● Creatie: '+(status.openaiConfigured?"OpenAI API":"lokale AI · "+(status.localAI?.available?"klaar":"model installeren"))+'</span>'+
+ '<div class="studio-statusline"><span>● Lyrics: ChatGPT in a saved Chrome profile</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
@@ -129,6 +128,44 @@ function collect(state){
  sourceUrl:document.querySelector("#studio-source").value,parameters:paramsFromDOM()};
 }
 async function save(state,api){const p=await api("studio/projects",collect(state));work.activeId=p.id;work.creatingNew=false;return p;}
+export function pasteStartsLyrics(field,text){
+ const value=String(text??"").trim();
+ if(field==="url"){
+  try{const url=new URL(value);return url.protocol==="http:"||url.protocol==="https:";}
+  catch{return false;}
+ }
+ return field==="article"&&value.length>=80;
+}
+async function generateChatGpt(state,api,refresh,message){
+ message("ChatGPT is writing the lyrics…");
+ const project=await save(state,api);
+ try{await api("studio/projects/"+project.id+"/chatgpt-lyrics",{});}
+ catch(error){
+  if(error.code==="chatgpt_login_required"){
+   message("Sign in to ChatGPT in the opened Chrome window, then paste again.",true);
+   return;
+  }
+  throw error;
+ }
+ await refresh();
+ message("Song brief saved: lyrics, style, titles, and artwork prompts.");
+}
+export async function studioPaste(field,state,api,refresh,message){
+ if(work.busy){message("Current studio operation is still running",true);return;}
+ work.busy=true;
+ try{
+  if(field==="url"){
+   const sourceUrl=document.querySelector("#studio-source").value.trim();
+   if(!pasteStartsLyrics("url",sourceUrl))return;
+   const article=await api("studio/articles/import",{url:sourceUrl});
+   document.querySelector("#studio-article").value=article.text;
+   document.querySelector("#studio-source").value=article.sourceUrl;
+   const title=document.querySelector("#studio-title");
+   if(!title.value.trim()||title.value==="Untitled project")title.value=article.title||"News article";
+  }else if(!pasteStartsLyrics("article",document.querySelector("#studio-article").value))return;
+  await generateChatGpt(state,api,refresh,message);
+ }finally{work.busy=false;}
+}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
  if(work.busy){message("Current studio operation is still running",true);return;}
@@ -187,15 +224,7 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message("Music DNA references updated");return;
   }
   if(action==="studio-chatgpt"){
-    const configured=!!state.data.studioStatus?.openaiConfigured;
-    if(!configured&&!state.data.studioStatus?.localAI?.available){
-      message(state.data.studioStatus?.localAI?.message ||
-        "Installeer Ollama en download het lokale AI-model via bash setup.sh",true);return;
-    }
-    message("Blossom genereert lokaal op de achtergrond. Dit kan even duren.");
-    await api("studio/projects/"+p.id+"/"+(configured?"extract":"chatgpt-extract"),{});
-    await refresh();
-    message("Muziekbrief opgeslagen: lyrics, stijl, titels en artwork-prompts.");
+    await generateChatGpt(state,api,refresh,message);
     return;
   }
   if(action==="studio-extract"){

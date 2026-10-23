@@ -9,6 +9,11 @@ const SCOPES = ["blossom:read","blossom:write","offline_access"];
 const ACCESS_MS = 60*60*1000, REFRESH_MS = 30*24*60*60*1000, CODE_MS = 5*60*1000;
 const CONSENT_MS = 20*60*1000, COMPLETED_MS = 5*60*1000;
 const formHeaders = { "Cache-Control":"no-store","Pragma":"no-cache","X-Content-Type-Options":"nosniff" };
+// Chrome applies form-action to every redirect after the consent POST.
+// ChatGPT's callback hops chatgpt.com → platform.openai.com. 'self' alone
+// cancels that navigation after the code is issued, so the token exchange never starts.
+const oauthDocumentCsp = "default-src 'none'; style-src 'unsafe-inline'; "+
+  "form-action 'self' https://chatgpt.com https://platform.openai.com; base-uri 'none'; frame-ancestors 'none'";
 const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&#39;"}[c]));
 function json(res,code,data,headers={}) {
   res.writeHead(code,{...formHeaders,"Content-Type":"application/json; charset=utf-8",...headers});
@@ -16,7 +21,7 @@ function json(res,code,data,headers={}) {
 }
 function html(res,code,body) {
   res.writeHead(code,{...formHeaders,"Content-Type":"text/html; charset=utf-8",
-    "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    "Content-Security-Policy":oauthDocumentCsp,
     "Referrer-Policy":"no-referrer","X-Frame-Options":"DENY"});
   res.end(body);
 }
@@ -45,7 +50,14 @@ async function readBody(req,type,max=12000) {
   if(type==="application/json") {
     try {return JSON.parse(text);} catch {throw new DomainError("Invalid JSON",400);}
   }
-  return Object.fromEntries(new URLSearchParams(text));
+  const params=new URLSearchParams(text);
+  const data=Object.fromEntries(params);
+  // A client that serializes every submit button sends approve and deny.
+  // URLSearchParams keeps the last one, which is Weigeren, and that 303
+  // tells ChatGPT the user refused. Prefer the explicit approval.
+  const decisions=params.getAll("decision");
+  if(decisions.includes("approve")) data.decision="approve";
+  return data;
 }
 export function mcpPublicUrl(input) {
   if(!input)return null;
@@ -290,7 +302,7 @@ export class BlossomMcpOAuth {
       dest.searchParams.set("code",code);
     }
     this.record(f.decision==="approve"?"consent_redirected":"consent_denied",pending.scope);
-    res.writeHead(303,{...formHeaders,Location:dest.toString()});res.end();
+    res.writeHead(303,{...formHeaders,"Content-Security-Policy":oauthDocumentCsp,Location:dest.toString()});res.end();
   }
   issueTokens(clientId,scope,resource) {
     const token=random(),refresh=random(),now=Date.now();
