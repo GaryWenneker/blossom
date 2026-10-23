@@ -48,10 +48,14 @@ export class Store {
     if(!["suno","spotify","chatgpt"].includes(provider))throw new DomainError("Unsupported browser provider",404);
     if(!["opened","confirmed","not_confirmed"].includes(action))throw new DomainError("Invalid browser handoff action",400);
     const previous=this.browserAccountStatus(provider),time=now();
-    const state=action==="opened"?"awaiting_confirmation":
+    const state=action==="opened"?
+      (previous.state==="user_confirmed"?"user_confirmed":"awaiting_confirmation"):
       action==="confirmed"?"user_confirmed":"not_confirmed";
     const openedAt=action==="opened"?time:previous.lastOpenedAt;
-    const confirmedAt=action==="confirmed"?time:"";
+    // Opening the same website again does not silently revoke a user's earlier
+    // self-confirmation. They can explicitly withdraw it if a session expires.
+    const confirmedAt=action==="confirmed"?time:
+      (action==="opened"&&state==="user_confirmed"?previous.confirmedAt:"");
     this.db.prepare(`INSERT INTO browser_account_handoffs(provider,state,last_opened_at,confirmed_at,updated_at)
       VALUES(?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET
         state=excluded.state,last_opened_at=excluded.last_opened_at,
