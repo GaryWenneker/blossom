@@ -84,6 +84,12 @@ fi
 if ! command -v cargo >/dev/null 2>&1; then
   install_brew_package rust
 fi
+# Playwright uses a visible local Google Chrome profile. Never automate Google sign-in.
+if [[ ! -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]] &&
+   [[ ! -x "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
+  printf '[setup] Installing Google Chrome for supervised Playwright handoff.\n'
+  brew install --cask google-chrome
+fi
 if ! command -v cloudflared >/dev/null 2>&1; then
   # Install the client but never create an internet-facing tunnel automatically.
   install_brew_package cloudflared
