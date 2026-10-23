@@ -30,6 +30,7 @@ export class DrawThings {
     this.running=true;
     const filename=randomUUID()+".png",output=join(this.directory,filename);
     await mkdir(this.directory,{recursive:true,mode:0o700});
+    try {
     let resolvedModel = this.model;
     if (resolvedModel) {
       const inventory = await listDownloadedDrawModels({command:this.command,runner:this.runner});
@@ -63,5 +64,6 @@ export class DrawThings {
       return {filename,mime:"image/png",kind:p.kind,width:p.width,height:p.height};
     }catch(err){await rm(output,{force:true}).catch(()=>{});throw err}
     finally{this.running=false}
+    } catch (error) { this.running=false; throw error; }
   }
 }
