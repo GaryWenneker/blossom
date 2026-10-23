@@ -338,7 +338,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     if (process.platform === "darwin") {
       try {
         const state = await exec("launchctl", ["print", "gui/" + process.getuid() + "/io.wenneker.blossom.server"], { timeout: 5000 });
-        agentState = String(state.stdout || "").split(/\\r?\\n/).filter(line => /state =|pid =|last exit code =|runs =/.test(line)).join(" ").slice(0, 300);
+        agentState = String(state.output || "").split(/\\r?\\n/).filter(line => /state =|pid =|last exit code =|runs =/.test(line)).join(" ").slice(0, 300);
       } catch (error) { agentState = "launchctl status unavailable: " + String(error.message || error); }
     }
     throw Error("Blossom server did not respond on localhost:8787. " +
