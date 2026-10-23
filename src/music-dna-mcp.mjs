@@ -80,6 +80,10 @@ export class MusicDnaMCP {
     if (Array.isArray(request) || request?.jsonrpc !== "2.0" || typeof request.method !== "string")
       return send(res, 400, errorResponse(null, -32600, "Invalid JSON-RPC request"));
     const { id, method, params = {} } = request;
+    // Record just successful OAuth tool discovery, never a token or tool arguments.
+    if(oauthAccess && (method==="initialize"||method==="tools/list"))
+      this.oauth.record(method==="tools/list"?"tools_listed":"mcp_connected",
+        oauthAccess.write?"blossom:read blossom:write":"blossom:read");
     if (id === undefined && method.startsWith("notifications/")) return send(res, 202, null);
     if (id === undefined) return send(res, 400, errorResponse(null, -32600, "Request ID required"));
     try {
