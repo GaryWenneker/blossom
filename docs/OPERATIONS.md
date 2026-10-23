@@ -118,3 +118,13 @@ Once user-confirmed, `Open Spotify in Safari` opens `https://open.spotify.com/` 
 Without a local Safari launcher, Blossom opens these same allowlisted URLs in a normal browser tab (not Playwright). It chooses the sign-in page for an unconfirmed account and Web Player after user confirmation. Saved Safari cookies are handled by Safari and cannot be read or validated by Blossom. There is no automatic window-close or SSO callback, and no Spotify developer Client ID is needed for browser-only access. Official Spotify Web API operations still require a Spotify developer application and OAuth.
 
 Spotify's official support page says Facebook cannot be newly added as a login method; `Verdergaan met Facebook` applies only where a previously established Facebook login is still available: https://support.spotify.com/nl/article/facebook-login-help/
+
+## Local background AI instead of ChatGPT Safari automation
+
+Blossom no longer opens/controls a ChatGPT web browser for the News to Song Extract action. It uses the official local Ollama HTTP API bound to loopback when no OpenAI API key is configured. The local generation engine is not branded ChatGPT and cannot access any ChatGPT conversation or session. The old browser handoff code may remain for independent compatibility tests, but the default Studio action and its legacy endpoint do **not** invoke it.
+
+Provision once with `bash scripts/setup-local-ai.sh` (installs Ollama, starts its background service, pulls the default `qwen3:8b` model, multiple GB). Access to localhost:11434 is limited to loopback in Blossom's provider configuration. Override model via `BLOSSOM_LOCAL_AI_MODEL`; if the model is missing, `GET /api/studio/status` returns `localAI.available=false` and diagnostic instructions. No browser or API key is a dependency for this local path. `POST /api/studio/projects/{id}/chatgpt-extract` is a legacy compatibility alias for the local inference route; it no longer launches a Safari tab.
+
+Article URLs are fetched only from public HTTP(S) pages, with limited response body, DNS allowlist, no local/private hosts or unsafe redirects. The source text is untrusted input. If content is behind a paywall or JavaScript login the user must paste authorized text manually. On generation, Blossom stores the article and locally generated brief using existing Studio persistence. OpenAI API credentials remain an optional alternative and are never implicitly derived from cookies.
+
+Local generation can take several minutes depending on machine, model size and source text. Once on a Mac with a compatible local model installed, no browser windows should appear during the Extract action. Inspect `.data/logs/server.log` for failed local model requests; retries do not silently fabricate lyrics.
