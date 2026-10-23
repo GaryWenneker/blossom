@@ -93,11 +93,11 @@ export function restoreLoopbackAdminUrl(content, settings) {
   const publicMcp = settings.BLOSSOM_MCP_PUBLIC_URL;
   if (typeof publicMcp !== "string" || !publicMcp.startsWith("https://"))
     return { content, repaired: false };
-  const origin = publicMcp.replace(/\\/$/, "");
-  const legacyValue = settings.BLOSSOM_PUBLIC_URL.replace(/\\/$/, "");
+  const origin = publicMcp.replace(/\/$/, "");
+  const legacyValue = settings.BLOSSOM_PUBLIC_URL.replace(/\/$/, "");
   if (legacyValue !== origin && legacyValue !== origin + "/mcp")
     return { content, repaired: false };
-  const updated = content.replace(/^(\\s*(?:export\\s+)?BLOSSOM_PUBLIC_URL=)[^\\r\\n]*/m,
+  const updated = content.replace(/^(\s*(?:export\s+)?BLOSSOM_PUBLIC_URL=)[^\r\n]*/m,
     "$1" + local);
   if (updated === content) return { content, repaired: false };
   return { content: updated, repaired: true };
@@ -118,7 +118,7 @@ export async function configureEnv(envFile, { create = true } = {}) {
   let next = existing;
   const repairBlankModel = create && Object.hasOwn(parsed, "BLOSSOM_DRAW_MODEL") && !parsed.BLOSSOM_DRAW_MODEL.trim();
   if (repairBlankModel) {
-    next = next.replace(/^(\\s*(?:export\\s+)?BLOSSOM_DRAW_MODEL=)[^\\r\\n]*/m,
+    next = next.replace(/^(\s*(?:export\s+)?BLOSSOM_DRAW_MODEL=)[^\r\n]*/m,
       "$1" + PREFERRED_DRAW_MODEL);
     parsed.BLOSSOM_DRAW_MODEL = PREFERRED_DRAW_MODEL;
   }
@@ -130,8 +130,8 @@ export async function configureEnv(envFile, { create = true } = {}) {
   validateSettings(merged);
   if (create) {
     if (Object.keys(additions).length) {
-      next += (next && !next.endsWith("\\n") ? "\\n" : "") +
-        Object.entries(additions).map(([key, value]) => key + "=" + value + "\\n").join("");
+      next += (next && !next.endsWith("\n") ? "\n" : "") +
+        Object.entries(additions).map(([key, value]) => key + "=" + value + "\n").join("");
     }
     if (!exists) {
       await writeFile(envFile, next, { flag: "wx", mode: 0o600 });
