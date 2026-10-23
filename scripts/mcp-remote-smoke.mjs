@@ -43,7 +43,9 @@ function expectStatus(result, expected) {
 }
 function json(result) {
   if (!result.contentType.includes("application/json")) {
-    const title = result.body.match(/<title[^>]*>([^<]*)<\\/title>/i)?.[1] || "(no HTML title)";
+    const start = result.body.toLowerCase().indexOf("<title");
+    const tagEnd = start < 0 ? -1 : result.body.indexOf(">", start);
+    const title = tagEnd < 0 ? "(no HTML title)" : result.body.slice(tagEnd + 1, tagEnd + 150).split("<")[0];
     const server = result.response.headers.get("server") || "(unknown)";
     const ray = result.response.headers.get("cf-ray") || "(none)";
     const mitigation = result.response.headers.get("cf-mitigated") || "(none)";
@@ -51,7 +53,7 @@ function json(result) {
       " " + result.contentType + "; page title: " + title +
       "; server: " + server + "; cf-ray: " + ray +
       "; cf-mitigated: " + mitigation + "; body: " +
-      result.body.slice(0, 280).replace(/\\s+/g, " "));
+      result.body.slice(0, 280).replace(/\s+/g, " "));
   }
   return JSON.parse(result.body);
 }
