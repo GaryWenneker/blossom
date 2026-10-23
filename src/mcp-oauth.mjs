@@ -254,7 +254,7 @@ export class BlossomMcpOAuth {
         const heading=denied?"Toestemming geweigerd":"Toestemming al verwerkt";
         const details=denied?
           "Deze aanvraag is geweigerd. Daardoor is er geen toegangscode voor ChatGPT uitgegeven. Start een nieuwe koppeling vanuit ChatGPT en kies expliciet Verbinden met ChatGPT.":
-          "De aanvraag is al afgehandeld. Een tweede klik maakt geen nieuwe verbinding. Controleer in ChatGPT of de autorisatie is afgerond en de plugin verbonden is.";
+          "De aanvraag is al afgehandeld. Een tweede klik maakt geen nieuwe verbinding. Controleer in ChatGPT of de autorisatie is afgerond en voltooi zo nodig Create as a plugin.";
         return html(res,200,'<!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'+
           '<body style="margin:8vh auto;padding:24px;max-width:580px;background:#101315;color:#fff;font:16px system-ui">'+
           '<h1 style="color:#9aff63">'+heading+'</h1><p>'+details+'</p>'+
