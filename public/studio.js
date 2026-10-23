@@ -3,10 +3,10 @@ const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambien
 const defaults={sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks"};
+const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks"};
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
-const stateOf=state=>{const list=state.data.studioProjects||[];
+const stateOf=state=>{if(work.creatingNew)return null;const list=state.data.studioProjects||[];
  return (work.activeId?list.find(p=>p.id===work.activeId):null)||list[0]||null;};
 const tags=values=>(values||[]).map(v=>'<span class="studio-chip">'+esc(v)+'</span>').join("");
 const field=(label,input)=>'<label class="studio-field"><span>'+label+'</span>'+input+'</label>';
@@ -116,7 +116,7 @@ export function studioView(state){
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
  '<div class="studio-statusline"><span>● OpenAI: '+(status.openaiConfigured?"configured":"not configured")+'</span>'+
- '<span>● Draw Things: '+(status.drawConfigured?"local CLI configured":"configure model in server")+'</span>'+
+ '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
 function collect(state){
@@ -125,7 +125,7 @@ function collect(state){
  artistId:document.querySelector("#studio-artist").value,
  sourceUrl:document.querySelector("#studio-source").value,parameters:paramsFromDOM()};
 }
-async function save(state,api){const p=await api("studio/projects",collect(state));work.activeId=p.id;return p;}
+async function save(state,api){const p=await api("studio/projects",collect(state));work.activeId=p.id;work.creatingNew=false;return p;}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
  if(work.busy){message("Current studio operation is still running",true);return;}
@@ -143,7 +143,7 @@ export async function studioAction(el,state,api,refresh,message){
     return;
   }
   if(action==="studio-use-title"){document.querySelector("#studio-title").value=el.dataset.title;return;}
-  if(action==="studio-new"){work.activeId=null;work.assistantAnswer="";await refresh();return;}
+  if(action==="studio-new"){work.activeId=null;work.creatingNew=true;work.assistantAnswer="";await refresh();return;}
   if(action==="studio-save"){await save(state,api);await refresh();message("Project saved");return;}
   if(action==="studio-use-preset"){
     const id=document.querySelector("#studio-artist").value;
@@ -243,7 +243,7 @@ export async function studioAudio(file,state,refresh,message){
 export function studioInput(event,state,refresh){
  const target=event.target;
  if(target.id==="studio-project-picker"){
-   if(target.value==="new")work.activeId=null;else work.activeId=target.value;
+   if(target.value==="new"){work.activeId=null;work.creatingNew=true;}else{work.activeId=target.value;work.creatingNew=false;}
    work.assistantAnswer="";refresh();return;
  }
  if(target.id==="studio-duration-preset"){
