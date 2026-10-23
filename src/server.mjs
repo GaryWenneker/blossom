@@ -137,8 +137,10 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         if(nativeSafariAction[2]==="login-safari"&&nativeSafariAction[1]!=="spotify")
           throw new DomainError("Dedicated login route only available for Spotify",404);
         const confirmed=store.browserAccountStatus(nativeSafariAction[1]).state==="user_confirmed";
+        const forceLogin=nativeSafariAction[2]==="login-safari";
         const result=await openProviderInSafari(nativeSafariAction[1],{
-          ...nativeBrowserOptions,confirmed,forceLogin:nativeSafariAction[2]==="login-safari"});
+          ...nativeBrowserOptions,confirmed,forceLogin});
+        if(forceLogin)store.setBrowserAccountStatus(nativeSafariAction[1],"not_confirmed");
         store.setBrowserAccountStatus(nativeSafariAction[1],"opened");
         return reply(res,200,{...result,handoff:store.browserAccountStatus(nativeSafariAction[1])});
       }
