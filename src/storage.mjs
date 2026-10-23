@@ -24,11 +24,41 @@ export class Store {
       CREATE TABLE IF NOT EXISTS watches (id TEXT PRIMARY KEY, url TEXT NOT NULL UNIQUE,
         hash TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'baseline_pending',
         checked_at TEXT NOT NULL DEFAULT '', changed_at TEXT NOT NULL DEFAULT '');
+      CREATE TABLE IF NOT EXISTS browser_account_handoffs (
+        provider TEXT PRIMARY KEY CHECK(provider IN ('suno','spotify','chatgpt')),
+        state TEXT NOT NULL CHECK(state IN ('awaiting_confirmation','user_confirmed','not_confirmed')),
+        last_opened_at TEXT NOT NULL DEFAULT '',
+        confirmed_at TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+      );
     `);
   }
   close() { this.db.close(); }
   audit(type, entity, entityId, detail = {}) {
     this.db.prepare("INSERT INTO events VALUES(?,?,?,?,?,?)").run(id(), type, entity, entityId, JSON.stringify(detail), now());
+  }
+  browserAccountStatus(provider) {
+    if(!["suno","spotify","chatgpt"].includes(provider))throw new DomainError("Unsupported browser provider",404);
+    const row=this.db.prepare("SELECT * FROM browser_account_handoffs WHERE provider=?").get(provider);
+    return row?{state:row.state,lastOpenedAt:row.last_opened_at,
+      confirmedAt:row.confirmed_at,updatedAt:row.updated_at}:
+      {state:"not_started",lastOpenedAt:"",confirmedAt:"",updatedAt:""};
+  }
+  setBrowserAccountStatus(provider,action) {
+    if(!["suno","spotify","chatgpt"].includes(provider))throw new DomainError("Unsupported browser provider",404);
+    if(!["opened","confirmed","not_confirmed"].includes(action))throw new DomainError("Invalid browser handoff action",400);
+    const previous=this.browserAccountStatus(provider),time=now();
+    const state=action==="opened"?"awaiting_confirmation":
+      action==="confirmed"?"user_confirmed":"not_confirmed";
+    const openedAt=action==="opened"?time:previous.lastOpenedAt;
+    const confirmedAt=action==="confirmed"?time:"";
+    this.db.prepare(`INSERT INTO browser_account_handoffs(provider,state,last_opened_at,confirmed_at,updated_at)
+      VALUES(?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET
+        state=excluded.state,last_opened_at=excluded.last_opened_at,
+        confirmed_at=excluded.confirmed_at,updated_at=excluded.updated_at`)
+      .run(provider,state,openedAt,confirmedAt,time);
+    this.audit("browser_handoff_"+action,"connection",provider,{state});
+    return this.browserAccountStatus(provider);
   }
   artists() {
     return this.db.prepare("SELECT * FROM artists ORDER BY created_at DESC").all().map(r => ({
