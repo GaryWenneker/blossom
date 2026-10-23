@@ -60,3 +60,45 @@ export function tokenExchangeBody({ code, clientId, verifier, redirectUri }) {
 export function hasPlanPermission(scopes) {
   return (Array.isArray(scopes) ? scopes : String(scopes || "").split(/\s+/)).includes("chatgpt.tokens.use.direct");
 }
+
+/**
+ * Exchange a one-time authorization code using the PKCE verifier. Tokens are
+ * deliberately returned only to the server caller, never to a browser response.
+ */
+export async function exchangeAuthorizationCode({ code, clientId, verifier, redirectUri, fetcher = fetch }) {
+  const response = await fetcher(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: tokenExchangeBody({ code, clientId, verifier, redirectUri }),
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error("ChatGPT token exchange failed (" + response.status + ")");
+  const result = await response.json();
+  if (!result || typeof result.access_token !== "string" || !result.access_token ||
+      typeof result.id_token !== "string" || !result.id_token ||
+      !Number.isFinite(result.expires_in) || result.expires_in <= 0 ||
+      !hasPlanPermission(result.scope)) {
+    throw new Error("ChatGPT OAuth token response is incomplete or missing plan permission");
+  }
+  return result;
+}
+
+export async function refreshAuthorization({ clientId, refreshToken, fetcher = fetch }) {
+  if (!clientId || !refreshToken) throw new Error("Refresh credentials required");
+  const response = await fetcher(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token", client_id: clientId,
+      refresh_token: refreshToken, resource: RESOURCE
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error("ChatGPT token refresh failed (" + response.status + ")");
+  const result = await response.json();
+  if (!result?.access_token || !Number.isFinite(result.expires_in) || result.expires_in <= 0 ||
+      !hasPlanPermission(result.scope)) {
+    throw new Error("ChatGPT token refresh response is invalid");
+  }
+  return result;
+}
