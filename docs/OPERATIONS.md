@@ -159,3 +159,60 @@ The approval form is valid for twenty minutes. Repeating a completed approval
 does not issue another grant, and an expired form requires starting a fresh
 connection from ChatGPT. Check the Blossom process is running with the intended
 database and avoid routing different OAuth requests to different instances.
+
+
+## Optional HTTPS Studio at the same Blossom MCP hostname
+
+By default `https://blossom.wenneker.dev/` displays a public **MCP gateway**
+status page, and `/login` returns 404. The privileged Studio remains available
+only at `http://127.0.0.1:8787/`. This is intentional and does not indicate an
+MCP outage. To use **the full Studio remotely** on the same hostname, first
+protect the web UI with a dedicated Cloudflare Access self-hosted application:
+
+1. In Cloudflare Zero Trust > Access controls > Applications, protect
+   `blossom.wenneker.dev` (all normal paths) with an **Allow** policy
+   restricted to your own identity and MFA. Copy that application's
+   **Application Audience (AUD) Tag**, and note your team URL
+   `<team>.cloudflareaccess.com`.
+2. Exempt only the OAuth/MCP machine endpoints from *this UI* Access
+   application, using **more-specific application paths** for
+   `/mcp`, `/oauth/*`, and `/.well-known/oauth-*`. These endpoints have
+   independent Blossom OAuth protections. Do not bypass `/login`,
+   `/api/*` or any Studio/admin routes; do not use a blanket bypass for
+   the entire hostname. A path-specific bypass disables Access
+   enforcement and logging for that path, so use only for these MCP
+   public endpoints.
+3. Ensure the existing Cloudflare Tunnel forwards the full hostname
+   to `http://127.0.0.1:8787`, retaining the original Host header.
+   No second Blossom server or public port is needed.
+4. In the private `.env` on the Mac, configure:
+
+```dotenv
+BLOSSOM_HOST=127.0.0.1
+BLOSSOM_PORT=8787
+BLOSSOM_PUBLIC_URL=http://127.0.0.1:8787
+BLOSSOM_MCP_PUBLIC_URL=https://blossom.wenneker.dev
+BLOSSOM_PUBLIC_UI_ENABLED=true
+BLOSSOM_CF_ACCESS_TEAM_DOMAIN=<your-team>.cloudflareaccess.com
+BLOSSOM_CF_ACCESS_AUD=<copy-app-audience-tag-from-cloudflare>
+```
+
+5. Run `bash setup.sh` or restart the existing Blossom launchd service.
+   Authenticate to Cloudflare Access first, then Blossom's own admin
+   login. Use `node scripts/mcp-remote-smoke.mjs
+   https://blossom.wenneker.dev` to recheck the separate MCP/OAuth
+   endpoints. The public UI should redirect to `/login` after a valid
+   Access session, not expose the login page to anonymous requests.
+
+Blossom independently checks Cloudflare's signed RS256 application JWT in
+`Cf-Access-Jwt-Assertion`, including signature, issuer, application audience
+and token expiry, using Cloudflare's published rotating JWK set. Missing or
+invalid JWTs fail closed with 403. A valid JWT is only the *first* login
+layer; Blossom's own session and CSRF requirements still apply, and browser
+cookies are `Secure` on the public hostname. If this configuration is
+incomplete, do not enable the public UI. The installer does not create the
+Access policy or retrieve the AUD for you.
+
+Cloudflare documentation:
+- https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
+- https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/
