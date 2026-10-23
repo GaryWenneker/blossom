@@ -8,6 +8,17 @@ export const PROVIDER_URLS = Object.freeze({
   spotify:"https://open.spotify.com/",
   chatgpt:"https://chatgpt.com/"
 });
+export const SPOTIFY_LOGIN_URL = "https://accounts.spotify.com/nl/login";
+
+// An existing browser session should open the player. When sign-in is needed,
+// use Spotify's official login screen where an existing Facebook method can
+// be selected. Never use Facebook cookies or OAuth tokens inside Blossom.
+export function providerBrowserUrl(provider,{confirmed=false,forceLogin=false}={}) {
+  if(!Object.hasOwn(PROVIDER_URLS,provider))
+    throw new DomainError("Unsupported browser provider",404);
+  return provider==="spotify" && (forceLogin || !confirmed)
+    ? SPOTIFY_LOGIN_URL : PROVIDER_URLS[provider];
+}
 export class VisibleBrowserSession {
   constructor(provider) {
     if(!Object.hasOwn(PROVIDER_URLS,provider))

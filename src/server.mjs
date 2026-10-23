@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
-import { ConnectedBrowsers } from "./browser-connections.mjs";
+import { ConnectedBrowsers, providerBrowserUrl } from "./browser-connections.mjs";
 import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
@@ -117,7 +117,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         const sessionsByProvider=await browserAccounts.status();
         return {...Object.fromEntries(["suno","spotify","chatgpt"].map(provider=>
           [provider,{...sessionsByProvider[provider],
-            handoff:store.browserAccountStatus(provider)}])),
+            handoff:store.browserAccountStatus(provider),
+            nextBrowserUrl:providerBrowserUrl(provider,{
+              confirmed:store.browserAccountStatus(provider).state==="user_confirmed"})}])),
           nativeSafariAvailable:(nativeBrowserOptions.platform||process.platform)==="darwin"};
       };
       if(path==="/api/browser-accounts"&&req.method==="GET")
@@ -128,11 +130,17 @@ export function createAppServer({store,provider,password,username="admin",vaultK
           browserConfirm[2]==="confirm"?"confirmed":"not_confirmed");
         return reply(res,200,(await browserStatus())[browserConfirm[1]]);
       }
-      const nativeSafariAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/open-safari$/);
+      const nativeSafariAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/(open-safari|login-safari)$/);
       if(nativeSafariAction&&req.method==="POST"){
         if(!localMacBrowserRequest(req))
           throw new DomainError("Open Safari is available only from Blossom running locally on the same Mac",403);
-        const result=await openProviderInSafari(nativeSafariAction[1],nativeBrowserOptions);
+        if(nativeSafariAction[2]==="login-safari"&&nativeSafariAction[1]!=="spotify")
+          throw new DomainError("Dedicated login route only available for Spotify",404);
+        const confirmed=store.browserAccountStatus(nativeSafariAction[1]).state==="user_confirmed";
+        const forceLogin=nativeSafariAction[2]==="login-safari";
+        const result=await openProviderInSafari(nativeSafariAction[1],{
+          ...nativeBrowserOptions,confirmed,forceLogin});
+        if(forceLogin)store.setBrowserAccountStatus(nativeSafariAction[1],"not_confirmed");
         store.setBrowserAccountStatus(nativeSafariAction[1],"opened");
         return reply(res,200,{...result,handoff:store.browserAccountStatus(nativeSafariAction[1])});
       }

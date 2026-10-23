@@ -135,8 +135,12 @@ function browserAccountCard({ provider, title, login, usage, hint }) {
    '<p class="browser-account-identity">'+e(login)+'</p>'+
    '<p class="hint">'+e(usage)+'</p>'+
    '<div class="browser-account-actions">'+
-   (nativeSafari?'<button type="button" class="primary" data-action="browser-safari" data-provider="'+e(provider)+'">Open in Safari (Mac) ↗</button>':"")+
-   (!webdriver?'<button type="button" class="'+(nativeSafari?"secondary":"primary")+'" data-action="browser-connect" data-provider="'+e(provider)+'">Open in this browser ↗</button>':
+   (nativeSafari?'<button type="button" class="primary" data-action="browser-safari" data-provider="'+e(provider)+'">'+
+      (provider==="spotify"?(handoff.state==="user_confirmed"?"Open Spotify in Safari ↗":"Inloggen via Spotify / Facebook ↗"):"Open in Safari (Mac) ↗")+'</button>':"")+
+   (provider==="spotify"&&handoff.state==="user_confirmed"&&nativeSafari?
+      '<button type="button" class="secondary" data-action="browser-spotify-login">Opnieuw aanmelden via Facebook</button>':"")+
+   (!webdriver?'<button type="button" class="'+(nativeSafari?"secondary":"primary")+'" data-action="browser-connect" data-provider="'+e(provider)+'">'+
+      (provider==="spotify"?(handoff.state==="user_confirmed"?"Spotify Web Player ↗":"Spotify-login in browser ↗"):"Open in this browser ↗")+'</button>':
       '<span class="small browser-blocked">Automated Chrome detected; use Safari or copy the site address into your normal browser.</span>')+
    '</div>'+
    (handoff.state==="awaiting_confirmation"?
@@ -161,8 +165,8 @@ function connections(){
    usage:"Open Suno in your ordinary browser and sign in with Google. Your existing browser session can be reused.",
    hint:"Copy your Suno blueprint from News to Song. Google sign-in cannot run inside Playwright, and website login does not grant Blossom API access."})+
  browserAccountCard({provider:"spotify",title:"Spotify · Facebook",login:"Continue with Facebook",
-   usage:"Use Spotify’s official website and choose Facebook if your account still offers it.",
-   hint:"Browser playback/session is separate from the Spotify developer API."})+
+   usage:"Meld je aan via de officiële Spotify-pagina. Kies Verdergaan met Facebook als je bestaande account dat ondersteunt.",
+   hint:"Na je bevestiging opent Spotify voortaan de Web Player met dezelfde Safari-sessie. Geen Client ID nodig voor websitegebruik. Spotify Web API blijft apart."})+
  browserAccountCard({provider:"chatgpt",title:"ChatGPT · OpenAI",login:"Sign in to ChatGPT",
    usage:"Open ChatGPT in your regular browser. If already signed in, that browser may reuse your session.",
    hint:"A ChatGPT session is not an OpenAI API key for automatic lyrics generation."})+
@@ -193,7 +197,7 @@ function connections(){
 function showBrowserLogin(provider) {
  const details={
    suno: {title:"Suno",instruction:"Suno opens in your regular browser. Sign in with Google there, or continue your existing session. Google blocks automated Playwright sign-in."},
-   spotify:{title:"Spotify",instruction:"Spotify opens in your regular browser. Choose Continue with Facebook if your Spotify account still offers it."},
+   spotify:{title:"Spotify",instruction:"Spotify opent in Safari. Kies Verdergaan met Facebook als die inlogmethode nog actief is. Daarna kun je de Web Player gebruiken met dezelfde browsersessie."},
    chatgpt:{title:"ChatGPT",instruction:"ChatGPT opens in your regular browser and can reuse its existing login. Website login is not OpenAI API access."}
  };
  const selected=details[provider];
@@ -220,15 +224,17 @@ async function action(el){
    if(next==="render")render();
    return;
  }
- if(act==="browser-safari"){
-   const provider=el.dataset.provider;
+ if(act==="browser-safari"||act==="browser-spotify-login"){
+   const provider=act==="browser-spotify-login"?"spotify":el.dataset.provider;
    showBrowserLogin(provider);
    try{
-     await api("browser-accounts/"+provider+"/open-safari",{});
+     const result=await api("browser-accounts/"+provider+"/"+(act==="browser-spotify-login"?"login-safari":"open-safari"),{});
      state.data.browserAccounts=await api("browser-accounts");
      render();
      document.querySelector("#account-login-status").textContent=
-       "Safari is geopend. Na terugkomst: bevestig hieronder of je bent ingelogd.";
+       provider==="spotify" && result.url.includes("accounts.spotify.com")?
+       "Spotify-login geopend in Safari. Kies 'Verdergaan met Facebook' als die methode nog actief is. Bevestig na terugkomst in Blossom.":
+       "Safari is geopend. Als je nog niet eerder ingelogd bent, meld je aan en bevestig daarna in Blossom.";
    }catch(error){
      document.querySelector("#account-login-status").textContent=error.message;
      throw error;
@@ -238,7 +244,9 @@ async function action(el){
  if(act==="browser-connect"||act==="browser-reopen"){
    const provider=act==="browser-connect"?el.dataset.provider:
      document.querySelector("#account-login-dialog").dataset.provider;
-   const url={suno:"https://suno.com/create",spotify:"https://open.spotify.com/",
+   const spotifyConfirmed=state.data.browserAccounts?.spotify?.handoff?.state==="user_confirmed";
+   const url={suno:"https://suno.com/create",
+     spotify:spotifyConfirmed?"https://open.spotify.com/":"https://accounts.spotify.com/nl/login",
      chatgpt:"https://chatgpt.com/"}[provider];
    if(!url)throw Error("Unknown browser provider");
    // A new tab inherits this browser process. Never use it for Google login

@@ -108,3 +108,13 @@ The Connections screen now records a non-sensitive, local handoff state for each
 These statuses survive Blossom restarts. A new browser launch preserves an earlier manual confirmation until it is explicitly withdrawn. No cookies, passwords, profiles, tabs, tokens or private browser data are read or stored in the new status table.
 
 On focus/visibility return, Blossom requests only its own saved handoff status and updates the cards. The modal remains open with guidance for confirmation. Closing Safari alone **does not and must not** mark the account connected. For Spotify API features, use the separately supported OAuth flow, whose token status can be verified; this manual browser status is only a convenience label. Other provider API features still require supported API access.
+
+## Spotify Facebook account sign-in, like Suno
+
+Blossom → Connections → Spotify uses the **same native Safari browser handoff and explicit return confirmation as Suno**. A user who has never confirmed Spotify login opens the official Dutch login page `https://accounts.spotify.com/nl/login`, where `Verdergaan met Facebook` can be chosen if that method remains active for the account. The user completes any login challenge in the ordinary Safari app and returns to Blossom to click `Ik ben ingelogd`. Blossom saves only that *user-reported* state.
+
+Once user-confirmed, `Open Spotify in Safari` opens `https://open.spotify.com/` in the **same** Safari profile. The user may choose `Opnieuw aanmelden via Facebook` to go back to the official login page and reset the local handoff to awaiting confirmation. Other providers' handoff records are left alone.
+
+Without a local Safari launcher, Blossom opens these same allowlisted URLs in a normal browser tab (not Playwright). It chooses the sign-in page for an unconfirmed account and Web Player after user confirmation. Saved Safari cookies are handled by Safari and cannot be read or validated by Blossom. There is no automatic window-close or SSO callback, and no Spotify developer Client ID is needed for browser-only access. Official Spotify Web API operations still require a Spotify developer application and OAuth.
+
+Spotify's official support page says Facebook cannot be newly added as a login method; `Verdergaan met Facebook` applies only where a previously established Facebook login is still available: https://support.spotify.com/nl/article/facebook-login-help/

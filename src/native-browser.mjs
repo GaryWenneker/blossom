@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { DomainError } from "./domain.mjs";
-import { PROVIDER_URLS } from "./browser-connections.mjs";
+import { PROVIDER_URLS, providerBrowserUrl } from "./browser-connections.mjs";
 
 /**
  * Native Safari is intentionally not driven by Playwright or Chrome CDP.
@@ -8,13 +8,13 @@ import { PROVIDER_URLS } from "./browser-connections.mjs";
  * browser profile holds cookies. We never read browser data or login fields.
  */
 export async function openProviderInSafari(provider,{
-  platform=process.platform, launcher=execFile
+  platform=process.platform, launcher=execFile, confirmed=false, forceLogin=false
 }={}) {
   if(!Object.hasOwn(PROVIDER_URLS,provider))
     throw new DomainError("Unsupported browser provider",404);
   if(platform!=="darwin")
     throw new DomainError("Native Safari launch is available only on macOS",501);
-  const url=PROVIDER_URLS[provider];
+  const url=providerBrowserUrl(provider,{confirmed,forceLogin});
   await new Promise((resolve,reject)=>{
     launcher("/usr/bin/open",["-a","Safari",url],
       {timeout:12000,windowsHide:true},error=>{
