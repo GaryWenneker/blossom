@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
+import { request as httpRequest } from "node:http";
 import { Store } from "../src/storage.mjs";
 import { createAppServer } from "../src/server.mjs";
 
@@ -21,6 +22,14 @@ const postJson=(base,path,body,headers={})=>fetch(base+path,{
 const postForm=(base,path,body)=>fetch(base+path,{
   method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
   body:new URLSearchParams(body),redirect:"manual"
+});
+const requestWithHost=(base,path,host)=>new Promise((resolve,reject)=>{
+  const endpoint=new URL(base);
+  const req=httpRequest({hostname:"127.0.0.1",port:Number(endpoint.port),
+    path,headers:{Host:host}},res=>{
+      res.resume();res.on("end",()=>resolve(res.statusCode));
+    });
+  req.on("error",reject);req.end();
 });
 test("OAuth discovery, ChatGPT-only dynamic registration and protected MCP challenge",async t=>{
   const {base}=await withApp(t);
@@ -43,11 +52,8 @@ test("OAuth discovery, ChatGPT-only dynamic registration and protected MCP chall
   const unauthorized=await postJson(base,"/mcp",{jsonrpc:"2.0",id:1,method:"tools/list"});
   assert.equal(unauthorized.status,401);
   assert.match(unauthorized.headers.get("www-authenticate"),/oauth-protected-resource/);
-  const forbiddenPublic=await fetch(base+"/api/studio/projects",{headers:{Host:"blossom.wenneker.dev"}});
-  assert.equal(forbiddenPublic.status,404);
-  const publicMetadata=await fetch(base+"/.well-known/oauth-authorization-server",
-    {headers:{Host:"blossom.wenneker.dev"}});
-  assert.equal(publicMetadata.status,200);
+  assert.equal(await requestWithHost(base,"/api/studio/projects","blossom.wenneker.dev"),404);
+  assert.equal(await requestWithHost(base,"/.well-known/oauth-authorization-server","blossom.wenneker.dev"),200);
 });
 test("ChatGPT OAuth consent, authorization code PKCE, read/write scope, rotated refresh",async t=>{
   const {base,store}=await withApp(t);
@@ -120,8 +126,7 @@ test("OAuth denies invalid callbacks, absent PKCE and public admin paths",async 
     code_challenge_method:"plain",state:"validlongstatehere",resource});
   const missing=await fetch(base+"/oauth/authorize?"+opts);
   assert.equal(missing.status,400);
-  const external=await fetch(base+"/login",{headers:{Host:"blossom.wenneker.dev"}});
-  assert.equal(external.status,404);
+  assert.equal(await requestWithHost(base,"/login","blossom.wenneker.dev"),404);
   const noEntry=await postForm(base,"/oauth/token",{grant_type:"client_credentials"});
   assert.equal(noEntry.status,400);
 });
