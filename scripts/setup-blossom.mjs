@@ -224,8 +224,8 @@ async function configureLaunchd(envFile) {
 }
 export async function runSetup({ check = false, noServices = false, emit = () => {},
   root = ROOT, envFile = join(ROOT, ".env") } = {}) {
-  let stages = 0;
-  const step = async (name, fn) => {
+  let stages = 0, optionalWarnings = 0;
+  const step = async (name, fn, { optional = false } = {}) => {
     emit("STEP|" + name + "|RUN|");
     try {
       const info = await fn();
@@ -233,7 +233,14 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
       emit("STEP|" + name + "|OK|" + String(info || "ready").replace(/[\r\n|]/g, " ").slice(0, 300));
       return info;
     } catch (error) {
-      emit("STEP|" + name + "|FAIL|" + String(error.message).replace(/[\r\n|]/g, " ").slice(0, 500));
+      const reason = String(error.message).replace(/[\r\n|]/g, " ").slice(0, 1200);
+      if (optional) {
+        optionalWarnings++;
+        stages++;
+        emit("STEP|" + name + "|WARN|" + reason);
+        return null;
+      }
+      emit("STEP|" + name + "|FAIL|" + reason);
       throw error;
     }
   };
