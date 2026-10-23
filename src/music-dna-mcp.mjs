@@ -10,6 +10,8 @@ const TOOLS = [
   { name: "studio_projects", description: "List Blossom Studio projects.", inputSchema: schema({}) },
   { name: "studio_project_get", description: "Read News to Song project article, URL and parameters.", inputSchema: { ...schema({ id: str }), required: ["id"] } },
   { name: "studio_project_save_result", description: "Save an original ChatGPT-generated song brief to a Blossom Studio project. Provide concept, lyrics, style, exclusions, moods, titles, coverPrompt, artistPhotoPrompt, suggestedGenre and rationale.", inputSchema: { ...schema({ id: str, result: { type: "object" } }), required: ["id", "result"] }, write: true },
+  { name: "spotify_liked_tracks", description: "Read up to 50 private Spotify Liked Songs from the user-authorized Spotify Web API. Requires a separate Spotify OAuth user-library-read grant in local Blossom. Returns metadata only, not audio.", inputSchema: schema({ offset: int, limit: int }) },
+  { name: "spotify_liked_import_page", description: "Import one page (up to 50) of user-authorized Spotify Liked Songs into Blossom Music DNA, deduplicating by Spotify track ID and queueing metadata-only references for later verified analysis. Repeat with nextOffset until null.", inputSchema: schema({ offset: int, limit: int }), write: true },
   { name: "music_dna_search", description: "Search the analyzed musical DNA library using indexed text and genre/instrument/mood/vocal filters.",
     inputSchema: schema({ q: str, genre: str, mood: str, instrument: str, vocal: str, limit: int, offset: int }) },
   { name: "music_dna_get", description: "Read a reference recording's latest versioned music DNA analysis.",
@@ -58,12 +60,13 @@ async function readBody(req) {
 }
 export class MusicDnaMCP {
   constructor(dna, { readToken = process.env.BLOSSOM_MCP_READ_TOKEN,
-    writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN, oauth = null } = {}) {
+    writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN, oauth = null, spotifyLiked = null } = {}) {
     this.dna = dna;
     this.studio = new StudioStore(dna.store);
     this.readToken = readToken;
     this.writeToken = writeToken;
     this.oauth = oauth;
+    this.spotifyLiked = spotifyLiked;
   }
   enabled() { return !!this.oauth?.enabled() || (this.readToken?.length || 0) >= 32 || (this.writeToken?.length || 0) >= 32; }
   async handle(req, res) {
@@ -113,6 +116,12 @@ export class MusicDnaMCP {
               throw new DomainError("Invalid Studio song brief: required structured fields missing",400);
             value = this.studio.setResult(args.id,result); break;
           }
+          case "spotify_liked_tracks":
+            if (!this.spotifyLiked) throw new DomainError("Spotify library integration unavailable",503);
+            value = await this.spotifyLiked.page(args); break;
+          case "spotify_liked_import_page":
+            if (!this.spotifyLiked) throw new DomainError("Spotify library integration unavailable",503);
+            value = await this.spotifyLiked.importPage(args); break;
           case "music_dna_search": value = this.dna.search(args); break;
           case "music_dna_get": value = this.dna.get(args.id); break;
           case "music_dna_versions": value = this.dna.versions(args.id); break;
