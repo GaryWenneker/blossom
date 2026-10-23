@@ -99,7 +99,20 @@ function analysisInput(incoming) {
     analysisMethod: text(data.analysisMethod, "Analysis method", 100, true),
     analyzer: text(data.analyzer, "Analyzer", 160, true),
     confidence: optionalNumber(data.confidence, "confidence", 0, 1),
-    analyzedAt: timestamp()
+    analyzedAt: timestamp(),
+    measurements: data.measurements == null ? null : (() => {
+      const m = checkShape(data.measurements, "audio measurements");
+      return {
+        sampleRate: optionalNumber(m.sampleRate, "source sample rate", 8000, 384000),
+        channels: optionalNumber(m.channels, "channels", 1, 16),
+        codec: text(m.codec, "codec", 80),
+        analysisSampleRate: optionalNumber(m.analysisSampleRate, "analysis sample rate", 8000, 384000),
+        decodedSamples: optionalNumber(m.decodedSamples, "sample count", 1, 2_000_000_000),
+        peakDbfs: optionalNumber(m.peakDbfs, "peak level", -120, 0),
+        rmsDbfs: optionalNumber(m.rmsDbfs, "RMS level", -120, 0),
+        silenceFraction: optionalNumber(m.silenceFraction, "silence fraction", 0, 1)
+      };
+    })()
   };
   if (toJson(normalized).length > 100_000) throw new DomainError("Analysis exceeds size limit", 413);
   return normalized;
@@ -147,7 +160,12 @@ export class MusicDNA {
         "id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES music_dna_profiles(id)," +
         "status TEXT NOT NULL, worker TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0," +
         "leased_until TEXT, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);" +
-      "CREATE INDEX IF NOT EXISTS music_dna_jobs_status ON music_dna_jobs(status,created_at);"
+      "CREATE INDEX IF NOT EXISTS music_dna_jobs_status ON music_dna_jobs(status,created_at);" +
+      "CREATE TABLE IF NOT EXISTS music_dna_audio_assets (" +
+        "profile_id TEXT PRIMARY KEY REFERENCES music_dna_profiles(id) ON DELETE CASCADE," +
+        "filename TEXT NOT NULL, mime TEXT NOT NULL, sha256 TEXT NOT NULL UNIQUE," +
+        "byte_size INTEGER NOT NULL, rights_confirmed INTEGER NOT NULL DEFAULT 0," +
+        "created_at TEXT NOT NULL);"
     );
   }
   create(input = {}) {
@@ -274,13 +292,57 @@ export class MusicDNA {
     return rows.map(r => ({ id:r.id, profileId:r.profile_id, status:r.status, worker:r.worker,
       attempts:r.attempts, error:r.error, createdAt:r.created_at, updatedAt:r.updated_at }));
   }
-  claimJob(worker = "blossom-local") {
+  audioForProfile(profileId) {
+    ensureId(profileId);
+    const row = this.db.prepare("SELECT * FROM music_dna_audio_assets WHERE profile_id=?").get(profileId);
+    return row ? { profileId: row.profile_id, filename: row.filename, mime: row.mime,
+      sha256: row.sha256, byteSize: row.byte_size, rightsConfirmed: !!row.rights_confirmed } : null;
+  }
+  attachAudio(profileId, info = {}) {
+    const profile = this.get(profileId);
+    if (!info || typeof info !== "object" || info.rightsConfirmed !== true)
+      throw new DomainError("Confirm that you are permitted to process this reference audio", 403);
+    const sha256 = text(info.sha256, "Audio hash", 64, true).toLowerCase();
+    const filename = text(info.filename, "Audio filename", 80, true);
+    if (!/^[a-f0-9]{64}$/.test(sha256) || !/^[0-9a-f-]{36}\.(mp3|wav)$/.test(filename))
+      throw new DomainError("Invalid audio identifier");
+    if (!["audio/mpeg", "audio/wav"].includes(info.mime) ||
+      !Number.isInteger(info.byteSize) || info.byteSize < 128 || info.byteSize > 40 * 1024 * 1024)
+      throw new DomainError("Invalid audio metadata");
+    const existing = this.audioForProfile(profileId);
+    if (existing) {
+      if (existing.sha256 !== sha256) throw new DomainError("Reference already has audio; create a new recording reference", 409);
+      return { ...existing, duplicate: true };
+    }
+    const other = this.db.prepare("SELECT id FROM music_dna_profiles WHERE recording_sha256=? AND id<>?")
+      .get(sha256, profileId);
+    if (other || (profile.recordingSha256 && profile.recordingSha256 !== sha256))
+      throw new DomainError("Recording fingerprint is already assigned to another reference", 409);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare("UPDATE music_dna_profiles SET recording_sha256=?, source_kind='local-audio',updated_at=? WHERE id=?")
+        .run(sha256, timestamp(), profileId);
+      this.db.prepare("INSERT INTO music_dna_audio_assets VALUES(?,?,?,?,?,?,?)")
+        .run(profileId, filename, info.mime, sha256, info.byteSize, 1, timestamp());
+      const pending = this.db.prepare(
+        "SELECT id FROM music_dna_jobs WHERE profile_id=? AND status IN ('queued','running')").get(profileId);
+      if (!pending) this.db.prepare(
+        "INSERT INTO music_dna_jobs(id,profile_id,status,created_at,updated_at) VALUES(?,?,?,?,?)")
+        .run(randomUUID(), profileId, "queued", timestamp(), timestamp());
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+    this.store.audit("audio_attached", "music_dna_reference", profileId, { sha256, byteSize: info.byteSize });
+    return this.audioForProfile(profileId);
+  }
+  claimJob(worker = "blossom-local", { audioOnly = false } = {}) {
     worker = text(worker, "Worker", 100, true);
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const queued = this.db.prepare(
-        "SELECT id,profile_id FROM music_dna_jobs WHERE status='queued' OR " +
-        "(status='running' AND leased_until < ?) ORDER BY created_at LIMIT 1").get(timestamp());
+        "SELECT j.id,j.profile_id FROM music_dna_jobs j " +
+        (audioOnly ? "JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
+        "WHERE (j.status='queued' OR (j.status='running' AND j.leased_until < ?)) " +
+        "AND j.attempts < 3 ORDER BY j.created_at LIMIT 1").get(timestamp());
       if (!queued) { this.db.exec("COMMIT"); return null; }
       const leased = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       this.db.prepare("UPDATE music_dna_jobs SET status='running',worker=?,attempts=attempts+1,leased_until=?,updated_at=? WHERE id=?")

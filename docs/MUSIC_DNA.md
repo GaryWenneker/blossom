@@ -59,3 +59,16 @@ This SQL is an architectural **target**, not an automatic migration. The live ru
 - Optional authorized audio imports and source-specific copyright controls.
 
 The current code does not download YouTube/Spotify audio, transcribe copyrighted songs, clone artists, automatically generate Suno output, or perform acoustic analysis. Audio provenance, usage rights and analysis confidence must be respected at every stage.
+
+
+## Audio-analysis implementation and GUI
+
+The **Music DNA** navigation item offers a Library for registering an existing recording, inspecting the latest analyzed DNA, searching the indexed profiles, uploading permitted MP3/WAV files and seeing queue status. Reference audio must be user-provided and explicitly authorized. Audio upload endpoint: `POST /api/music-dna/profiles/{id}/upload-audio` with `Content-Type: audio/mpeg` or `audio/wav`, the signed-in session cookie, `X-Blossom-Request: ui` and `X-Blossom-Audio-Rights: confirmed`. Data is stored in a configurable `BLOSSOM_REFERENCE_AUDIO_DIR` (default `.data/reference-audio`) with 0600 file permissions. Max file size is 40 MB. Content signatures are checked, then FFmpeg validates decodability.
+
+Install FFmpeg + ffprobe on your Mac with `brew install ffmpeg`. Start a separate worker: `npm run dna:worker:loop` for continuous processing or `npm run dna:worker` for a bounded drain of queued audio. The worker only claims queued jobs with attached authorized reference audio; metadata-only jobs remain waiting for manual/extended analysis. Interrupted claims expire after ten minutes; each job allows up to three attempts and errors are recorded. FFmpeg runs with fixed arguments and no shell. Duration is capped at 15 minutes for this analysis stage.
+
+**Measured now:** media duration, input sample rate, channel count, codec and decoded-mono peak, RMS, silence fraction, and sample count. **Not inferred:** BPM, musical key, instruments, performing technique, voice identity, mood or time-aligned song sections. Those fields remain empty until an independent validated analyzer or human listener actually supplies them. These limitations prevent invented musical profiles from polluting the database.
+
+In News-to-Song Studio, select up to three profiles with analyses using the Music DNA picker, assign 1–100 influence weights, and produce original lyric/arrangement suggestions. Profiles are stored in `studio_music_dna_refs`; musical traits and production characteristics are passed to the creative prompt, while original artist names, source lyrics and source audio remain out of the creative model context. The recipe includes a concise neutral style description rather than imitating a named artist. The existing Suno handoff remains manual.
+
+**Operations and caveats:** The worker currently runs in its own process; it is not automatically started by Blossom. It requires the same SQLite database and audio directory as the web server. FFmpeg/ffprobe must be on PATH. This is not yet a full multi-worker music understanding pipeline, and the existing PostgreSQL SQL file remains a future migration target. The Cloudflare Tunnel is not deployed by these source changes.

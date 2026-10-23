@@ -1,3 +1,7 @@
+import { mkdir, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { validateAudio, MAX_REFERENCE_AUDIO_BYTES } from "./music-audio.mjs";
 import { DomainError } from "./domain.mjs";
 
 function respond(res, status, result) {
@@ -19,7 +23,10 @@ async function jsonBody(req) {
 }
 
 export class MusicDnaAPI {
-  constructor(dna) { this.dna = dna; }
+  constructor(dna, { audioDir = process.env.BLOSSOM_REFERENCE_AUDIO_DIR || ".data/reference-audio" } = {}) {
+    this.dna = dna;
+    this.audioDir = audioDir;
+  }
   async handle(req, res, path, searchParams) {
     const method = req.method;
     if (method === "GET") {
@@ -45,6 +52,43 @@ export class MusicDnaAPI {
       throw new DomainError("Not found", 404);
     }
     if (method !== "POST") throw new DomainError("Method not allowed", 405);
+    const upload = path.match(/^\/api\/music-dna\/profiles\/([0-9a-f-]{36})\/upload-audio$/i);
+    if (upload) {
+      this.dna.get(upload[1]);
+      if (req.headers["x-blossom-audio-rights"] !== "confirmed")
+        throw new DomainError("Explicit permission to process this reference audio is required", 403);
+      const mime = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+      if (!["audio/mpeg", "audio/wav", "audio/x-wav"].includes(mime))
+        throw new DomainError("MP3 or WAV required", 415);
+      const chunks = [];
+      let length = 0;
+      for await (const chunk of req) {
+        length += chunk.length;
+        if (length > MAX_REFERENCE_AUDIO_BYTES)
+          throw new DomainError("Reference audio exceeds 40MB", 413);
+        chunks.push(chunk);
+      }
+      const bytes = Buffer.concat(chunks);
+      const info = validateAudio(bytes, mime);
+      const existing = this.dna.audioForProfile(upload[1]);
+      if (existing) {
+        if (existing.sha256 !== info.sha256)
+          throw new DomainError("Different audio is already associated with this reference", 409);
+        return respond(res, 200, { ...existing, duplicate: true });
+      }
+      await mkdir(this.audioDir, { recursive: true, mode: 0o700 });
+      const filename = randomUUID() + "." + info.extension, location = join(this.audioDir, filename);
+      await writeFile(location, bytes, { flag: "wx", mode: 0o600 });
+      let asset;
+      try {
+        asset = this.dna.attachAudio(upload[1],
+          { ...info, filename, rightsConfirmed: true });
+      } catch (error) {
+        await rm(location, { force: true });
+        throw error;
+      }
+      return respond(res, 201, asset);
+    }
     const body = await jsonBody(req);
     if (path === "/api/music-dna/profiles") return respond(res, 201, this.dna.create(body));
     if (path === "/api/music-dna/import-batch")

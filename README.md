@@ -131,3 +131,10 @@ Store `.data/blossom.db` and `.data/assets` securely. Neither audio nor model fi
 ## Music DNA reference library (initial implementation)
 
 Reference recordings can be saved as versioned, indexed musical DNA profiles, searched by full text and instrument/genre/mood/vocal facets, and enqueued for future bulk audio analysis. REST endpoints are protected by the existing browser session and a separate optional MCP endpoint uses read/write bearer tokens. **Automatic audio analysis and the PostgreSQL cutover are not yet implemented.** See [Music DNA documentation](docs/MUSIC_DNA.md) and [PostgreSQL schema](db/postgres/001_music_dna.sql).
+
+
+## Local Music DNA audio measurement and Studio references
+
+The Music DNA Library now supports registering reference recordings and uploading permitted MP3/WAV files (40 MB maximum) with explicit permission confirmation. Audio is stored privately in `.data/reference-audio`, fingerprinted by SHA-256 and queued for signal-level analysis. Install FFmpeg, including `ffprobe`, on your Mac (`brew install ffmpeg`). In a separate terminal, run `npm run dna:worker:loop` to analyze queued local audio. A single batch run is `npm run dna:worker`.
+
+This computes measurable properties (duration, sample rate, codec, channel count, decoded RMS, peak and silence). It **does not yet identify instruments, singers, chord progressions, tempos, or song sections automatically**. You can attach a reviewed detailed DNA analysis via the existing REST/MCP endpoints. The News-to-Song Studio can combine up to three analyzed reference DNA profiles, with editable influence weights, into its original-song brief and Suno blueprint. See [Music DNA](docs/MUSIC_DNA.md).

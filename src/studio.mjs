@@ -37,12 +37,12 @@ export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
   for(const f of ["customInstructions","imagePrompt","artistPhotoPrompt"])p[f]=clean(p[f],1200);
   return p;
 }
-export function sunoRecipe(project) {
+export function sunoRecipe(project, referenceStyles = "") {
   const p=project.parameters;
   return {provider:"suno",mode:"authorized-manual-handoff",model:project.parameters.sunoModel||"v6",
     title:project.title||project.result?.titles?.[0]||"Untitled",
     lyrics:p.instrumental?"":project.result?.lyrics||"",
-    style:[p.genre,...p.additionalStyles,project.result?.style||"",p.customInstructions].filter(Boolean).join(", "),
+    style:[p.genre,...p.additionalStyles,project.result?.style||"",referenceStyles,p.customInstructions].filter(Boolean).join(", "),
     exclude:[...p.excludeStyles].join(", "),vocalGender:p.instrumental?null:p.vocalGender,
     instrumental:p.instrumental,maxMode:p.maxMode,weirdness:p.weirdness,styleInfluence:p.styleInfluence,
     variety:p.variety,personalize:p.personalize,targetDurationSeconds:p.targetSeconds,

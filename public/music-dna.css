@@ -1,0 +1,26 @@
+.music-dna-library{display:grid;gap:1.2rem}
+.music-dna-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.2rem}
+.music-dna-form{display:grid;gap:.8rem}
+.music-dna-form label{display:grid;gap:.3rem;font-size:.88rem}
+.music-dna-form input,.music-dna-search input,.studio-dna-picker input,
+.studio-dna-picker select{background:var(--surface,#111e1b);color:inherit;border:1px solid #4a6258;border-radius:.55rem;padding:.65rem;width:100%;min-width:0}
+.music-dna-jobs{display:grid;gap:.5rem;margin-bottom:1rem}
+.music-dna-jobs>div{display:flex;gap:.8rem;align-items:center;justify-content:space-between;padding:.65rem;border-bottom:1px solid #365046}
+.music-dna-jobs small{max-width:60%;overflow-wrap:anywhere}
+.music-dna-search{display:flex;gap:.5rem;align-items:center;margin:.6rem 0 1rem}
+.music-dna-results{display:grid;gap:.6rem}
+.music-dna-result{display:flex;align-items:center;justify-content:space-between;gap:1rem;border:1px solid #375047;border-radius:.7rem;padding:.8rem}
+.music-dna-result p{font-size:.83rem;opacity:.78;margin:.45rem 0}
+.music-dna-result small{opacity:.65}
+.music-dna-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.music-dna-upload{display:inline-flex;align-items:center;cursor:pointer}
+.music-dna-details{margin-top:1rem;padding:1rem;border:1px solid #375047;border-radius:.7rem}
+.music-dna-details pre{max-height:350px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.78rem}
+.studio-dna-picker{border:1px solid #3d5e51;border-radius:.7rem;padding:.85rem;margin:.8rem 0;background:rgba(70,120,90,.07)}
+.studio-dna-picker strong{display:block}
+.studio-dna-choice{display:grid;grid-template-columns:minmax(0,3fr) minmax(80px,1fr) auto;gap:.6rem;align-items:end}
+.studio-dna-choice .studio-field{min-width:0}
+.studio-dna-linked>div{display:flex;justify-content:space-between;gap:.5rem;align-items:center;border-top:1px solid #375047;padding:.45rem 0;font-size:.82rem}
+.studio-dna-linked span{min-width:0;overflow-wrap:anywhere}
+@media(max-width:850px){.music-dna-grid{grid-template-columns:1fr}.music-dna-result{align-items:flex-start;flex-direction:column}.studio-dna-choice{grid-template-columns:1fr}}
+@media(max-width:520px){.music-dna-search{flex-wrap:wrap}.music-dna-search input{flex-basis:100%}.music-dna-actions{width:100%}}
