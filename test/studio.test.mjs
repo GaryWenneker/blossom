@@ -66,8 +66,14 @@ test("Draw Things CLI argument array cannot become shell injection; PNG output i
    const child=new EventEmitter();
    child.stdout=new PassThrough();child.stderr=new PassThrough();
    child.kill=()=>{};
+   const inventory = args[0] === "models" && args[1] === "list";
    const output=args[args.indexOf("--output")+1];
    setImmediate(async()=>{
+     if (inventory) {
+       child.stdout.end("flux.ckpt downloaded=yes\n");
+       child.emit("close",0,null);
+       return;
+     }
      const png=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(140)]);
      await writeFile(output,png);child.emit("close",0,null);
    });
