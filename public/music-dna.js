@@ -1,5 +1,49 @@
 const esc = value => String(value ?? "").replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const barStatus = { not_analyzed:"Awaiting audio analysis",
+  source_inferred:"Source-based interpretation",
+  audio_observed:"Audio observation" };
+function barLine(title, text) {
+  return text ? '<div class="dna-bar-field"><strong>'+esc(title)+'</strong> '+esc(text)+'</div>' : "";
+}
+function barBlockMarkup(block) {
+  const name="Bars "+block.startBar+"–"+block.endBar;
+  const instruments=(block.instruments||[]).map(part=>{
+    const detail=[part.activity,part.role,part.technique,part.rhythm,
+      part.articulation,part.pitchRegister,part.timbre,
+      ...(part.effects||[])].filter(Boolean).join(" · ");
+    return barLine(part.name,detail);
+  }).join("");
+  const vocals=(block.vocals||[]).map(vocal=>{
+    const detail=[vocal.activity,vocal.delivery,vocal.phrasing,vocal.articulation,
+      vocal.register,vocal.dynamics,vocal.harmonies,
+      ...(vocal.effects||[])].filter(Boolean).join(" · ");
+    return barLine("Voice "+(vocal.singer||vocal.layer||""),detail);
+  }).join("");
+  const rhythmic=block.rhythm?Object.entries(block.rhythm).filter(([,value])=>value)
+    .map(([name,value])=>barLine(name,value)).join(""):"";
+  const harmony=block.harmony?
+    barLine("Harmony",[...(block.harmony.chords||[]),block.harmony.movement].filter(Boolean).join(" · ")):"";
+  const production=block.production?
+    barLine("Production",[block.production.dynamics,block.production.spatial,
+      block.production.transitions,...(block.production.processing||[])].filter(Boolean).join(" · ")):"";
+  const detail=instruments+vocals+rhythmic+harmony+production+barLine("Notes",block.notes);
+  return '<details class="dna-bar-block"><summary><span>'+esc(name)+'</span><span>'+
+    esc(block.section||"Section unresolved")+'</span><small>'+
+    esc(barStatus[block.status]||block.status)+'</small></summary><div>'+
+    (detail||'<p>No per-bar instrumental or vocal observations verified yet. Audio is required.</p>')+
+    '</div></details>';
+}
+function barBlocksMarkup(analysis) {
+  const blocks=analysis?.barBlocks||[];
+  if(!blocks.length)return "";
+  const observed=blocks.filter(b=>b.status==="audio_observed").length;
+  const source=blocks.filter(b=>b.status==="source_inferred").length;
+  return '<section class="dna-bar-blocks"><h4>Bar-by-bar Music DNA</h4><p>'+
+    observed+' audio-observed · '+source+' source-inferred · '+
+    (blocks.length-observed-source)+' awaiting analysis. Bar positions are not audio-aligned unless explicit timestamps are present.</p>'+
+    blocks.map(barBlockMarkup).join("")+'</section>';
+}
 let currentQuery = "";
 let selected = null;
 function summary(profile) {
@@ -7,7 +51,8 @@ function summary(profile) {
   if (!a) return "Metadata only · not analyzed";
   const instruments = a.instruments?.map(i => i.name).join(", ") || "Instruments not classified";
   return [a.bpm ? a.bpm + " BPM" : "BPM unknown",
-    ...(a.genres || []).slice(0, 3), instruments].join(" · ");
+    ...(a.genres || []).slice(0, 3), instruments,
+    ...(a.barBlocks?.length ? [a.barBlocks.length+" bar blocks"] : [])].join(" · ");
 }
 export function musicDnaView(state) {
   const profiles = state.data.musicDnaProfiles || [];
@@ -47,8 +92,9 @@ export function musicDnaView(state) {
       esc(p.id) + '"></label></div></article>').join("") :
       '<p class="studio-hint">No matching recordings.</p>') + '</div>' +
     (selected ? '<div class="music-dna-details"><h3>DNA profile: ' + esc(selected.artist) + ' · ' +
-      esc(selected.title) + '</h3><pre>' + esc(JSON.stringify(selected.analysis || {
-        status: "No verified analysis saved" }, null, 2)) + '</pre></div>' : '') +
+      esc(selected.title) + '</h3>' + barBlocksMarkup(selected.analysis) +
+      '<details><summary>Raw DNA JSON</summary><pre>' + esc(JSON.stringify(selected.analysis || {
+        status: "No verified analysis saved" }, null, 2)) + '</pre></details></div>' : '') +
     '</section></div>';
 }
 export async function musicDnaAction(el, state, api, refresh, message) {
