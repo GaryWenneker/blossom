@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - run: bash -n setup.sh
       - run: npm run check
       - run: npm test
       - name: Repository secret safety check
@@ -24,3 +25,10 @@ jobs:
           if git ls-files | grep -E '(^|/)(\.env$|\.data/|.*\.db$)'; then
             echo "Unexpected secret or local database committed"; exit 1
           fi
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Ratatui installer compiles
+        run: cargo check --manifest-path setup/ratatui-installer/Cargo.toml
