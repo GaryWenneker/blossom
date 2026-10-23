@@ -4,7 +4,7 @@ import { StudioStore, LENGTH_PRESETS, sunoRecipe } from "./studio.mjs";
 import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
-import { SunoBrowserHandoff } from "./suno-playwright.mjs";
+import { VisibleBrowserSession } from "./browser-connections.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -35,7 +35,7 @@ export class StudioAPI{
     this.composer=composer||new OpenAIComposer();
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
-    this.sunoBrowser=sunoBrowser||new SunoBrowserHandoff();
+    this.sunoBrowser=sunoBrowser||new VisibleBrowserSession("suno");
   }
   async handle(req,res,path) {
     if(req.method==="GET"){
