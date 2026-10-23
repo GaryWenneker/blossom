@@ -200,3 +200,22 @@ If Google says that the browser or app may not be safe, use **Connections → Su
 After opening a provider in Safari, return to Blossom and click **Ik ben ingelogd** (or **Nog niet gelukt**) in the modal or Connections card. Blossom immediately updates and saves that **user-confirmed** status for future sessions. It also refreshes the cards when the Blossom tab regains focus. It cannot know whether a separate Safari window closed or whether Google/Suno actually authenticated you; therefore it never presents the manual confirmation as a verified API connection. No browser cookies are read.
 
 Spotify follows the same native Safari browser login as Suno: initially Blossom opens the official Dutch Spotify login page for your existing Facebook sign-in; after **Ik ben ingelogd** it opens the Web Player with the same Safari session. **Opnieuw aanmelden via Facebook** is available if needed. No developer Client ID is required for browser-only use. Details: `docs/OPERATIONS.md`.
+
+## Fully automatic local AI for News to Song (no new browser window)
+
+Blossom now supports **Ollama on the Mac** for legitimate background inference. This is a **local model, not ChatGPT**, and does not use the ChatGPT Plus website login, Safari cookies, AppleScript, unofficial APIs or Playwright. The old **Extract with ChatGPT** button is replaced by **Genereer automatisch (lokaal)** unless an official OpenAI API key is configured. The legacy ChatGPT Extract endpoint is implemented through the same headless local engine for compatibility with older cached frontends.
+
+### First-time local setup (one command, downloads several GB)
+
+```bash
+bash scripts/setup-local-ai.sh
+launchctl kickstart -k gui/$(id -u)/io.wenneker.blossom.server
+```
+
+This script installs Ollama with Homebrew if necessary, starts a local service on 127.0.0.1:11434 and downloads `qwen3:8b`. Review the disk/download implications before running it. The AI provider and model can be configured with `BLOSSOM_LOCAL_AI_URL` (loopback only) and `BLOSSOM_LOCAL_AI_MODEL`. Blossom asks the local service to return a complete structured song brief, saves lyrics/style/titles/prompts to the project database, and offers production parameters without opening any provider website. `Prepare all` and the assistant use the same local engine when there is no OpenAI API key. Local quality, latency and model support differ from ChatGPT.
+
+### Article links
+
+An article URL can now be imported using **Haal artikel op**. If the article text field is empty, automatic extraction first tries to import the URL using bounded public HTTP(S) requests with DNS/redirect SSRF protections. Some publisher websites block server-side requests or require a subscription. In that case no text is invented; paste the permitted article text manually. This feature does not bypass paywalls or reuse browser cookies.
+
+An official OpenAI API key continues to enable automatic OpenAI-backed generation as a distinct alternative. A logged-in ChatGPT browser is **not** evidence of API authorization, even if an MCP app is installed.
