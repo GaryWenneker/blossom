@@ -3,7 +3,7 @@ const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambien
 const defaults={sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,busy:false,assistantAnswer:"",uploading:false};
+const work={activeId:null,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks"};
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
 const stateOf=state=>{const list=state.data.studioProjects||[];
@@ -92,14 +92,17 @@ const panels=(p,assets,state)=>{
  '<button class="secondary wide" data-action="studio-photo">Generate artist photo</button>'+
  (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">All assets are generated on your Mac, stored privately and linked to this project.</p>')+
  '</section></div>'+
- '<div class="studio-lower"><section class="studio-panel studio-files"><div class="studio-panel-head"><h2>Generated tracks & linked assets</h2><span class="studio-mini-tag">PROJECT LIBRARY</span></div>'+
+ '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
+ '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="tracks" aria-controls="studio-pane-tracks" aria-selected="'+(work.bottomTab==="tracks"?"true":"false")+'">Generated tracks &amp; assets</button>'+
+ '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="assistant" aria-controls="studio-pane-assistant" aria-selected="'+(work.bottomTab==="assistant"?"true":"false")+'">AI assistant</button></div>'+
+ '<section id="studio-pane-tracks" role="tabpanel" aria-label="Generated tracks and assets" class="studio-panel studio-files studio-bottom-pane" '+(work.bottomTab==="tracks"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>Generated tracks & linked assets</h2><span class="studio-mini-tag">PROJECT LIBRARY</span></div>'+
  '<div class="studio-tracks">'+(p?.trackId?'<div class="studio-trackline"><div class="studio-note">♫</div><div><strong>'+esc(p.title)+'</strong><small>Track linked · ID '+esc(p.trackId.slice(0,8))+'</small></div><span class="studio-mini-tag">IN PRODUCTION</span></div>':'<div class="studio-empty-row">No track linked yet. Extract an article, then create the production brief.</div>')+
  assets.map(a=>'<div class="studio-trackline">'+(a.kind==="audio"?'<div class="studio-note">▶</div>':'<img src="'+esc(a.url)+'" alt="'+esc(a.kind)+'">')+
  '<div><strong>'+esc(a.kind.replace("-"," "))+'</strong><small>'+esc(a.createdAt.slice(0,16).replace("T"," "))+'</small></div>'+
  (a.kind==="audio"?'<audio controls preload="none" src="'+esc(a.url)+'"></audio>':'<a class="secondary mini" href="'+esc(a.url)+'" target="_blank">Open</a>')+'</div>').join("")+'</div>'+
  '<div class="studio-file-actions"><button class="primary" data-action="studio-create-track">Create linked track</button>'+
  '<label class="secondary studio-upload">Import Suno audio<input id="studio-audio-file" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" hidden></label></div></section>'+
- '<section class="studio-panel studio-assistant"><div class="studio-panel-head"><h2>AI assistant</h2><span class="studio-mini-tag">OPENAI API</span></div>'+
+ '<section id="studio-pane-assistant" role="tabpanel" aria-label="AI assistant" class="studio-panel studio-assistant studio-bottom-pane" '+(work.bottomTab==="assistant"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>AI assistant</h2><span class="studio-mini-tag">OPENAI API</span></div>'+
  '<p class="studio-hint">Ask about the arrangement, lyrics, instrumentation or release preparation, without leaving Blossom.</p>'+
  '<textarea id="studio-question" placeholder="Make these lyrics sound more like 1960s country, with less reverb..." rows="3"></textarea>'+
  '<button class="secondary wide" data-action="studio-ask">Ask AI assistant</button>'+
@@ -125,6 +128,17 @@ export async function studioAction(el,state,api,refresh,message){
  if(work.busy){message("Current studio operation is still running",true);return;}
  work.busy=true;el.disabled=true;
  try{
+  if(action==="studio-bottom-tab"){
+    work.bottomTab=el.dataset.tab==="assistant"?"assistant":"tracks";
+    for(const tab of document.querySelectorAll(".studio-output-tab")){
+      const active=tab.dataset.tab===work.bottomTab;
+      tab.setAttribute("aria-selected",String(active));
+      tab.tabIndex=active?0:-1;
+    }
+    for(const pane of document.querySelectorAll(".studio-bottom-pane"))
+      pane.hidden=pane.id!=="studio-pane-"+work.bottomTab;
+    return;
+  }
   if(action==="studio-use-title"){document.querySelector("#studio-title").value=el.dataset.title;return;}
   if(action==="studio-new"){work.activeId=null;work.assistantAnswer="";await refresh();return;}
   if(action==="studio-save"){await save(state,api);await refresh();message("Project saved");return;}

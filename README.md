@@ -164,3 +164,9 @@ This computes measurable properties (duration, sample rate, codec, channel count
 ## Social sign-in for existing Suno and Spotify accounts
 
 The **Connections** screen provides an official Suno website link for signing in with your existing **Google** SSO account. This is a browser handoff, not a Blossom-accessible Suno OAuth token. For Spotify, choose **Connect Spotify · Choose Facebook** (after configuring a Spotify developer Client ID and callback), then select **Continue with Facebook** if your Spotify account already supports that method on Spotify's own website. Blossom saves the resulting Spotify OAuth authorization securely without handling Google/Facebook passwords. See [Operations: provider social sign-in](docs/OPERATIONS.md#existing-suno-google-and-spotify-facebook-account-sign-ins).
+
+## Single-screen Studio layout
+
+Blossom's interface now uses a fixed viewport (no page-level vertical scrolling), closely following the earlier approved dark News-to-Song mock-up: narrow left navigation, compact header, four side-by-side panels and one lower tabbed output dock. On smaller screens, the panels can be browsed horizontally instead of creating a taller page. Long text, form options and growing track collections scroll inside their own panes so controls stay accessible; these content panes can still scroll when the data exceeds the screen.
+
+The layout is tested in headless Chromium at desktop, laptop and mobile sizes; see [Architecture](docs/ARCHITECTURE.md#viewport-based-interface-and-visual-reference).

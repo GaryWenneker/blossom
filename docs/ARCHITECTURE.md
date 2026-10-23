@@ -79,3 +79,13 @@ A `StudioAPI` authenticated route adapter exposes JSON operations and validated 
 Secrets and private files live outside Git. Generated images are not legal evidence of likeness clearance, and manual rights review remains mandatory. The browser never reads the local model directory or raw key.
 
 The browser renders HTML/CSS and SVG with functioning controls; historical tracks, releases and compliance views remain available from the same sidebar.
+
+## Viewport-based interface and visual reference
+
+The October 2026 approved Blossom dark Studio mock-up is the layout reference: lime accent, 220px navigation rail, slim header, four equal-height side-by-side News-to-Song panels (article, AI brief, Suno parameters and artwork), plus a bottom output dock.
+
+The app uses a fixed viewport shell (100dvh) without document-level vertical scrolling. News-to-Song uses CSS grid, retaining its four adjacent primary panels on large screens and horizontal panel navigation at smaller widths, **without stacking the four panels into a tall document**. The dock uses actual tabs for tracks/assets and AI assistant. Oversized lyrics, long articles, form details and record lists remain fully accessible by scrolling *inside their bounded panes*. This is intentional: arbitrary-length user content cannot fit into a finite height without hiding, clipping or internal scrolling.
+
+The Music DNA Library is height-bounded, with separate scrollable registration/job panels and a scrollable result list. All other operational screens use an internally scrolling main content region, not document scrolling. Mobile has a compact top navigation row and horizontally navigable Studio panels, with keyboard-focusable controls.
+
+The stylesheet override is public/viewport.css loaded after all existing styles. Regression coverage in test/viewport.test.mjs inspects the shell contracts and uses headless Chrome/Chromium to measure rendered Studio/Library geometry at multiple desktop and mobile window sizes. **This compares the code's layout design with the approved reference, not a claim of pixel-identical appearance to the historic mock-up.**

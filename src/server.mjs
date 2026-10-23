@@ -14,7 +14,7 @@ import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
- "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/blossom-mark.svg":"blossom-mark.svg",
+ "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {

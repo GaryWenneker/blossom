@@ -156,6 +156,7 @@ function connections(){
 }
 
 function render(){
+ document.body.dataset.view=state.tab;
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
  view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
