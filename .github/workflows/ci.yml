@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: '22'
       - name: Check live OAuth discovery, consent persistence and MCP routing
-        run: node scripts/test-mcp-remote.mjs https://blossom.wenneker.dev
+        run: node scripts/mcp-remote-smoke.mjs https://blossom.wenneker.dev
 
   installer:
     runs-on: ubuntu-latest
