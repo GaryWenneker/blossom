@@ -26,7 +26,7 @@ export class Sessions {
       CREATE TABLE IF NOT EXISTS oauth_pending
       (state_hash TEXT PRIMARY KEY, session_hash TEXT NOT NULL, verifier_cipher TEXT NOT NULL, expires_at INTEGER NOT NULL);`);
   }
-  login(username,password,ip="unknown") {
+  authenticate(username,password,ip="unknown") {
     const time=Date.now(),record=this.attempts.get(ip);
     if(record && time<record.until && record.count>=7)throw new DomainError("Too many attempts. Try again later.",429);
     const good=typeof username==="string"&&username===this.username&&typeof password==="string"&&password.length<=1024 &&
@@ -37,6 +37,11 @@ export class Sessions {
       throw new DomainError("Invalid username or password",401);
     }
     this.attempts.delete(ip);
+    return true;
+  }
+  login(username,password,ip="unknown") {
+    this.authenticate(username,password,ip);
+    const time=Date.now();
     const token=randomBytes(32).toString("base64url");
     this.db.prepare("INSERT INTO web_sessions VALUES (?,?)").run(digest(token),time+TOKEN_TTL_MS);
     this.db.prepare("DELETE FROM web_sessions WHERE expires_at < ?").run(time);
