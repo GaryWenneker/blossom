@@ -1,0 +1,374 @@
+{
+  "format": "blossom-music-dna-source-audit",
+  "version": "4.0",
+  "reference": {
+    "artist": "The Fixx",
+    "title": "The Sign of Fire",
+    "releaseYear": 1983,
+    "sourceUrl": "https://www.youtube.com/watch?v=vHJatlXEUG4",
+    "sourceKind": "metadata",
+    "sourceNote": "The Fixx, Reach the Beach (1983), original reference video vHJatlXEUG4. Known band credits and editorial groove descriptions are source-based. No waveform was available for verifying exact per-bar entrances or techniques."
+  },
+  "analysis": {
+    "schemaVersion": 1,
+    "bpm": 124.2,
+    "timeSignature": "4/4",
+    "durationMs": 232000,
+    "musicalKey": "C minor or G minor",
+    "genres": [
+      "New wave",
+      "Funk-influenced rock"
+    ],
+    "moods": [
+      "Hypnotic",
+      "Tense",
+      "Driving"
+    ],
+    "instruments": [
+      {
+        "name": "Elektrische bas",
+        "role": "Lage melodisch-ritmische tegenstem die in deze stijl de voortstuwende groove ondersteunt.",
+        "technique": "Niet gemeten; brongebaseerde functie, geen noottranscriptie",
+        "timbre": "Niet op audio uitgemeten",
+        "confidence": 0.7
+      },
+      {
+        "name": "Drumkit/percussie",
+        "role": "Tijdvoering, ritmische puls en articulatie van arrangementovergangen.",
+        "technique": "Niet gemeten; brongebaseerde functie, geen noottranscriptie",
+        "timbre": "Niet op audio uitgemeten",
+        "confidence": 0.7
+      },
+      {
+        "name": "Elektrische gitaar",
+        "role": "Gitaarkleur en ritmisch/harmonisch contrapunt in het bandarrangement.",
+        "technique": "Niet gemeten; brongebaseerde functie, geen noottranscriptie",
+        "timbre": "Niet op audio uitgemeten",
+        "confidence": 0.7
+      },
+      {
+        "name": "Toetsen/synthesizer",
+        "role": "Elektronische klanklaag en harmonische inkleuring.",
+        "technique": "Niet gemeten; brongebaseerde functie, geen noottranscriptie",
+        "timbre": "Niet op audio uitgemeten",
+        "confidence": 0.7
+      }
+    ],
+    "vocals": {
+      "type": "Mannelijke leadzang (Cy Curnin)",
+      "register": "Niet akoestisch bepaald",
+      "timbre": "Door recensies als hypnotisch beschreven",
+      "delivery": "Narratieve coupletten en herhalende centrale hook",
+      "harmonies": "Niet vastgesteld"
+    },
+    "production": {
+      "era": "1983, productie Rupert Hine",
+      "texture": "Bandgeluid met funkachtige new-wave-groove en elektronische toetsenlaag",
+      "stereo": "Niet gemeten",
+      "dynamics": "Niet gemeten",
+      "effects": []
+    },
+    "sections": [],
+    "barBlocks": [],
+    "summary": "The Fixx, The Sign of Fire (1983): strakke, hypnotisch beschreven new-wave/funk-groove met drums, ritmisch opvallende bas, elektrische gitaar, keyboards en expressieve mannelijke leadstem. Automatische akkoordbronnen plaatsen C/Cm en G/Gm centraal, met Db, Ab en Eb als bijkomende kandidaten. Een contrasterende middenpassage en een herhaalde eindhook zijn tekstueel afleidbaar. Maatnummers en instrumentale uitvoeringsdetails zijn niet bevestigd.",
+    "analysisMethod": "Brongebaseerde structurele audit; geen gedecodeerde opname",
+    "analyzer": "ChatGPT source audit v4",
+    "confidence": 0.43,
+    "measurements": null
+  },
+  "arrangementSections": [
+    {
+      "order": 1,
+      "name": "Intro en harmonische voorbereiding",
+      "vocalActivity": "Het akkoordtranscript toont een aanloop vóór de eerste volledige zangstrofe; exacte eerste zangaanslag niet vastgesteld.",
+      "harmonyCandidates": [
+        "C",
+        "Gm",
+        "Db",
+        "C",
+        "Gm"
+      ],
+      "arrangementEvidence": "Herhalende harmonische figuur; geen geverifieerde instrumentale solo of partijinzet.",
+      "confidence": 0.55,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    },
+    {
+      "order": 2,
+      "name": "Eerste couplet",
+      "vocalActivity": "Cy Curnins leadstem draagt de opeenvolgende verhalende regels. Inzet per tel, ademhaling en melodische noten zijn niet vastgesteld.",
+      "harmonyCandidates": [
+        "C/Cm",
+        "G/Gm",
+        "Db",
+        "C/Cm"
+      ],
+      "arrangementEvidence": "Terugkerende tegenstelling tussen C- en G-akkoordgebieden in automatische akkoordnotatie.",
+      "confidence": 0.67,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    },
+    {
+      "order": 3,
+      "name": "Eerste centrale zanghook",
+      "vocalActivity": "Een korte herkenbare zangfrase verschijnt als terugkerende hook; meerstemmigheid en vocale dubbels zijn nog niet bevestigd.",
+      "harmonyCandidates": [
+        "Eb",
+        "G/Gm",
+        "D"
+      ],
+      "arrangementEvidence": "De akkoordbron wisselt hier naar een contrasterende verzameling akkoordkandidaten.",
+      "confidence": 0.57,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    },
+    {
+      "order": 4,
+      "name": "Tweede strofe en herhaling hook",
+      "vocalActivity": "Er volgt nieuwe leadzang, daarna opnieuw de herkenbare hook. De verdeling van lettergrepen over de maten is onbekend.",
+      "harmonyCandidates": [
+        "C/Cm",
+        "G/Gm",
+        "Db",
+        "Eb",
+        "D"
+      ],
+      "arrangementEvidence": "Dezelfde harmonische polen keren terug; veranderingen in drums, gitaar, bas en toetsen nog niet bewezen.",
+      "confidence": 0.63,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    },
+    {
+      "order": 5,
+      "name": "Middenpassage met instrumentale ruimte",
+      "vocalActivity": "In het akkoordtranscript staat een langere passage zonder gezongen tekst. Dat is geen bewijs van volledige afwezigheid van zang.",
+      "harmonyCandidates": [
+        "Am",
+        "A",
+        "C",
+        "F",
+        "G"
+      ],
+      "arrangementEvidence": "Een recensie noemt nadrukkelijk een afwijkende inventieve middenpassage. De automatische akkoordkandidaten wijken hier af.",
+      "confidence": 0.68,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    },
+    {
+      "order": 6,
+      "name": "Laatste couplet en refrein",
+      "vocalActivity": "De leadstem hervat verhalende regels; daarop volgt opnieuw een kort herkenbaar refrein.",
+      "harmonyCandidates": [
+        "Cm",
+        "G/Gm",
+        "Db",
+        "Eb",
+        "D"
+      ],
+      "arrangementEvidence": "Terugkeer naar de vroegere akkoordgebieden. Een eventuele dynamische verdichting is niet gemeten.",
+      "confidence": 0.66,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    },
+    {
+      "order": 7,
+      "name": "Langere herhaalde eindhook",
+      "vocalActivity": "De terugkerende zanghook wordt herhaald. Exact aantal uitvoeringen, backing vocals en laatste vocale inzet zijn onbekend.",
+      "harmonyCandidates": [
+        "C/Cm",
+        "G/Gm",
+        "Db"
+      ],
+      "arrangementEvidence": "De akkoordbron vertoont weer terugkerende harmonische beweging; fade-out versus stop is niet vastgesteld.",
+      "confidence": 0.72,
+      "startBar": null,
+      "endBar": null,
+      "startMs": null,
+      "endMs": null,
+      "timingVerified": false,
+      "provenance": [
+        "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+        "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html"
+      ],
+      "status": "source_inferred",
+      "note": "Akkoorden zijn kandidaten uit automatische transcriptie, niet door ons beluisterd of op maatgrenzen geverifieerd."
+    }
+  ],
+  "trackRoles": [
+    {
+      "instrument": "Elektrische bas",
+      "performer": "Dan K. Brown",
+      "established": "Bas vormt een prominente ritmisch-funkgerichte laag en is specifiek aan deze opname toegeschreven.",
+      "musicalFunction": "Lage melodisch-ritmische tegenstem die in deze stijl de voortstuwende groove ondersteunt.",
+      "notVerified": [
+        "exacte noten",
+        "syncopen per tel",
+        "vinger- of plektrumtechniek",
+        "muting",
+        "fills per matenblok",
+        "compressor of effectketen"
+      ]
+    },
+    {
+      "instrument": "Drumkit/percussie",
+      "performer": "Adam Woods",
+      "established": "Drumpartij ondersteunt het dansbare new-wave/funk-karakter.",
+      "musicalFunction": "Tijdvoering, ritmische puls en articulatie van arrangementovergangen.",
+      "notVerified": [
+        "kick-/snarepatroon per zestiende",
+        "hi-hat subdivisie",
+        "ghost notes",
+        "swing",
+        "fills",
+        "percussie-overdubs"
+      ]
+    },
+    {
+      "instrument": "Elektrische gitaar",
+      "performer": "Jamie West-Oram",
+      "established": "Elektrische gitaar is onderdeel van de bezetting; externe gitaartabulaturen bestaan.",
+      "musicalFunction": "Gitaarkleur en ritmisch/harmonisch contrapunt in het bandarrangement.",
+      "notVerified": [
+        "exact riff",
+        "aanslagpatroon",
+        "akkoordliggingen",
+        "palm muting",
+        "chorus of delay",
+        "stereopan",
+        "inzet per maat"
+      ]
+    },
+    {
+      "instrument": "Toetsen/synthesizer",
+      "performer": "Rupert Greenall",
+      "established": "Keyboardbijdrage behoort tot de bekende bezetting.",
+      "musicalFunction": "Elektronische klanklaag en harmonische inkleuring.",
+      "notVerified": [
+        "welke synthesizers",
+        "pads versus arpeggio",
+        "filterbeweging",
+        "keybed voicing",
+        "instrument-inzet per maat"
+      ]
+    },
+    {
+      "instrument": "Leadzang",
+      "performer": "Cy Curnin",
+      "established": "Mannelijke melodische leadzang; bronnen beschrijven de zang als hypnotisch.",
+      "musicalFunction": "Narratieve coupletregels, herhaalde korte zanghook en tekstuele spanningsopbouw.",
+      "notVerified": [
+        "frasering per tel",
+        "toonhoogtebereik",
+        "vibrato",
+        "adempunten",
+        "stemverdubbeling",
+        "backing vocals",
+        "effecten per passage"
+      ]
+    }
+  ],
+  "harmonicEvidence": {
+    "musicDatabaseBpm": 124.2,
+    "videoChordSiteBpm": 126.3,
+    "meter": "4/4",
+    "keyCandidates": [
+      "Cm",
+      "Gm"
+    ],
+    "recurringChordFamilies": [
+      "C/Cm",
+      "G/Gm"
+    ],
+    "secondaryChordCandidates": [
+      "Db",
+      "Ab",
+      "Eb",
+      "D"
+    ],
+    "sectionChordSequences": "Zie arrangementSections; uitsluitend ongetimede bronkandidaten"
+  },
+  "analysisCoverage": {
+    "sourceSupportedSections": 7,
+    "sourceSupportedInstrumentsOrVoiceRoles": 5,
+    "measuredAudioDurationMs": null,
+    "downbeatOffsetMs": null,
+    "verifiedBarAlignedSections": 0,
+    "verifiedInstrumentPerformancesPerBar": 0,
+    "verifiedVocalPerformancesPerBar": 0,
+    "reason": "YouTube-URL alleen is niet als decodeerbare audiogolf beschikbaar in deze sessie."
+  },
+  "requirementsForPerMeasureAnalysis": {
+    "input": "Een legaal beschikbare opname van exact deze uitvoering als WAV of MP3.",
+    "steps": [
+      "Audio decoderen en hash/codec/duration vastleggen",
+      "Tempo en eerste downbeat meten; variabele tempi detecteren",
+      "Echte maatgrenzen timestampen",
+      "Met audio-/stemscheiding instrument- en zangactiviteit per blok kwantificeren",
+      "Vocale frasering en ritmische aanslagen controleren",
+      "Akkoorden en akkoordwissels per blok met betrouwbaarheid registreren",
+      "Stem- en instrumenttechniek slechts toevoegen als auditief verifieerbaar"
+    ]
+  },
+  "sourceLinks": [
+    "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_vHJatlXEUG4",
+    "https://chordu.com/chords-tabs-the-fixx-the-sign-of-fire-id_yFTFJLAFIyE",
+    "https://cs.uwaterloo.ca/~dtompkin/music/track/FIXX_____GH1/FIXX_____GH1-11.html",
+    "https://www.classicrockreview.com/2018/05/1983-the-fixx-reach-the-beach/",
+    "https://www.thefixx.com/music"
+  ],
+  "blossomSaveStatus": "niet opgeslagen"
+}
