@@ -1,4 +1,3 @@
-import { PREFERRED_DRAW_MODEL, verifyDrawModel } from "../src/draw-models.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFile, writeFile, appendFile, chmod, mkdir, lstat, copyFile, mkdtemp, rm } from "node:fs/promises";
@@ -39,8 +38,7 @@ export function missingSettings(config, rng = randomBytes) {
     BLOSSOM_PORT: "8787",
     BLOSSOM_PUBLIC_URL: "http://127.0.0.1:8787",
     BLOSSOM_DB: ".data/blossom.db",
-    BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio",
-    BLOSSOM_DRAW_MODEL: PREFERRED_DRAW_MODEL
+    BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio"
   };
   return Object.fromEntries(Object.entries(defaults).filter(([key]) => !(key in config)));
 }
@@ -81,17 +79,7 @@ export async function configureEnv(envFile, { create = true } = {}) {
     if (err.code !== "ENOENT") throw err;
     if (!create) throw Error(".env does not exist. Run bash setup.sh to configure.");
   }
-  // Older Blossom setups wrote BLOSSOM_DRAW_MODEL= with an empty value.
-  // Repair only that empty setting. Never replace an operator's model choice.
-  let parsed = parseEnv(existing);
-  if (create && Object.hasOwn(parsed,"BLOSSOM_DRAW_MODEL") && !parsed.BLOSSOM_DRAW_MODEL) {
-    const repaired = existing.replace(/^(\s*(?:export\s+)?BLOSSOM_DRAW_MODEL=).*$/m,
-      "$1" + PREFERRED_DRAW_MODEL);
-    if (repaired === existing) throw Error("Cannot repair empty BLOSSOM_DRAW_MODEL setting");
-    await writeFile(envFile, repaired, { mode: 0o600 });
-    existing = repaired;
-    parsed = parseEnv(existing);
-  }
+  const parsed = parseEnv(existing);
   const additions = create ? missingSettings(parsed) : {};
   if (create) {
     if (Object.keys(additions).length) {
@@ -236,8 +224,8 @@ async function configureLaunchd(envFile) {
 }
 export async function runSetup({ check = false, noServices = false, emit = () => {},
   root = ROOT, envFile = join(ROOT, ".env") } = {}) {
-  let stages = 0, optionalWarnings = 0;
-  const step = async (name, fn, { optional = false } = {}) => {
+  let stages = 0;
+  const step = async (name, fn) => {
     emit("STEP|" + name + "|RUN|");
     try {
       const info = await fn();
@@ -245,14 +233,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
       emit("STEP|" + name + "|OK|" + String(info || "ready").replace(/[\r\n|]/g, " ").slice(0, 300));
       return info;
     } catch (error) {
-      const reason = String(error.message).replace(/[\r\n|]/g, " ").slice(0, 1200);
-      if (optional) {
-        optionalWarnings++;
-        stages++;
-        emit("STEP|" + name + "|WARN|" + reason);
-        return null;
-      }
-      emit("STEP|" + name + "|FAIL|" + reason);
+      emit("STEP|" + name + "|FAIL|" + String(error.message).replace(/[\r\n|]/g, " ").slice(0, 500));
       throw error;
     }
   };
@@ -269,10 +250,6 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
       emit("NOTICE|First-run administrator password is stored privately in .env (BLOSSOM_ADMIN_PASSWORD)");
     return data;
   });
-  await step("Draw Things model", async () => {
-    const exact = await verifyDrawModel(config.settings.BLOSSOM_DRAW_MODEL, { modelsDir: config.settings.DRAWTHINGS_MODELS_DIR || process.env.DRAWTHINGS_MODELS_DIR });
-    return "Installed model verified: " + exact;
-  }, { optional: true });
   await step("Private storage", async () => {
     if (check) {
       const stat = await lstat(join(root, ".data"));
@@ -288,6 +265,28 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     try { await import("playwright-core"); }
     catch { throw Error("Playwright Core not installed; run npm install"); }
     return "Supervised Playwright Core package ready (Google Chrome required for use)";
+  });
+  await step("Draw Things diagnostics", async () => {
+    const { access } = await import("node:fs/promises");
+    const appPaths = [
+      "/Applications/Draw Things.app",
+      join(process.env.HOME || "", "Applications", "Draw Things.app")
+    ];
+    const installedApp = (await Promise.all(appPaths.map(async path => {
+      try { await access(path); return true; } catch { return false; }
+    }))).some(Boolean);
+    const cli = process.env.BLOSSOM_DRAW_COMMAND || "draw-things-cli";
+    const { delimiter } = await import("node:path");
+    const paths = (process.env.PATH || "").split(delimiter);
+    const foundCli = await Promise.all(paths.map(async dir => {
+      try { await access(join(dir, cli), (await import("node:fs")).constants.X_OK); return true; }
+      catch { return false; }
+    }));
+    if (!foundCli.some(Boolean)) {
+      emit("NOTICE|Draw Things CLI not found in PATH. Image generation needs a working CLI. Install/configure the Draw Things command, then rerun setup. The app alone is not proof the CLI is available.");
+      return installedApp ? "Draw Things app found; CLI not available" : "Draw Things CLI not found (optional)";
+    }
+    return "Draw Things CLI executable found; image model availability still requires a generation smoke test";
   });
   await step("Syntax validation", async () => { await exec("npm", ["run", "check"], { cwd: root }); return "syntax checks passed"; });
   await step("Automated tests", async () => { await exec("npm", ["test"], { cwd: root }); return "test suite passed"; });
@@ -309,7 +308,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     }
     throw Error("Blossom server did not respond on localhost:8787");
   });
-  emit("DONE|" + stages + "|" + (optionalWarnings ? "Blossom setup finished with " + optionalWarnings + " optional warning(s); Draw Things artwork requires attention" : "Blossom installation checks passed"));
+  emit("DONE|" + stages + "|Blossom installation checks passed");
   return config;
 }
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
