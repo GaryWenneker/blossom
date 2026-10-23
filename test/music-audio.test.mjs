@@ -105,7 +105,7 @@ test("Worker only processes authorized local audio and stores measured rather th
     assert.equal(attachment.rightsConfirmed, true);
     assert.throws(() => dna.attachAudio(metadata[0].profileId, {
       filename: attachment.filename, mime: "audio/wav",
-      sha256: "a".repeat(64), byteSize: 2500, rightsConfirmed: false }), /permission/);
+      sha256: "a".repeat(64), byteSize: 2500, rightsConfirmed: false }), /permitted/);
     let invoked = 0;
     const worker = new MusicDnaWorker(store, { analyzer: async path => {
       invoked++;
