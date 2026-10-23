@@ -118,7 +118,7 @@ export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● Creatie: '+(status.openaiConfigured?"OpenAI API":"lokale AI · "+(status.localAI?.available?"klaar":"model installeren"))</span>'+
+ '<div class="studio-statusline"><span>● Creatie: '+(status.openaiConfigured?"OpenAI API":"lokale AI · "+(status.localAI?.available?"klaar":"model installeren"))+'</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
