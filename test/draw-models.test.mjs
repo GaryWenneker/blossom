@@ -84,5 +84,5 @@ test("Draw Things missing CLI fails with actionable installation message", async
     setImmediate(()=>child.emit("error",Object.assign(Error("ENOENT"),{code:"ENOENT"})));
     return child;
   };
-  await assert.rejects(listDownloadedDrawModels({runner}),/brew install drawthingsai/);
+  await assert.rejects(listDownloadedDrawModels({runner}),/brew install draw-things-cli/);
 });
