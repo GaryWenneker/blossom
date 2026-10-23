@@ -112,9 +112,9 @@ export class StudioStore {
     const t=this.store.addTrack({artistId:p.artistId,title:p.title||p.result.titles?.[0]||"Untitled",
       mode:p.parameters.instrumental?"instrumental":"vocal",concept:p.result.concept,
       lyrics:p.parameters.instrumental?"":p.result.lyrics||""});
-    this.store.progressTrack(t.id,"brief");
+    const track=this.store.progressTrack(t.id,"brief");
     this.db.prepare("UPDATE studio_projects SET track_id=?,updated_at=? WHERE id=?").run(t.id,new Date().toISOString(),id);
-    this.store.audit("linked","studio_project",id,{trackId:t.id});return {project:this.require(id),track:t};
+    this.store.audit("linked","studio_project",id,{trackId:t.id});return {project:this.require(id),track};
   }
   assets(projectId){
     this.require(projectId);
