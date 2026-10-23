@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
 import { GENRES } from "./genres.mjs";
+import { StudioAPI } from "./studio-api.mjs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { Store } from "./storage.mjs";
@@ -10,8 +11,9 @@ import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
+ "/studio.js":"studio.js","/studio.css":"studio.css","/blossom-mark.svg":"blossom-mark.svg",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
-const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8"};
+const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {
   res.writeHead(code,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers});
   res.end(JSON.stringify(data));
@@ -36,12 +38,13 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
   const vault=new Vault(store.db,vaultKey);
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
+  const studioApi=new StudioAPI({store,vault,composer,draw,assetDir});
   const secure=publicUrl.startsWith("https:");
   const permittedOrigin=new URL(publicUrl).origin;
   const timer=enableMonitor(store,{enabled:monitor});
@@ -67,7 +70,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       if(path==="/login"&&req.method==="GET"&&sessionHash){
         res.writeHead(303,{Location:"/","Cache-Control":"no-store"});res.end();return;
       }
-      if(["/login","/login.js","/login.css","/styles.css"].includes(path)&&req.method==="GET"){
+      if(["/login","/login.js","/login.css","/styles.css","/blossom-mark.svg"].includes(path)&&req.method==="GET"){
         const name=PUBLIC[path],extension=name.split(".").pop(),content=await readFile(new URL("../public/"+name,import.meta.url));
         res.writeHead(200,{"Content-Type":MIME[extension],"Cache-Control":"no-store"});
         res.end(content);return;
@@ -95,6 +98,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         res.end(content);return;
       }
       if(!path.startsWith("/api/"))throw new DomainError("Not found",404);
+      if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path);return;}
       const method=req.method;
       if(!["GET","POST"].includes(method))throw new DomainError("Method not allowed",405);
       if(method==="POST" && req.headers["x-blossom-request"]!=="ui")throw new DomainError("Missing request protection header",403);

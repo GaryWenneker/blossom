@@ -1,6 +1,7 @@
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId } from "./studio.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
-const state={tab:"overview",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},genres:{}}};
+const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[]}};
 const nextStage={idea:"brief",brief:"generated",generated:"review",review:"approved",rejected:"brief"};
 const releaseChecks={audioUploaded:"Audio at distributor",artworkUploaded:"Cover art at distributor",creditsVerified:"Credits verified",codesVerified:"ISRC/UPC verified",aiDisclosuresDone:"AI disclosure completed",distributorRightsConfirmed:"Rights and distribution terms verified"};
 const capitals=s=>s.replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());
@@ -19,9 +20,12 @@ async function api(path,data){
   return body;
 }
 async function refresh(){
-  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","genres"];
+  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","genres","studio/projects","studio/status","studio/presets","studio/artists/presets"];
   const results=await Promise.all(names.map(apiName=>api(apiName)));
-  state.data=Object.fromEntries(names.map((name,i)=>[name,results[i]]));render();
+  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets"),results[i]]));
+  const id=studioActiveId(state);
+  state.data.studioAssets=id?await api("studio/projects/"+id+"/assets"):[];
+  render();
 }
 function badge(value){return '<span class="pill '+(["needs_reconciliation","rejected"].includes(value)?"warning":value==="draft"?"neutral":"")+'">'+e(capitals(value))+"</span>";}
 function header(title,subtitle,action=""){
@@ -125,16 +129,24 @@ function connections(){
  '<div class="actions" style="margin-top:14px"><a class="primary" style="text-decoration:none" href="/auth/spotify/start">Connect with Spotify ↗</a>'+(c.spotify_refresh_token?.configured?'<button data-action="remove-spotify" class="danger">Disconnect Spotify</button>':"")+'</div>'+
  (c.spotify_refresh_token?.configured?'<p class="small">Authorized account: '+e(c.spotify_refresh_token.label)+'</p><button data-action="verify-spotify" class="secondary" type="button">Verify Spotify connection</button><p class="hint">Spotify requires reauthorization after six months.</p>':"")+
  '<p class="small">Set the Spotify developer redirect URL exactly to <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section></div>'+
+ '<div class="panel"><div class="panel-header"><h2>ChatGPT-powered creation via OpenAI API</h2>'+badge(c.openai_api_key?.configured?"configured":"not connected")+'</div>'+
+ '<p class="hint">Connect your own OpenAI API key. Your ChatGPT website password or subscription is not an API credential. Requests use separate API billing. The API key is encrypted on this server and never returned to the browser.</p>'+
+ '<form id="openai-connection-form" class="fields"><div class="field"><label for="openai-key">OpenAI API key</label><input id="openai-key" name="apiKey" type="password" autocomplete="off" placeholder="Enter OpenAI API key" required></div>'+
+ '<div class="field"><button type="submit" class="primary" '+(!c.vaultReady?"disabled":"")+' >Save encrypted key</button></div></form>'+
+ (c.openai_api_key?.configured?'<button class="danger" data-action="remove-openai">Remove key</button>':"")+
+ '<p class="hint">Configure model and spend limits on the server. The default model can be changed with BLOSSOM_OPENAI_MODEL.</p></div>'+
  '<div class="panel"><h2>Connection security</h2><p class="muted">Secrets are encrypted at rest. Blossom never returns a saved API key or OAuth refresh token to the browser. Your credentials remain tied to this local server and its separately stored encryption key. Back up both safely; losing the key makes the secrets unrecoverable.</p></div>';
 }
 
 function render(){
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
- view.innerHTML=({overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
+ view.innerHTML=({studio:()=>studioView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
+ if(act?.startsWith("studio-"))return studioAction(el,state,api,refresh,message);
+ if(act==="remove-openai"){if(confirm("Delete stored OpenAI API key?")){await api("studio/openai-key/remove",{});await refresh();message("OpenAI key removed");}return;}
  if(act==="verify-spotify"){const p=await api("connections/spotify/profile");message("Spotify connection verified: "+p.displayName);return;}
  if(act==="logout"){await fetch("/auth/logout",{method:"POST",headers:{"Content-Type":"application/json","X-Blossom-Request":"ui"},body:"{}"});window.location.assign("/login");return;}
  if(act==="remove-suno"||act==="remove-spotify"){if(confirm("Remove stored authorization for this service?")){await update("connections/"+(act==="remove-suno"?"suno":"spotify")+"/remove",{});message("Saved authorization removed");}return;}
@@ -177,8 +189,13 @@ document.addEventListener("click",async event=>{
  const btn=event.target.closest("[data-action]");
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
+document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-"))studioInput(e,state,refresh);});
+document.addEventListener("change",async e=>{
+ if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
+ if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
+});
 document.addEventListener("submit",async event=>{
- if(!["artist-form","track-form","release-form","suno-connection-form","spotify-connection-form"].includes(event.target.id))return;
+ if(!["artist-form","track-form","release-form","suno-connection-form","spotify-connection-form","openai-connection-form"].includes(event.target.id))return;
  event.preventDefault();const button=event.target.querySelector("button[type=submit],button:not([type])");
  if(button)button.disabled=true;
  try{
@@ -189,6 +206,7 @@ document.addEventListener("submit",async event=>{
   } else if(event.target.id==="track-form") await api("tracks",data);
   else if(event.target.id==="suno-connection-form"){await api("connections/suno",data);event.target.elements.apiKey.value="";}
   else if(event.target.id==="spotify-connection-form")await api("connections/spotify",data);
+  else if(event.target.id==="openai-connection-form"){await api("studio/openai-key",data);event.target.elements.apiKey.value="";}
   else await api("releases",data);
   message("Saved");await refresh();
  }catch(error){message(error.message,true)}

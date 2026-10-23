@@ -1,6 +1,6 @@
 {
   "name": "blossom",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Security-first music label operations MVP",
@@ -11,7 +11,7 @@
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
     "test": "node --test",
-    "check": "node --check src/server.mjs && node --check src/domain.mjs && node --check src/storage.mjs && node --check src/providers/labelgrid.mjs && node --check src/monitor.mjs && node --check public/app.js && node --check src/security.mjs && node --check src/spotify.mjs && node --check src/genres.mjs && node --check public/login.js",
+    "check": "node --check src/server.mjs && node --check src/domain.mjs && node --check src/storage.mjs && node --check src/providers/labelgrid.mjs && node --check src/monitor.mjs && node --check public/app.js && node --check src/security.mjs && node --check src/spotify.mjs && node --check src/genres.mjs && node --check public/login.js && node --check src/studio.mjs && node --check src/studio-api.mjs && node --check src/providers/openai.mjs && node --check src/drawthings.mjs && node --check public/studio.js",
     "seed": "node scripts/seed.mjs",
     "vault:key": "node scripts/generate-vault-key.mjs"
   }
