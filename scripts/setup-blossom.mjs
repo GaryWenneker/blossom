@@ -38,6 +38,7 @@ export function missingSettings(config, rng = randomBytes) {
     BLOSSOM_HOST: "127.0.0.1",
     BLOSSOM_PORT: "8787",
     BLOSSOM_PUBLIC_URL: "http://127.0.0.1:8787",
+    BLOSSOM_MCP_PUBLIC_URL: "https://blossom.wenneker.dev",
     BLOSSOM_DB: ".data/blossom.db",
     BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio",
     BLOSSOM_DRAW_MODEL: PREFERRED_DRAW_MODEL
@@ -64,6 +65,14 @@ export function validateSettings(settings) {
       settings.BLOSSOM_PUBLIC_URL !== "http://127.0.0.1:8787" ||
       settings.BLOSSOM_PORT !== "8787")
     throw Error("Setup only supports loopback port 8787. Custom deployments require manual review.");
+  if (settings.BLOSSOM_MCP_PUBLIC_URL) {
+    let publicMcp;
+    try { publicMcp=new URL(settings.BLOSSOM_MCP_PUBLIC_URL); }
+    catch { throw Error("Invalid BLOSSOM_MCP_PUBLIC_URL"); }
+    if (publicMcp.protocol!=="https:" || publicMcp.username || publicMcp.password ||
+        publicMcp.pathname!=="/" || publicMcp.search || publicMcp.hash || publicMcp.port)
+      throw Error("BLOSSOM_MCP_PUBLIC_URL must be a public HTTPS origin");
+  }
   for (const key of ["BLOSSOM_DB", "BLOSSOM_REFERENCE_AUDIO_DIR"]) {
     const value = settings[key] || "";
     if (!value || value.includes("\0")) throw Error("Invalid " + key);
