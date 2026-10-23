@@ -126,6 +126,9 @@ export async function musicDnaAction(el, state, api, refresh, message) {
 
   if (action === "dna-spotify-import") {
     if (spotifyLikedImport.running) return;
+    if (spotifyLikedImport.finished) spotifyLikedImport={
+      running:false,offset:0,imported:0,duplicates:0,received:0,total:0,finished:false,status:""
+    };
     if (!state.data.connections?.spotifyClientId) {
       message("Configure your Spotify developer Client ID in Connections first",true);
       return;
