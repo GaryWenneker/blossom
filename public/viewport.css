@@ -233,3 +233,14 @@ body[data-view="connections"] .content{overflow:hidden;display:flex;min-height:0
 .browser-account-confirm button{flex:1 1 auto;font-size:10px;padding:7px 8px}
 #account-login-dialog .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 #account-login-dialog .actions button{min-width:0;white-space:normal}
+
+/* Article import and browser ChatGPT handoff stay accessible in the fixed viewport. */
+.studio-import-button{width:100%;margin-top:5px;min-height:29px;font-size:11px}
+#chatgpt-handoff-dialog{width:min(740px,94vw);max-height:88dvh;overflow-y:auto;background:#141b18;color:var(--ink);border:1px solid #435e46;border-radius:12px;padding:16px;box-shadow:0 15px 80px #0009}
+#chatgpt-handoff-dialog::backdrop{background:#000b}
+#chatgpt-handoff-dialog .dialog-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+#chatgpt-handoff-dialog .studio-field{display:block;margin:7px 0}
+#chatgpt-handoff-dialog textarea{display:block;width:100%;resize:vertical;max-height:24dvh;min-height:65px;line-height:1.5;font-size:12px;overflow-y:auto}
+#chatgpt-handoff-dialog .actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+#chatgpt-handoff-dialog .actions button{flex:1 1 150px;min-height:32px}
+@media(max-height:680px){#chatgpt-handoff-dialog textarea{max-height:18dvh;min-height:60px}}

@@ -5,6 +5,8 @@ import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
 import { VisibleBrowserSession } from "./browser-connections.mjs";
+import { importArticle } from "./article-import.mjs";
+import { chatGPTPrompt, normalizeChatGPTReply } from "./chatgpt-bridge.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -47,7 +49,7 @@ export class StudioAPI{
       if(path==="/api/studio/presets")return send(res,200,LENGTH_PRESETS);
       if(path==="/api/studio/status")return send(res,200,{
         openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY),
-        drawConfigured:this.draw.enabled(),generationMode:"OpenAI API and local Draw Things CLI",
+        drawConfigured:this.draw.enabled(),generationMode:"OpenAI API optional; ChatGPT browser handoff available without API key",chatgptBrowserHandoff:true,articleUrlImport:true,
         sunoGeneration:"manual authorized handoff"});
       if(path==="/api/studio/artists/presets")
         return send(res,200,Object.fromEntries(this.store.artists().map(a=>[a.id,this.studio.preset(a.id)])));
@@ -74,7 +76,24 @@ export class StudioAPI{
       return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime));
     }
     const data=await readJSON(req);
+    if(path==="/api/studio/articles/import"){
+      const result=await importArticle(data?.url);
+      return send(res,200,result);
+    }
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
+    const chatGPTAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-(prompt|import)$/);
+    if(chatGPTAction){
+      const project=this.studio.require(chatGPTAction[1]);
+      if(chatGPTAction[2]==="prompt")return send(res,200,
+        chatGPTPrompt(project,{mode:data?.mode,question:data?.question}));
+      if(data?.mode==="assistant"){
+        if(typeof data?.answer!=="string"||!data.answer.trim()||data.answer.length>8000)
+          throw new DomainError("Plak eerst een geldig ChatGPT-antwoord",400);
+        return send(res,200,{answer:data.answer.slice(0,6000)});
+      }
+      const result=normalizeChatGPTReply(data?.answer);
+      return send(res,200,this.studio.setResult(project.id,result));
+    }
     const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|close)$/);
     if(sunoBrowserAction){
       const p=this.studio.require(sunoBrowserAction[1]),op=sunoBrowserAction[2];

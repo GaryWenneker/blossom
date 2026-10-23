@@ -3,7 +3,7 @@ const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambien
 const defaults={sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks"};
+const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",handoffMode:"song",handoffProjectId:null};
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
 const stateOf=state=>{if(work.creatingNew)return null;const list=state.data.studioProjects||[];
@@ -37,6 +37,7 @@ const panels=(p,assets,state)=>{
  const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
  const projectReferences=state.data.studioReferences||[];
  const image=assets.find(a=>a.kind==="cover"),photo=assets.find(a=>a.kind==="artist-photo");
+ const hasOpenAI=!!state.data.studioStatus?.openaiConfigured;
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
  return '<div class="studio-toolbar">'+
@@ -51,10 +52,10 @@ const panels=(p,assets,state)=>{
  field("Artist",'<select id="studio-artist"><option value="">Choose an artist</option>'+artists.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===p?.artistId?"selected":"")+'>'+esc(a.name)+" · "+esc(a.genre)+'</option>').join("")+'</select>')+
  '<div class="studio-tabstrip"><span class="active">Paste article</span><span>URL attribution</span><span>Original concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
- field("Article link (optional, attribution only)",'<input id="studio-source" type="url" placeholder="https://example.org/article" value="'+esc(p?.sourceUrl||"")+'">')+
- '<div class="studio-panel-bottom"><small>Creates entirely original lyrics, not copied text</small><button data-action="studio-extract" class="primary">✦ Extract with AI</button></div></section>'+
- '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">Regenerate</button></div>'+
- '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Paste an article and select Extract with AI to create an original concept.")+'</div>'+
+ field("Article URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'"><button type="button" class="secondary studio-import-button" data-action="studio-import-article">Importeer artikel</button><button type="button" class="secondary studio-import-button" data-action="studio-open-article">Open artikel in browser ↗</button>')+
+ '<div class="studio-panel-bottom"><small>Gebruik ChatGPT in Safari, ook zonder API-key.</small><button data-action="studio-extract" class="primary">'+(hasOpenAI?"✦ Genereer met OpenAI API":"✦ Maak met ChatGPT zonder API-key")+'</button></div></section>'+
+ '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">'+(hasOpenAI?"Regenerate":"Open ChatGPT")+'</button></div>'+
+ '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Importeer een nieuwsartikel en maak er een originele muziekbrief van via ChatGPT.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
  '<div class="studio-label">Suggested titles</div><div class="studio-ideas">'+(result.titles?.length?result.titles.map((title,i)=>'<div><span>'+(i+1)+'. '+esc(title)+'</span><button class="secondary mini" data-action="studio-use-title" data-title="'+esc(title)+'">Use</button></div>').join(""):'<div class="studio-muted">Title suggestions appear here</div>')+'</div>'+
  '<div class="studio-label">Generated lyrics <button class="secondary mini" data-action="studio-save-lyrics">Save edits</button></div>'+
@@ -105,17 +106,17 @@ const panels=(p,assets,state)=>{
  (a.kind==="audio"?'<audio controls preload="none" src="'+esc(a.url)+'"></audio>':'<a class="secondary mini" href="'+esc(a.url)+'" target="_blank">Open</a>')+'</div>').join("")+'</div>'+
  '<div class="studio-file-actions"><button class="primary" data-action="studio-create-track">Create linked track</button>'+
  '<label class="secondary studio-upload">Import Suno audio<input id="studio-audio-file" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" hidden></label></div></section>'+
- '<section id="studio-pane-assistant" role="tabpanel" aria-label="AI assistant" class="studio-panel studio-assistant studio-bottom-pane" '+(work.bottomTab==="assistant"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>AI assistant</h2><span class="studio-mini-tag">OPENAI API</span></div>'+
+ '<section id="studio-pane-assistant" role="tabpanel" aria-label="AI assistant" class="studio-panel studio-assistant studio-bottom-pane" '+(work.bottomTab==="assistant"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>AI assistant</h2><span class="studio-mini-tag">'+(hasOpenAI?"OPENAI API":"CHATGPT WEBSITE")+'</span></div>'+
  '<p class="studio-hint">Ask about the arrangement, lyrics, instrumentation or release preparation, without leaving Blossom.</p>'+
  '<textarea id="studio-question" placeholder="Make these lyrics sound more like 1960s country, with less reverb..." rows="3"></textarea>'+
- '<button class="secondary wide" data-action="studio-ask">Ask AI assistant</button>'+
- '<div class="studio-answer">'+esc(work.assistantAnswer||"AI responses appear here. Requires your own OpenAI API key.")+'</div></section></div>';
+ '<button class="secondary wide" data-action="studio-ask">'+(hasOpenAI?"Ask AI assistant":"Vraag via ChatGPT")+'</button>'+
+ '<div class="studio-answer">'+esc(work.assistantAnswer||"Antwoorden verschijnen hier, ook zonder API-key.")+'</div></section></div>';
 };
 export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● OpenAI: '+(status.openaiConfigured?"configured":"not configured")+'</span>'+
+ '<div class="studio-statusline"><span>● Schrijven: '+(status.openaiConfigured?"OpenAI API actief":"ChatGPT overdracht, geen key nodig")+'</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
@@ -126,11 +127,54 @@ function collect(state){
  sourceUrl:document.querySelector("#studio-source").value,parameters:paramsFromDOM()};
 }
 async function save(state,api){const p=await api("studio/projects",collect(state));work.activeId=p.id;work.creatingNew=false;return p;}
+async function showChatGPTHandoff(p,api,mode="song",question=""){
+ const handoff=await api("studio/projects/"+p.id+"/chatgpt-prompt",{mode,question});
+ work.handoffMode=mode;work.handoffProjectId=p.id;
+ document.querySelector("#chatgpt-handoff-prompt").value=handoff.prompt;
+ document.querySelector("#chatgpt-handoff-reply").value="";
+ document.querySelector("#chatgpt-handoff-title").textContent=mode==="song"?"Muziekbrief via ChatGPT":"Vraag aan ChatGPT";
+ document.querySelector("#chatgpt-handoff-help").textContent=mode==="song"?
+  "Kopieer de opdracht naar ChatGPT in Safari. Plak daarna het volledige JSON-antwoord terug in Blossom.":
+  "Kopieer je vraag naar ChatGPT in Safari en plak daarna het antwoord hier.";
+ document.querySelector("#chatgpt-handoff-dialog").showModal();
+}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
+ if(action==="studio-open-article"){
+  const raw=document.querySelector("#studio-source").value.trim();
+  try{const url=new URL(raw);if(!["https:","http:"].includes(url.protocol)||url.username||url.password)throw Error();
+    window.open(url.href,"_blank","noopener,noreferrer");}
+  catch{message("Vul eerst een geldige artikel-URL in.",true);}
+  return;
+ }
  if(work.busy){message("Current studio operation is still running",true);return;}
  work.busy=true;el.disabled=true;
  try{
+  if(action==="studio-chatgpt-close"){
+    document.querySelector("#chatgpt-handoff-dialog").close();return;
+  }
+  if(action==="studio-chatgpt-copy"){
+    const field=document.querySelector("#chatgpt-handoff-prompt");
+    try{await navigator.clipboard.writeText(field.value);message("ChatGPT-opdracht gekopieerd.");}
+    catch{field.focus();field.select();message("Kopieer met Cmd+C.");}
+    return;
+  }
+  if(action==="studio-chatgpt-open"){
+    const safari=state.data.browserAccounts?.nativeSafariAvailable &&
+      ["localhost","127.0.0.1"].includes(location.hostname);
+    if(safari)await api("browser-accounts/chatgpt/open-safari",{});
+    else window.open("https://chatgpt.com/","_blank","noopener,noreferrer");
+    message("ChatGPT geopend. Plak daar de gekopieerde opdracht.");return;
+  }
+  if(action==="studio-chatgpt-import"){
+    const answer=document.querySelector("#chatgpt-handoff-reply").value;
+    if(!answer.trim()){message("Plak eerst het antwoord van ChatGPT.",true);return;}
+    const result=await api("studio/projects/"+work.handoffProjectId+"/chatgpt-import",
+      {mode:work.handoffMode,answer});
+    if(work.handoffMode==="assistant")work.assistantAnswer=result.answer;
+    document.querySelector("#chatgpt-handoff-dialog").close();
+    await refresh();message("ChatGPT-resultaat verwerkt in Blossom.");return;
+  }
   if(action==="studio-bottom-tab"){
     work.bottomTab=el.dataset.tab==="assistant"?"assistant":"tracks";
     for(const tab of document.querySelectorAll(".studio-output-tab")){
@@ -156,6 +200,17 @@ export async function studioAction(el,state,api,refresh,message){
     if(!artistId){message("Choose an artist first",true);return;}
     await api("studio/artists/"+artistId+"/preset",paramsFromDOM());message("Artist defaults saved");return;
   }
+  if(action==="studio-import-article"){
+    const url=document.querySelector("#studio-source").value.trim();
+    if(!url){message("Vul eerst de nieuwsartikel-URL in.",true);return;}
+    const result=await api("studio/articles/import",{url});
+    document.querySelector("#studio-article").value=result.text;
+    const title=document.querySelector("#studio-title");
+    if(!title.value.trim()||title.value==="Untitled project")title.value=result.title||"Nieuwsartikel";
+    document.querySelector("#studio-source").value=result.sourceUrl;
+    await save(state,api);await refresh();
+    message("Artikel opgehaald: "+result.text.length+" tekens. Klaar voor ChatGPT.");return;
+  }
   const p=await save(state,api);
   if(action==="studio-add-dna"||action==="studio-remove-dna"){
     const previous=(state.data.studioReferences||[]).map(x=>({profileId:x.profileId,weight:x.weight}));
@@ -172,6 +227,9 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message("Music DNA references updated");return;
   }
   if(action==="studio-extract"){
+    if(!state.data.studioStatus?.openaiConfigured){
+      await showChatGPTHandoff(p,api,"song");message("ChatGPT-opdracht is klaar, geen API-key nodig.");return;
+    }
     await api("studio/projects/"+p.id+"/extract",{});await refresh();message("Original lyrics and styles generated");return;
   }
   if(action==="studio-save-lyrics"){
@@ -220,6 +278,9 @@ export async function studioAction(el,state,api,refresh,message){
   }
   if(action==="studio-ask"){
     const q=document.querySelector("#studio-question").value;
+    if(!state.data.studioStatus?.openaiConfigured){
+      await showChatGPTHandoff(p,api,"assistant",q);return;
+    }
     const answer=await api("studio/projects/"+p.id+"/ask",{question:q});
     work.assistantAnswer=answer.answer;await refresh();message("AI assistant responded");return;
   }
@@ -230,6 +291,10 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message(kind==="cover"?"Album artwork linked":"Artist photo linked");return;
   }
   if(action==="studio-generate-all"){
+    if(!state.data.studioStatus?.openaiConfigured){
+      await showChatGPTHandoff(p,api,"song");
+      message("Maak eerst de muziekbrief via ChatGPT. Daarna kun je artwork genereren en tracks koppelen.");return;
+    }
     if(!confirm("Prepare this project with AI, create a linked track and generate album art locally if configured? This uses API credits and may take several minutes. Suno music itself still requires an authorized workflow."))return;
     const result=await api("studio/projects/"+p.id+"/extract",{});
     if(!result.trackId&&result.artistId)await api("studio/projects/"+p.id+"/create-track",{});
