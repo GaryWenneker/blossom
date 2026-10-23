@@ -115,7 +115,7 @@ export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● ChatGPT Safari: '+(state.data.browserAccounts?.chatgpt?.handoff?.state==="user_confirmed"?"sign-in confirmed":"sign-in not confirmed")+' · Blossom MCP app required</span>'+
+ '<div class="studio-statusline"><span>● ChatGPT browser: '+(state.data.browserAccounts?.chatgpt?.handoff?.state==="user_confirmed"?"sign-in confirmed":"sign-in not confirmed")+' · Blossom MCP app required</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
@@ -196,11 +196,11 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message("Music DNA references updated");return;
   }
   if(action==="studio-chatgpt"){
-    message("Submitting the project through your logged-in ChatGPT Safari session...");
+    message("Submitting through the ChatGPT session in your regular browser...");
     const submitted=await api("studio/projects/"+p.id+"/chatgpt-extract",{});
     if(!submitted.submitted)throw Error("Safari did not submit the ChatGPT request");
     watchChatGptResult(p.id,p.result,api,refresh,message);
-    message("Sent via Safari. Waiting for ChatGPT to save the result through Blossom MCP.");
+    message("Sent via your browser. Waiting for ChatGPT to save the result through Blossom MCP.");
     return;
   }
   if(action==="studio-extract"){
