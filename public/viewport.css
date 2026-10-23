@@ -233,3 +233,6 @@ body[data-view="connections"] .content{overflow:hidden;display:flex;min-height:0
 .browser-account-confirm button{flex:1 1 auto;font-size:10px;padding:7px 8px}
 #account-login-dialog .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 #account-login-dialog .actions button{min-width:0;white-space:normal}
+
+/* Compact URL import button for the fixed-height News to Song workspace. */
+.studio-import-button{width:100%;min-height:29px;margin:5px 0;font-size:11px}
