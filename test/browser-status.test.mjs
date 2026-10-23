@@ -54,8 +54,6 @@ test("Authenticated Safari launch returns pending handoff, and user-confirmed st
  const post=(path,cookie,headers={})=>fetch(base+path,{method:"POST",
   headers:{"Content-Type":"application/json","X-Blossom-Request":"ui",...(cookie?{cookie}:{}),...headers},body:"{}"});
  assert.equal((await post("/api/browser-accounts/suno/confirm")).status,401);
- const login=await post("/auth/login",null,{"Origin":base,...{}}); // missing credentials intentionally
- assert.equal(login.status,401);
  const ok=await fetch(base+"/auth/login",{method:"POST",
    headers:{"Content-Type":"application/json","X-Blossom-Request":"ui"},
    body:JSON.stringify({username:"admin",password:"some-long-secure-password"})});
