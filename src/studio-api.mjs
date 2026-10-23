@@ -1,3 +1,5 @@
+import { MusicDNA } from "./music-dna.mjs";
+import { StudioReferences } from "./music-dna-studio.mjs";
 import { StudioStore, LENGTH_PRESETS, sunoRecipe } from "./studio.mjs";
 import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
@@ -28,6 +30,7 @@ async function audioBuffer(req){
 export class StudioAPI{
   constructor({store,vault,composer,draw,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
     this.store=store;this.vault=vault;this.studio=new StudioStore(store);
+    this.references=new StudioReferences(store,this.studio,new MusicDNA(store));
     this.composer=composer||new OpenAIComposer();
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
@@ -35,6 +38,8 @@ export class StudioAPI{
   async handle(req,res,path) {
     if(req.method==="GET"){
       if(path==="/api/studio/projects")return send(res,200,this.studio.projects());
+      const referencesGet=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
+      if(referencesGet)return send(res,200,{references:this.references.list(referencesGet[1])});
       if(path==="/api/studio/presets")return send(res,200,LENGTH_PRESETS);
       if(path==="/api/studio/status")return send(res,200,{
         openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY),
@@ -51,7 +56,7 @@ export class StudioAPI{
       }
       m=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/(assets|recipe)$/);
       if(m){const p=this.studio.require(m[1]);
-        return send(res,200,m[2]==="assets"?this.studio.assets(p.id):sunoRecipe(p));}
+        return send(res,200,m[2]==="assets"?this.studio.assets(p.id):sunoRecipe(p,this.references.recipeStyle(p.id)));}
       throw new DomainError("Not found",404);
     }
     if(req.method!=="POST")throw new DomainError("Method not allowed",405);
@@ -66,6 +71,8 @@ export class StudioAPI{
     }
     const data=await readJSON(req);
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
+    const referencesPost=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
+    if(referencesPost)return send(res,200,{references:this.references.set(referencesPost[1],data?.references)});
     if(path==="/api/studio/openai-key"){
       if(data&&Object.hasOwn(data,"password"))throw new DomainError("Use an OpenAI API key, never a ChatGPT website password");
       this.vault.save("openai_api_key","OpenAI API",data?.apiKey);
@@ -83,7 +90,7 @@ export class StudioAPI{
     const p=this.studio.require(match[1]),operation=match[2];
     if(operation==="create-track")return send(res,201,this.studio.makeTrack(p.id));
     const key=this.vault.list().openai_api_key?.configured?this.vault.read("openai_api_key"):null;
-    if(operation==="extract")return send(res,200,this.studio.setResult(p.id,await this.composer.generate({...p,artistDna:this.store.artist(p.artistId)?.dna||""},key)));
+    if(operation==="extract")return send(res,200,this.studio.setResult(p.id,await this.composer.generate({...p,artistDna:this.store.artist(p.artistId)?.dna||"",referenceDna:this.references.generationContext(p.id)},key)));
     if(operation==="ask")return send(res,200,await this.composer.ask(data?.question,p,key));
     if(operation==="generate-art"){
       const kind=data?.kind,defaultPrompt=kind==="cover"?p.result?.coverPrompt:p.result?.artistPhotoPrompt;
