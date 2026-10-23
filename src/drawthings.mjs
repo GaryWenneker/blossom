@@ -16,12 +16,12 @@ export function validateDrawRequest(input){
     width:input.kind==="cover"?1024:768,height:1024};
 }
 export class DrawThings {
-  constructor({command="draw-things-cli",model=process.env.BLOSSOM_DRAW_MODEL||"",directory=process.env.BLOSSOM_ASSET_DIR||".data/assets",
+  constructor({command=process.env.BLOSSOM_DRAW_COMMAND||"draw-things-cli",model=process.env.BLOSSOM_DRAW_MODEL||"",directory=process.env.BLOSSOM_ASSET_DIR||".data/assets",
     runner=spawn}={}){
     this.command=command;this.model=model;this.directory=resolve(directory);this.runner=runner;
     this.running=false;
   }
-  enabled(){return !!this.model}
+  enabled(){return true}
   async generate(input) {
     const p=validateDrawRequest(input);
     if(!this.enabled())throw new DomainError("Set BLOSSOM_DRAW_MODEL to an installed Draw Things model",503);
@@ -30,7 +30,7 @@ export class DrawThings {
     this.running=true;
     const filename=randomUUID()+".png",output=join(this.directory,filename);
     await mkdir(this.directory,{recursive:true,mode:0o700});
-    const args=["generate","--model",this.model,"--prompt",p.prompt,
+    const args=["generate",...(this.model?["--model",this.model]:[]),"--prompt",p.prompt,
       "--width",String(p.width),"--height",String(p.height),"--steps",String(p.steps),
       "--seed",String(p.seed),"--output",output];
     try {
@@ -39,7 +39,7 @@ export class DrawThings {
         let err="";child.stderr.on("data",chunk=>{err=(err+String(chunk)).slice(-1200)});
         child.stdout.resume();
         const timeout=setTimeout(()=>child.kill("SIGKILL"),240000);
-        child.on("error",error=>{clearTimeout(timeout);fail(new DomainError("Draw Things CLI unavailable: "+error.message,503))});
+        child.on("error",error=>{clearTimeout(timeout);fail(new DomainError("Draw Things CLI unavailable. Install or configure BLOSSOM_DRAW_COMMAND: "+error.message,503))});
         child.on("close",(code,signal)=>{clearTimeout(timeout);
           if(code===0)done();else fail(new DomainError("Draw Things generation failed: "+(signal||err||code).toString().slice(0,180),502));});
       });
