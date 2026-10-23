@@ -65,3 +65,13 @@ All items marked complete were implemented in source; external services still re
 - [ ] Studio reference profile picker, comparison and Suno parameter blending.
 - [ ] Tested PostgreSQL runtime adapter, backfill, vector embeddings, cutover and benchmarks.
 - [ ] Harden and deploy Cloudflare Tunnel/Access and verify ChatGPT MCP client interoperability.
+
+
+## Music DNA audio and creative integrations
+- [x] Authorized MP3/WAV reference upload with private storage and SHA-256 checks.
+- [x] Safe local ffprobe/FFmpeg signal measurements and lease-based analysis worker.
+- [x] Reference Library UI, search and queue overview.
+- [x] Save weighted, versioned music references per Studio project and apply characteristics in original Suno recipes / OpenAI briefs.
+- [ ] Automatic instrument recognition, playing techniques, vocal timbre, song section detection, tempo and key estimation with validated models.
+- [ ] Concurrent worker scheduling/metrics, audio asset lifecycle and large batch ingestion.
+- [ ] Continuous hosted worker supervision and protected Cloudflare endpoint deployment.
