@@ -230,20 +230,22 @@ async function configureLaunchd(envFile) {
       await import("node:fs/promises").then(fs => fs.rename(temp, target));
     }
     if (!await isLoaded()) await exec("launchctl", ["bootstrap", gui, target], { timeout: 15000 });
-    // RunAtLoad starts the service on bootstrap. kickstart is advisory: macOS can
-    // return exit 37 even when the service is registered and already starting.
-    let kickstartError = "";
-    try { await exec("launchctl", ["kickstart", "-k", gui + "/" + label], { timeout: 15000 }); }
-    catch (error) { kickstartError = error.message; }
-    const registered = await isLoaded();
+    // RunAtLoad starts the job. launchctl can briefly report a missing service
+    // immediately after bootout/bootstrap, so allow registration to settle.
+    let registered = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (await isLoaded()) { registered = true; break; }
+      if (!worker && await checkHealth()) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
     if (!registered && !worker && await checkHealth()) {
-      outcome.push({ label, state: "healthy on localhost (launchctl unavailable)" });
+      outcome.push({ label, state: "healthy on localhost (launchctl status unavailable)" });
       continue;
     }
-    if (!registered) throw Error("launchd service " + label + " not registered after bootstrap" +
-      (kickstartError ? "; kickstart: " + kickstartError : "") +
-      ". Check .data/logs/" + (worker ? "worker.log" : "server.log"));
-    outcome.push({ label, state: kickstartError ? "registered (kickstart unavailable)" : "started" });
+    if (!registered) throw Error("launchd service " + label + " not registered after waiting 10 seconds. " +
+      "Check .data/logs/" + (worker ? "worker.log" : "server.log") +
+      " and launchctl print " + gui + "/" + label);
+    outcome.push({ label, state: "registered (RunAtLoad)" });
   }
   return outcome;
 }
