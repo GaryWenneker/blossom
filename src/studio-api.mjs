@@ -4,6 +4,7 @@ import { StudioStore, LENGTH_PRESETS, sunoRecipe } from "./studio.mjs";
 import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
+import { SunoBrowserHandoff } from "./suno-playwright.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -28,16 +29,19 @@ async function audioBuffer(req){
   return {bytes,mime:type==="audio/mpeg"?"audio/mpeg":"audio/wav",extension:type==="audio/mpeg"?"mp3":"wav"};
 }
 export class StudioAPI{
-  constructor({store,vault,composer,draw,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
+  constructor({store,vault,composer,draw,sunoBrowser,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
     this.store=store;this.vault=vault;this.studio=new StudioStore(store);
     this.references=new StudioReferences(store,this.studio,new MusicDNA(store));
     this.composer=composer||new OpenAIComposer();
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
+    this.sunoBrowser=sunoBrowser||new SunoBrowserHandoff();
   }
   async handle(req,res,path) {
     if(req.method==="GET"){
       if(path==="/api/studio/projects")return send(res,200,this.studio.projects());
+      if(path==="/api/studio/suno-browser/status")
+        return send(res,200,this.sunoBrowser.status());
       const referencesGet=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
       if(referencesGet)return send(res,200,{references:this.references.list(referencesGet[1])});
       if(path==="/api/studio/presets")return send(res,200,LENGTH_PRESETS);
@@ -71,6 +75,16 @@ export class StudioAPI{
     }
     const data=await readJSON(req);
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
+    const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|close)$/);
+    if(sunoBrowserAction){
+      const p=this.studio.require(sunoBrowserAction[1]),op=sunoBrowserAction[2];
+      if(op==="open")return send(res,200,await this.sunoBrowser.open());
+      if(op==="close")return send(res,200,await this.sunoBrowser.close());
+      const recipe=sunoRecipe(p,this.references.recipeStyle(p.id));
+      const result=await this.sunoBrowser.prefill(recipe);
+      this.store.audit("supervised_browser_prefill","studio_project",p.id,{filled:result.filled,skipped:result.skipped});
+      return send(res,200,result);
+    }
     const referencesPost=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
     if(referencesPost)return send(res,200,{references:this.references.set(referencesPost[1],data?.references)});
     if(path==="/api/studio/openai-key"){

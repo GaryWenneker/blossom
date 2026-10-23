@@ -41,13 +41,13 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
   const vault=new Vault(store.db,vaultKey);
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
-  const studioApi=new StudioAPI({store,vault,composer,draw,assetDir});
+  const studioApi=new StudioAPI({store,vault,composer,draw,sunoBrowser,assetDir});
   const musicDna=new MusicDNA(store);
   const musicDnaApi=new MusicDnaAPI(musicDna);
   const musicDnaMcp=new MusicDnaMCP(musicDna);
@@ -206,7 +206,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       return reply(res,safe.status||500,{error:safe.message});
     }
   });
-  server.on("close",()=>{if(timer)clearInterval(timer);});
+  server.on("close",()=>{if(timer)clearInterval(timer);Promise.resolve(studioApi.sunoBrowser.close()).catch(()=>{});});
   return server;
 }
 if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {

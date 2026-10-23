@@ -260,6 +260,12 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     await mkdir(join(root, ".data", "logs"), { recursive: true, mode: 0o700 });
     return "local storage prepared (existing database preserved)";
   });
+  await step("Playwright setup", async () => {
+    if (!check) await exec("npm", ["install", "--no-audit", "--no-fund"], { cwd: root, timeout: 240_000 });
+    try { await import("playwright-core"); }
+    catch { throw Error("Playwright Core not installed; run npm install"); }
+    return "Supervised Playwright Core package ready (Google Chrome required for use)";
+  });
   await step("Syntax validation", async () => { await exec("npm", ["run", "check"], { cwd: root }); return "syntax checks passed"; });
   await step("Automated tests", async () => { await exec("npm", ["test"], { cwd: root }); return "test suite passed"; });
   await step("Audio self-test", async () => {
