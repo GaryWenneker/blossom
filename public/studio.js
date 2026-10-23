@@ -52,7 +52,7 @@ const panels=(p,assets,state)=>{
  field("Artist",'<select id="studio-artist"><option value="">Choose an artist</option>'+artists.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===p?.artistId?"selected":"")+'>'+esc(a.name)+" · "+esc(a.genre)+'</option>').join("")+'</select>')+
  '<div class="studio-tabstrip"><span class="active">Paste article</span><span>URL attribution</span><span>Original concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
- field("Article URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'"><button type="button" class="secondary studio-import-button" data-action="studio-import-article">Importeer artikel</button>')+
+ field("Article URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'"><button type="button" class="secondary studio-import-button" data-action="studio-import-article">Importeer artikel</button><button type="button" class="secondary studio-import-button" data-action="studio-open-article">Open artikel in browser ↗</button>')+
  '<div class="studio-panel-bottom"><small>Gebruik ChatGPT in Safari, ook zonder API-key.</small><button data-action="studio-extract" class="primary">'+(hasOpenAI?"✦ Genereer met OpenAI API":"✦ Maak met ChatGPT zonder API-key")+'</button></div></section>'+
  '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">'+(hasOpenAI?"Regenerate":"Open ChatGPT")+'</button></div>'+
  '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Importeer een nieuwsartikel en maak er een originele muziekbrief van via ChatGPT.")+'</div>'+
@@ -140,6 +140,13 @@ async function showChatGPTHandoff(p,api,mode="song",question=""){
 }
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
+ if(action==="studio-open-article"){
+  const raw=document.querySelector("#studio-source").value.trim();
+  try{const url=new URL(raw);if(!["https:","http:"].includes(url.protocol)||url.username||url.password)throw Error();
+    window.open(url.href,"_blank","noopener,noreferrer");}
+  catch{message("Vul eerst een geldige artikel-URL in.",true);}
+  return;
+ }
  if(work.busy){message("Current studio operation is still running",true);return;}
  work.busy=true;el.disabled=true;
  try{
