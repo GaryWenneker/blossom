@@ -24,7 +24,7 @@ export class DrawThings {
   enabled(){return true}
   async generate(input) {
     const p=validateDrawRequest(input);
-    if(!/^[\w.-]{3,120}$/.test(this.model))throw new DomainError("Invalid server-side Draw Things model identifier",500);
+    if(this.model && !/^[\w.-]{3,120}$/.test(this.model))throw new DomainError("Invalid server-side Draw Things model identifier",500);
     if(this.running)throw new DomainError("Image generation already in progress",409);
     this.running=true;
     const filename=randomUUID()+".png",output=join(this.directory,filename);
