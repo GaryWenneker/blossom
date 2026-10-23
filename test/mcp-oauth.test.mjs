@@ -94,6 +94,11 @@ test("ChatGPT OAuth consent, authorization code PKCE, read/write scope, rotated 
   const pending2=(await page2.text()).match(/name="request" value="([^"]+)"/)?.[1];
   const approved=await postForm(base,"/oauth/authorize",{request:pending2,username:"admin",
     password:"very-long-local-blossom-password",decision:"approve"});
+  const duplicate=await postForm(base,"/oauth/authorize",{request:pending2,username:"admin",
+    password:"very-long-local-blossom-password",decision:"approve"});
+  assert.equal(duplicate.status,200);
+  assert.match(await duplicate.text(),/Toestemming al verwerkt/);
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM mcp_oauth_codes").get().count,1);
   const code2=new URL(approved.headers.get("location")).searchParams.get("code");
   const exchanged=await postForm(base,"/oauth/token",{grant_type:"authorization_code",
     client_id:client,redirect_uri:callback,code:code2,code_verifier:verifier,resource});
@@ -117,6 +122,25 @@ test("ChatGPT OAuth consent, authorization code PKCE, read/write scope, rotated 
     refresh_token:issued.refresh_token,resource});
   assert.equal(reused.status,400);
 });
+test("Expired OAuth consent requires a new request and cannot mint an authorization code",async t=>{
+  const {base,store}=await withApp(t);
+  const reg=await postJson(base,"/oauth/register",{redirect_uris:[callback]});
+  const client=(await reg.json()).client_id;
+  const verifier="c".repeat(50);
+  const challenge=createHash("sha256").update(verifier).digest("base64url");
+  const args={response_type:"code",client_id:client,redirect_uri:callback,
+    code_challenge:challenge,code_challenge_method:"S256",state:"expired-state-1234",
+    resource,scope:"blossom:read"};
+  const consent=await fetch(base+"/oauth/authorize?"+new URLSearchParams(args));
+  const nonce=(await consent.text()).match(/name="request" value="([^"]+)"/)?.[1];
+  assert.ok(nonce);
+  store.db.prepare("UPDATE mcp_oauth_pending SET expires_at=?").run(Date.now()-1);
+  const expired=await postForm(base,"/oauth/authorize",{request:nonce,decision:"deny"});
+  assert.equal(expired.status,410);
+  assert.match(await expired.text(),/Toestemming verlopen/);
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM mcp_oauth_codes").get().count,0);
+});
+
 test("OAuth denies invalid callbacks, absent PKCE and public admin paths",async t=>{
   const {base}=await withApp(t);
   const reg=await postJson(base,"/oauth/register",{redirect_uris:[callback]});
