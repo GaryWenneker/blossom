@@ -46,7 +46,15 @@ test("Missing CLI installs from Homebrew core even if an unrelated tap warning i
       'exit 0',
       ""
     ].join("\n"));
-    const {stdout}=await run("bash",[setup,"--headless"],{
+    // Exercise the real install decisions but replace only the PATH bootstrap
+    // in a temporary copy, so CI's /usr/local/bin/node cannot escape the mocks.
+    const script=await readFile(setup,"utf8");
+    const fixture=join(dir,"setup-under-test.sh");
+    assert.match(script,/export PATH="\/opt\/homebrew\/bin:.*\$PATH"/);
+    await writeFile(fixture,script.replace(
+      /export PATH="\/opt\/homebrew\/bin:\/usr\/local\/bin:\$HOME\/\.cargo\/bin:\$PATH"/,
+      'export PATH="' + dir + ':$PATH"'));
+    const {stdout}=await run("bash",[fixture,"--headless"],{
       cwd:root,timeout:20000,env:{...process.env,HOME:dir,PATH:dir+":/usr/bin:/bin",BREW_LOG:logfile,FAKE_BIN_DIR:dir}
     });
     assert.match(stdout,/NODE_SETUP_INVOKED/);
