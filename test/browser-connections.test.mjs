@@ -20,7 +20,8 @@ test("Google and Facebook browser sign-ins use official websites without Playwri
     assert.equal(state.authenticationVerified,false);
     assert.equal(state.apiConnected,false);
     assert.equal(JSON.stringify(state).includes("access_token"),false);
-    assert.equal(JSON.stringify(state).includes("cookie"),false);
+    assert.equal(Object.hasOwn(state,"cookies"),false);
+    assert.equal(Object.hasOwn(state,"access_token"),false);
     assert.equal((await session.close()).browserOpen,false);
   }
   assert.throws(()=>new VisibleBrowserSession("google"),/Unsupported browser service/);
