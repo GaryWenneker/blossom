@@ -105,7 +105,7 @@ test("Suno button uses provider-owned Google sign-in and never claims API OAuth"
   const view=ui.slice(ui.indexOf("function connections(){"),ui.indexOf("function render(){"));
   assert.match(view,/https:\/\/suno\.com\//);
   assert.match(view,/Continue with Google/);
-  assert.match(view,/it does not grant Blossom API access/i);
+  assert.match(view,/does not grant Blossom API access/i);
   assert.match(view,/\/auth\/spotify\/start\?choose=1/);
   assert.match(view,/Continue with Facebook/);
   assert.doesNotMatch(view,/<input[^>]+name="password"/);
