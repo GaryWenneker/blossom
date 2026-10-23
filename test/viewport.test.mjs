@@ -101,7 +101,7 @@ test("Rendered Studio and Music DNA stay inside viewport at desktop and mobile w
         .replace('<main id="view" class="content"><div class="loading">Loading your label...</div></main>',
           '<main id="view" class="content">'+markup+'</main>')
         .replace('<script type="module" src="/app.js"></script>',
-          '<output id="viewport-result"></output><script>('+browserMeasure.toString()+')();</script>');
+          '<style>#viewport-result{display:none!important}</style><output id="viewport-result"></output><script>('+browserMeasure.toString()+')();</script>');
       const path=join(dir,name+".html");
       await writeFile(path,html);
       for(const [width,height] of [[1671,943],[1440,900],[1130,740],[390,844]]){
