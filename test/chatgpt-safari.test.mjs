@@ -25,7 +25,7 @@ test("Safari handoff uses only project ID and never reads ChatGPT output or logi
   assert.equal(new URL(calls[0].args[1]).origin,"https://chatgpt.com");
   assert.equal(new URL(calls[0].args[1]).searchParams.get("prompt"),prompt);
   assert.doesNotMatch(JSON.stringify(calls),/cookie|Authorization|api_key/i);
-  assert.match(calls[0].args[2],/b\\.click\\(\\)/);
+  assert.ok(calls[0].args[2].includes("b.click()"));
   const chrome=await submitChatGptStudioInBrowser(projectId,{platform:"darwin",browser:"chrome",launcher:runner});
   assert.equal(chrome.mode,"chrome-ui");
   assert.ok(calls[1].args[0].endsWith("/scripts/chatgpt-chrome.applescript"));
