@@ -61,10 +61,12 @@ export function validateSettings(settings) {
   }
   if ((settings.BLOSSOM_MCP_READ_TOKEN || "") === settings.BLOSSOM_MCP_WRITE_TOKEN)
     throw Error("Read and write MCP tokens must not be equal");
-  if (settings.BLOSSOM_HOST !== "127.0.0.1" ||
-      settings.BLOSSOM_PUBLIC_URL !== "http://127.0.0.1:8787" ||
-      settings.BLOSSOM_PORT !== "8787")
-    throw Error("Setup only supports loopback port 8787. Custom deployments require manual review.");
+  if (settings.BLOSSOM_HOST !== "127.0.0.1")
+    throw Error("BLOSSOM_HOST must remain 127.0.0.1. Configure Cloudflare Tunnel separately; never bind the admin server publicly.");
+  if (settings.BLOSSOM_PORT !== "8787")
+    throw Error("BLOSSOM_PORT must remain 8787 for this local installation.");
+  if (settings.BLOSSOM_PUBLIC_URL !== "http://127.0.0.1:8787")
+    throw Error("BLOSSOM_PUBLIC_URL is for the local admin interface and must be http://127.0.0.1:8787. Use BLOSSOM_MCP_PUBLIC_URL for https://blossom.wenneker.dev.");
   if (settings.BLOSSOM_MCP_PUBLIC_URL) {
     let publicMcp;
     try { publicMcp=new URL(settings.BLOSSOM_MCP_PUBLIC_URL); }
@@ -79,40 +81,74 @@ export function validateSettings(settings) {
   }
   return true;
 }
+/**
+ * Earlier tunnel instructions could lead to BLOSSOM_PUBLIC_URL being set to the
+ * externally reachable MCP URL. The admin UI must stay on loopback. Only repair
+ * this specific mix-up, and never change a custom bind address or port.
+ */
+export function restoreLoopbackAdminUrl(content, settings) {
+  const local = "http://127.0.0.1:8787";
+  if (settings.BLOSSOM_HOST !== "127.0.0.1" || settings.BLOSSOM_PORT !== "8787" ||
+      settings.BLOSSOM_PUBLIC_URL === local) return { content, repaired: false };
+  const publicMcp = settings.BLOSSOM_MCP_PUBLIC_URL;
+  if (typeof publicMcp !== "string" || !publicMcp.startsWith("https://"))
+    return { content, repaired: false };
+  const origin = publicMcp.replace(/\\/$/, "");
+  const legacyValue = settings.BLOSSOM_PUBLIC_URL.replace(/\\/$/, "");
+  if (legacyValue !== origin && legacyValue !== origin + "/mcp")
+    return { content, repaired: false };
+  const updated = content.replace(/^(\\s*(?:export\\s+)?BLOSSOM_PUBLIC_URL=)[^\\r\\n]*/m,
+    "$1" + local);
+  if (updated === content) return { content, repaired: false };
+  return { content: updated, repaired: true };
+}
 export async function configureEnv(envFile, { create = true } = {}) {
-  let existing = "";
+  let existing = "", exists = false;
   try {
     const stat = await lstat(envFile);
     if (stat.isSymbolicLink() || !stat.isFile()) throw Error("Refusing unsafe .env path");
     existing = await readFile(envFile, "utf8");
-    if (create) await chmod(envFile, 0o600);
+    exists = true;
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
     if (!create) throw Error(".env does not exist. Run bash setup.sh to configure.");
   }
   const parsed = parseEnv(existing);
   const additions = create ? missingSettings(parsed) : {};
+  let next = existing;
   const repairBlankModel = create && Object.hasOwn(parsed, "BLOSSOM_DRAW_MODEL") && !parsed.BLOSSOM_DRAW_MODEL.trim();
+  if (repairBlankModel) {
+    next = next.replace(/^(\\s*(?:export\\s+)?BLOSSOM_DRAW_MODEL=)[^\\r\\n]*/m,
+      "$1" + PREFERRED_DRAW_MODEL);
+    parsed.BLOSSOM_DRAW_MODEL = PREFERRED_DRAW_MODEL;
+  }
+  const restore = create ? restoreLoopbackAdminUrl(next, { ...parsed, ...additions }) : { content: next, repaired: false };
+  next = restore.content;
+  if (restore.repaired) parsed.BLOSSOM_PUBLIC_URL = "http://127.0.0.1:8787";
+  const merged = { ...parsed, ...additions };
+  // Validate the final configuration before changing any existing .env file.
+  validateSettings(merged);
   if (create) {
-    if (repairBlankModel) {
-      const repaired = existing.replace(/^(\s*(?:export\s+)?BLOSSOM_DRAW_MODEL=)[^\r\n]*/m,
-        "$1" + PREFERRED_DRAW_MODEL);
-      if (repaired === existing) throw Error("Could not repair blank BLOSSOM_DRAW_MODEL");
-      existing = repaired;
-      parsed.BLOSSOM_DRAW_MODEL = PREFERRED_DRAW_MODEL;
-      await writeFile(envFile, existing, { mode: 0o600 });
-    }
     if (Object.keys(additions).length) {
-      const block = (existing && !existing.endsWith("\n") ? "\n" : "") +
-        Object.entries(additions).map(([key, value]) => key + "=" + value + "\n").join("");
-      if (existing) await appendFile(envFile, block, { mode: 0o600 });
-      else await writeFile(envFile, block, { flag: "wx", mode: 0o600 });
+      next += (next && !next.endsWith("\\n") ? "\\n" : "") +
+        Object.entries(additions).map(([key, value]) => key + "=" + value + "\\n").join("");
+    }
+    if (!exists) {
+      await writeFile(envFile, next, { flag: "wx", mode: 0o600 });
+    } else if (next !== existing) {
+      const temp = envFile + "." + randomUUID() + ".tmp";
+      try {
+        await writeFile(temp, next, { flag: "wx", mode: 0o600 });
+        const { rename } = await import("node:fs/promises");
+        await rename(temp, envFile);
+      } finally {
+        await rm(temp, { force: true });
+      }
     }
     await chmod(envFile, 0o600);
   }
-  const merged = { ...parsed, ...additions };
-  validateSettings(merged);
-  return { settings: merged, generatedPassword: !!additions.BLOSSOM_ADMIN_PASSWORD, generatedKeys: Object.keys(additions) };
+  return { settings: merged, generatedPassword: !!additions.BLOSSOM_ADMIN_PASSWORD,
+    generatedKeys: Object.keys(additions), repairedPublicUrl: restore.repaired };
 }
 async function exec(command, args, { cwd = ROOT, timeout = 180_000, allowFailure = false } = {}) {
   return new Promise((res, rej) => {
@@ -317,6 +353,8 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     const data = await configureEnv(envFile, { create: !check });
     if (data.generatedPassword)
       emit("NOTICE|First-run administrator password is stored privately in .env (BLOSSOM_ADMIN_PASSWORD)");
+    if (data.repairedPublicUrl)
+      emit("NOTICE|Restored BLOSSOM_PUBLIC_URL to the local admin address; BLOSSOM_MCP_PUBLIC_URL remains the external OAuth address.");
     return data;
   });
   await step("Private storage", async () => {
