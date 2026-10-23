@@ -4,6 +4,28 @@
 
 > **Status: local creative-workspace pilot.** Running locally, with real SQLite persistence and an authenticated UI. This is not yet an autonomous music factory. Suno generation, audio uploads, distributor release creation, streaming analytics, and hosted multi-user identity are intentionally not claimed as working.
 
+## One-command macOS setup (Ratatui installer)
+
+Blossom provides an interactive guided installer built with **Ratatui**, the Rust terminal UI crate. Do not confuse it with unrelated packages named "Ratatouille". After cloning the repository, run:
+
+```bash
+cd blossom
+bash setup.sh
+```
+
+The setup script detects/installs Homebrew (with explicit confirmation), a current compatible Node.js (22.13+; Homebrew node@24), FFmpeg/ffprobe, Rust/Cargo (for the Ratatui interface) and the cloudflared binary. It creates a private local `.env` with a random administrator password, AES vault key and separate MCP read/write tokens only if they are missing. **Existing secrets are preserved**, and `.env` never gets committed. The administrator password can be retrieved with `grep '^BLOSSOM_ADMIN_PASSWORD=' .env`; keep it private and store it in your password manager.
+
+Next the installer prepares local storage, runs syntax checks and the entire test suite, synthesizes and decodes a short WAV with FFmpeg, processes it through the Music DNA worker, and creates macOS launchd user services for Blossom and its DNA worker. Both restart on login or after an unexpected exit. Verify at http://127.0.0.1:8787/login.
+
+```bash
+bash setup.sh --check          # Read-only health checks, no changes
+bash setup.sh --no-services    # Install and verify but do not start launchd agents
+bash setup.sh --headless       # Text-only CI/SSH mode
+bash setup.sh --yes            # Explicitly authorize unattended Homebrew installation
+```
+
+The installer is **macOS-only** at this stage. It never enables public distribution, creates a Cloudflare tunnel, or deploys PostgreSQL automatically. A Cloudflare account/hostname and security policies must be configured separately before remotely exposing MCP. Use `docs/SETUP.md` for service management and troubleshooting.
+
 ## Quick start
 
 Requires **Node.js 22.13+**. No runtime npm dependencies are needed.
