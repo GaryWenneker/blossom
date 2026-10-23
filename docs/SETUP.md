@@ -11,16 +11,18 @@ From the cloned, up-to-date GitHub repository:
 
 The bootstrap installs Homebrew if missing (requires operator confirmation), a supported Node.js runtime, FFmpeg/ffprobe, Rust/Cargo, and the cloudflared binary through Homebrew. Brew packages are reused when already installed. No external shell installer is run except Homebrew's official, explicitly confirmed installer when Homebrew is missing.
 
-The Ratatui dashboard runs eight gated checks:
+The Ratatui dashboard runs ten gated checks:
 
 1. Node.js >=22.13, ffmpeg, ffprobe, npm.
 2. Secure .env configuration (does not replace existing passwords or vault keys).
-3. Private .data/reference-audio, .data/logs and local database preservation.
-4. Source syntax checks via npm run check.
-5. Full tests via npm test.
-6. Real FFmpeg decode and Music DNA analysis of a generated 1-second WAV (in a temporary database, with cleanup).
-7. macOS launchd service installation for the UI and worker.
-8. Local web server health at http://127.0.0.1:8787/healthz.
+3. Downloaded Draw Things model availability through the official CLI.
+4. Private .data/reference-audio, .data/logs and local database preservation.
+5. Playwright Core dependency installation/verification.
+6. Source syntax checks via npm run check.
+7. Full tests via npm test.
+8. Real FFmpeg decode and Music DNA analysis of a generated 1-second WAV (in a temporary database, with cleanup).
+9. macOS launchd service installation for the UI and worker.
+10. Local web server health at http://127.0.0.1:8787/healthz.
 
 On first run .env includes generated BLOSSOM_ADMIN_PASSWORD, BLOSSOM_VAULT_KEY, BLOSSOM_MCP_READ_TOKEN and BLOSSOM_MCP_WRITE_TOKEN, and only local loopback host/port settings. Keys are never printed in a log or embedded in the launch agent. File permissions are set to 0600. Keep .env securely backed up separately from the SQLite database; losing the vault key makes encrypted credentials inaccessible. Fetch the login password locally with:
 
