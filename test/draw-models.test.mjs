@@ -49,7 +49,7 @@ test("CLI inspection is read-only and must verify the installed model before dec
   assert.equal(await verifyDrawModel(PREFERRED_DRAW_MODEL,options),
     "lustifySDXLNSFWSFW_v20.ckpt");
   await assert.rejects(verifyDrawModel(PREFERRED_DRAW_MODEL,
-    { runner: cliRunner("notinstalled_v10.ckpt") }),/not in the CLI downloaded model inventory/);
+    { runner: cliRunner("notinstalled_v10.ckpt") }),/was not found in the CLI downloaded model inventory/);
   await assert.rejects(verifyDrawModel(PREFERRED_DRAW_MODEL,
     { runner: cliRunner("",1) }),/Could not list locally downloaded/);
 });
