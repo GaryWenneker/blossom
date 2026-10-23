@@ -37,3 +37,9 @@
 .dna-bar-field{font-size:.82rem;line-height:1.5;margin:.3rem 0}
 .dna-bar-field strong{display:inline-block;min-width:95px;margin-right:.4rem;color:#b0e58d}
 @media(max-width:650px){.dna-bar-block summary{grid-template-columns:1fr 1fr}.dna-bar-block summary small{grid-column:1/-1}}
+
+.dna-spotify-liked{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem}
+.dna-spotify-liked .studio-panel-head,.dna-spotify-liked>p{flex-basis:100%;margin:0}
+.dna-spotify-liked .dna-spotify-consent{display:inline-flex;align-items:center;border:1px solid #436657;border-radius:.5rem;padding:.65rem;text-decoration:none;color:inherit}
+.dna-spotify-progress{font-size:.83rem;opacity:.8;overflow-wrap:anywhere}
+@media(max-width:650px){.dna-spotify-liked button,.dna-spotify-liked .dna-spotify-consent{width:100%;justify-content:center}}
