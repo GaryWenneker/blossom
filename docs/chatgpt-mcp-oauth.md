@@ -58,10 +58,10 @@ Run from the Mac:
 curl -i https://blossom.wenneker.dev/.well-known/oauth-authorization-server
 curl -i https://blossom.wenneker.dev/.well-known/oauth-protected-resource
 curl -i https://blossom.wenneker.dev/mcp
-curl -i https://blossom.wenneker.dev/login
+curl -i https://blossom.wenneker.dev/\ncurl -i https://blossom.wenneker.dev/healthz\ncurl -i https://blossom.wenneker.dev/login
 ```
 
-Expected responses: 200 JSON for both well-known endpoints, 405 for GET `/mcp`, and 404 for the public `/login`. If you get a Cloudflare HTML challenge, 502, 1033, or a network error, fix the tunnel before creating the ChatGPT plugin.
+Expected responses: 200 JSON for both well-known endpoints, 200 HTML for `/`, 200 JSON for `/healthz`, 405 for GET `/mcp`, and 404 for public `/login`. If you get a Cloudflare HTML challenge, 502, 1033, or a network error, fix the tunnel before creating the ChatGPT plugin.
 
 ## 4. Add the ChatGPT plugin
 
@@ -86,3 +86,4 @@ Browser Apple Events and browser prompt autofill are best-effort and sensitive t
 ## Security
 
 Never disable MCP authorization or make public write tools anonymous. The public hostname should expose only MCP/OAuth routes, not the rest of Blossom. OAuth authorization codes are single-use and short-lived; access tokens expire after one hour and refresh tokens rotate. Review Cloudflare Tunnel origin routing after any configuration change.
+\n\nIf the site is inaccessible, run `npm run tunnel:check` **on the Mac running Blossom**. It reports independent local server, Host-routing, DNS, cloudflared process, remote gateway and OAuth checks without displaying secrets. `setup.sh` installs the binary but does not provision/start an authenticated Cloudflare Tunnel connector. Cloudflare Zero Trust must show the preexisting tunnel connected; the public hostname must point to HTTP `127.0.0.1:8787` on that same Mac and preserve the public Host header. The landing page is not the admin application; local Studio remains at `http://127.0.0.1:8787/`.\n
