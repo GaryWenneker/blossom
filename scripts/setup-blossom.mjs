@@ -262,6 +262,15 @@ async function recoverLaunchdServer(envFile) {
   catch (error) { return "bootstrap failed: " + error.message; }
   return "bootstrap attempted";
 }
+// PATH order from an interactive shell can change between setup runs. Once a
+// managed LaunchAgent has a working PATH, don't tear it down merely because
+// the installer shell has a different PATH. Real plist changes still reload.
+export function plistOnlyPathChanged(existing, expected) {
+  if (typeof existing !== "string" || typeof expected !== "string") return false;
+  const redactPath = value => value.replace(
+    /(<key>PATH<\/key><string>)[^<]*(<\/string>)/g,"$1[existing PATH]$2");
+  return redactPath(existing) === redactPath(expected);
+}
 export async function configureLaunchd(envFile, {
   launch = exec,
   health = checkHealth,
@@ -309,7 +318,7 @@ export async function configureLaunchd(envFile, {
       outcome.push({ label, state: "existing local server detected; not replaced" });
       continue;
     }
-    const plistChanged = existing !== expected;
+    const plistChanged = existing !== expected && !plistOnlyPathChanged(existing, expected);
     let operation;
     if (current.loaded && !plistChanged) {
       // A registered LaunchAgent must be restarted in-place. Unconditional
