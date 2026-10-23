@@ -87,3 +87,23 @@ Browser Apple Events and browser prompt autofill are best-effort and sensitive t
 
 Never disable MCP authorization or make public write tools anonymous. The public hostname should expose only MCP/OAuth routes, not the rest of Blossom. OAuth authorization codes are single-use and short-lived; access tokens expire after one hour and refresh tokens rotate. Review Cloudflare Tunnel origin routing after any configuration change.
 \n\nIf the site is inaccessible, run `npm run tunnel:check` **on the Mac running Blossom**. It reports independent local server, Host-routing, DNS, cloudflared process, remote gateway and OAuth checks without displaying secrets. `setup.sh` installs the binary but does not provision/start an authenticated Cloudflare Tunnel connector. Cloudflare Zero Trust must show the preexisting tunnel connected; the public hostname must point to HTTP `127.0.0.1:8787` on that same Mac and preserve the public Host header. The landing page is not the admin application; local Studio remains at `http://127.0.0.1:8787/`.\n
+
+## OAuth goedgekeurd maar Blossom ontbreekt in ChatGPT
+
+Het Blossom-toestemmingsscherm is **niet** de laatste installatiehandeling. Na **Verbinden met ChatGPT** stuurt Blossom een HTTP 303 terug naar de exact geregistreerde callback op chatgpt.com. ChatGPT moet vervolgens de autorisatiecode via `POST /oauth/token` inwisselen, een MCP-toolscan uitvoeren en de gebruiker moet in het aanmaakscherm nog **Create as a plugin** bevestigen. Opnieuw op de oude toestemming klikken geeft correct **Toestemming al verwerkt**; begin dan liever opnieuw vanuit ChatGPT.
+
+Bij een bestaande ChatGPT-verbinding: open **Plugins → Add custom MCP server** op het web, voer `https://blossom.wenneker.dev/mcp` in, kies OAuth en controleer de gevraagde rechten. Na de toestemming: terug naar hetzelfde ChatGPT-aanmaakscherm, wacht tot de toolscan klaar is en kies **Create as a plugin**. Een browser-login bij ChatGPT of een Blossom-OAuth-toestemming maakt niet uit zichzelf een geïnstalleerde plugin.
+
+Voor een diagnose: open lokaal `http://127.0.0.1:8787/`, log in als Blossom-beheerder en ga naar **Connections → Blossom MCP-koppeling met ChatGPT controleren → Controleer laatste verbindingsstap**. Of haal `GET /api/oauth/diagnostics` op vanuit een bestaande ingelogde lokale Blossom-sessie. Deze route is nooit beschikbaar via de publieke Cloudflare-host.
+
+De meest recente fasen betekenen:
+
+- `consent_redirected`: Blossom heeft naar ChatGPT terugverwezen; er is nog geen bewezen tokenuitwisseling
+- `token_issued`: ChatGPT of een andere geregistreerde OAuth-client heeft een code ingewisseld
+- `mcp_connected`: een OAuth-client heeft de MCP-initialisatie bereikt
+- `tools_listed`: een OAuth-client heeft de beschikbare tools opgehaald; de stap **Create as a plugin** in ChatGPT blijft noodzakelijk
+- `token_rejected`: code-/PKCE-/resourcecontrole mislukt en een nieuwe koppeling kan nodig zijn
+
+De diagnose registreert geen wachtwoorden, OAuth-codes, tokens, PKCE-verifiers of ChatGPT-cookies. De toestemming **Alleen lezen** kan geen `studio_project_save_result` uitvoeren: daarvoor moet ChatGPT expliciet `blossom:write` aanvragen en moet je dat in de Blossom-toestemming zien en goedkeuren. Blossom vraagt bij een onbevoegde MCP-aanroep nu zowel lees- als schrijfrechten aan als OAuth-scopehint, maar geeft nooit méér rechten uit dan ChatGPT werkelijk aanvraagt en jij toestaat.
+
+Als `consent_redirected` blijft staan, zonder `token_issued`, controleer dan de callback in het ChatGPT-tabblad of de browserontwikkelaarstools. Een ChatGPT 503, verdwenen OAuth-state of een niet-beschikbare plug-infunctie kun je niet oplossen door de Blossom-toestemming opnieuw te versturen. Maak een nieuwe koppeling vanuit ChatGPT en controleer de platformmelding.
