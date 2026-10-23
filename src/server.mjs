@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
 import { ConnectedBrowsers } from "./browser-connections.mjs";
+import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
@@ -42,7 +43,7 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,connectedBrowsers=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,connectedBrowsers=null,nativeBrowserOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
@@ -110,10 +111,19 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         res.writeHead(200,{"Content-Type":MIME[extension],"Cache-Control":"no-store"});
         res.end(content);return;
       }
-      // Only an authenticated Blossom session may open/focus a local GUI window.
-      // Browser cookies stay in Chrome's isolated profiles, not in HTTP replies.
+      // Normal browser sign-in cannot be controlled by Playwright. Never inspect
+      // or export browser sessions; do not claim login/API verification.
       if(path==="/api/browser-accounts"&&req.method==="GET")
-        return reply(res,200,await browserAccounts.status());
+        return reply(res,200,{...await browserAccounts.status(),
+          nativeSafariAvailable:(nativeBrowserOptions.platform||process.platform)==="darwin"});
+      const nativeSafariAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/open-safari$/);
+      if(nativeSafariAction&&req.method==="POST"){
+        if(!localMacBrowserRequest(req))
+          throw new DomainError("Open Safari is available only from Blossom running locally on the same Mac",403);
+        const result=await openProviderInSafari(nativeSafariAction[1],nativeBrowserOptions);
+        store.audit("open_native_browser","connection",nativeSafariAction[1],{application:"Safari"});
+        return reply(res,200,result);
+      }
       const browserAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/(open|close)$/);
       if(browserAction&&req.method==="POST"){
         // All POSTs have already passed same-origin and request-header checks.
