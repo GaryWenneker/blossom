@@ -3,6 +3,9 @@ import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
 import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
+import { MusicDNA } from "./music-dna.mjs";
+import { MusicDnaAPI } from "./music-dna-api.mjs";
+import { MusicDnaMCP } from "./music-dna-mcp.mjs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { Store } from "./storage.mjs";
@@ -45,6 +48,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const vault=new Vault(store.db,vaultKey);
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
   const studioApi=new StudioAPI({store,vault,composer,draw,assetDir});
+  const musicDna=new MusicDNA(store);
+  const musicDnaApi=new MusicDnaAPI(musicDna);
+  const musicDnaMcp=new MusicDnaMCP(musicDna);
   const secure=publicUrl.startsWith("https:");
   const permittedOrigin=new URL(publicUrl).origin;
   const timer=enableMonitor(store,{enabled:monitor});
@@ -59,8 +65,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     const sessionHash=sessions.session(req);
     if(req.method==="POST"&&req.headers.origin&&req.headers.origin!==permittedOrigin)
       return reply(res,403,{error:"Origin verification failed"});
-    if(req.method==="POST"&&req.headers["x-blossom-request"]!=="ui")
+    if(req.method==="POST"&&path!=="/mcp"&&req.headers["x-blossom-request"]!=="ui")
       return reply(res,403,{error:"Missing request protection header"});
+    if(path==="/mcp")return musicDnaMcp.handle(req,res);
     try {
       if(path==="/auth/login"&&req.method==="POST"){
         const incoming=await body(req);
@@ -99,6 +106,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       }
       if(!path.startsWith("/api/"))throw new DomainError("Not found",404);
       if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path);return;}
+      if(path.startsWith("/api/music-dna/")) {await musicDnaApi.handle(req,res,path,parsedUrl.searchParams);return;}
       const method=req.method;
       if(!["GET","POST"].includes(method))throw new DomainError("Method not allowed",405);
       if(method==="POST" && req.headers["x-blossom-request"]!=="ui")throw new DomainError("Missing request protection header",403);
