@@ -52,7 +52,7 @@ const panels=(p,assets,state)=>{
  '<div class="studio-tabstrip"><span class="active">Paste article</span><span>URL attribution</span><span>Original concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
  field("Article link (optional, attribution only)",'<input id="studio-source" type="url" placeholder="https://example.org/article" value="'+esc(p?.sourceUrl||"")+'">')+
- '<div class="studio-panel-bottom"><small>Creates entirely original lyrics, not copied text</small><button data-action="studio-extract" class="primary">✦ Extract with AI</button></div></section>'+
+ '<div class="studio-panel-bottom"><small>ChatGPT via MCP does not require an OpenAI API key. The API extraction button requires a separately configured API provider.</small><button data-action="studio-chatgpt" class="primary">✦ Prepare with ChatGPT</button><button data-action="studio-extract" class="secondary">Extract via API</button></div></section>'+
  '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">Regenerate</button></div>'+
  '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Paste an article and select Extract with AI to create an original concept.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
@@ -170,6 +170,12 @@ export async function studioAction(el,state,api,refresh,message){
     }
     await api("studio/projects/"+p.id+"/references",{references:updated});
     await refresh();message("Music DNA references updated");return;
+  }
+  if(action==="studio-chatgpt"){
+    const instruction="Use the connected Blossom MCP tools: read Studio project "+p.id+" with studio_project_get, create completely original Dutch song lyrics and a full creative brief from its article or source URL (fetch the article only if accessible), then write the structured result with studio_project_save_result. Do not invent article facts. Required result fields: concept, lyrics, style, exclusions, moods, titles, coverPrompt, artistPhotoPrompt, suggestedGenre, rationale. Confirm when saved.";
+    try { await navigator.clipboard.writeText(instruction); message("ChatGPT instruction copied. Paste it into ChatGPT after connecting the Blossom MCP server, then refresh this project."); }
+    catch { message("Open ChatGPT and ask it to process Blossom Studio project "+p.id+" via the Blossom MCP server.",true); }
+    return;
   }
   if(action==="studio-extract"){
     await api("studio/projects/"+p.id+"/extract",{});await refresh();message("Original lyrics and styles generated");return;
