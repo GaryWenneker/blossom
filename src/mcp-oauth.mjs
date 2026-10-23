@@ -7,6 +7,7 @@ const safe = (a,b) => typeof a==="string" && typeof b==="string" &&
   timingSafeEqual(Buffer.from(hash(a),"hex"),Buffer.from(hash(b),"hex"));
 const SCOPES = ["blossom:read","blossom:write","offline_access"];
 const ACCESS_MS = 60*60*1000, REFRESH_MS = 30*24*60*60*1000, CODE_MS = 5*60*1000;
+const CONSENT_MS = 20*60*1000, COMPLETED_MS = 5*60*1000;
 const formHeaders = { "Cache-Control":"no-store","Pragma":"no-cache","X-Content-Type-Options":"nosniff" };
 const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&#39;"}[c]));
 function json(res,code,data,headers={}) {
@@ -76,7 +77,9 @@ export class BlossomMcpOAuth {
       "resource TEXT NOT NULL, expires_at INTEGER NOT NULL);"+
       "CREATE TABLE IF NOT EXISTS mcp_oauth_refresh ("+
       "hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, scope TEXT NOT NULL,"+
-      "resource TEXT NOT NULL, expires_at INTEGER NOT NULL);");
+      "resource TEXT NOT NULL, expires_at INTEGER NOT NULL);"+
+      "CREATE TABLE IF NOT EXISTS mcp_oauth_completed ("+
+      "hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);");
   }
   enabled() {return !!this.origin;}
   protectedResourceMetadata() {
@@ -116,7 +119,7 @@ export class BlossomMcpOAuth {
   }
   cleanup() {
     const now=Date.now();
-    for(const table of ["mcp_oauth_pending","mcp_oauth_codes","mcp_oauth_tokens","mcp_oauth_refresh"])
+    for(const table of ["mcp_oauth_pending","mcp_oauth_codes","mcp_oauth_tokens","mcp_oauth_refresh","mcp_oauth_completed"])
       this.db.prepare("DELETE FROM "+table+" WHERE expires_at < ?").run(now);
   }
   verify(req) {
@@ -184,7 +187,7 @@ export class BlossomMcpOAuth {
     this.cleanup();
     const nonce=random();
     this.db.prepare("INSERT INTO mcp_oauth_pending VALUES (?,?,?,?,?,?,?,?)")
-      .run(hash(nonce),q.clientId,q.redirect,q.challenge,q.state,q.scope,q.resource,Date.now()+10*60*1000);
+      .run(hash(nonce),q.clientId,q.redirect,q.challenge,q.state,q.scope,q.resource,Date.now()+CONSENT_MS);
     return html(res,200,'<!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'+
       '<title>Blossom koppelen aan ChatGPT</title><body style="max-width:520px;margin:6vh auto;padding:24px;font:16px system-ui;background:#101315;color:#fff">'+
       '<h1 style="color:#9aff63">Blossom × ChatGPT</h1><p>Je geeft ChatGPT toegang tot de Blossom Music DNA-database en Studio-projecten.</p>'+
@@ -204,7 +207,15 @@ export class BlossomMcpOAuth {
     if(!/^[A-Za-z0-9_-]{32,128}$/.test(f.request||""))
       return oauthError(res,400,"invalid_request","Invalid approval request");
     const pending=this.db.prepare("SELECT * FROM mcp_oauth_pending WHERE hash=?").get(hash(f.request));
-    if(!pending||pending.expires_at<=Date.now())return oauthError(res,400,"invalid_request","Approval expired");
+    if(!pending||pending.expires_at<=Date.now()) {
+      // A double-click, browser retry, or repeated form submission must never
+      // create a second grant or strand users on an opaque JSON error.
+      const completed=this.db.prepare("SELECT expires_at FROM mcp_oauth_completed WHERE hash=?")
+        .get(hash(f.request));
+      if(completed?.expires_at>Date.now())
+        return html(res,200,"<h1>Toestemming al verwerkt</h1><p>Ga terug naar ChatGPT om de verbinding te controleren. Begin daar een nieuwe koppeling als die niet verbonden is.</p>");
+      return html(res,410,"<h1>Toestemming verlopen</h1><p>Start een nieuwe koppeling vanuit ChatGPT. Gebruik deze oude pagina niet opnieuw.</p>");
+    }
     if(!this.client(pending.client_id,pending.redirect_uri))
       return oauthError(res,400,"invalid_client","Unknown client");
     if(f.decision!=="approve" && f.decision!=="deny")
@@ -213,7 +224,14 @@ export class BlossomMcpOAuth {
       try {this.authenticate(f.username,f.password,req.socket.remoteAddress||"unknown");}
       catch {return html(res,401,"<h1>Blossom-aanmelding mislukt</h1><p>Controleer je gegevens en start de verbinding opnieuw vanuit ChatGPT.</p>");}
     }
-    this.db.prepare("DELETE FROM mcp_oauth_pending WHERE hash=?").run(hash(f.request));
+    // Atomically claim the one-time approval; parallel POST requests cannot
+    // mint multiple authorization codes.
+    const claimed=this.db.prepare("DELETE FROM mcp_oauth_pending WHERE hash=? RETURNING hash")
+      .get(hash(f.request));
+    if(!claimed)
+      return html(res,200,"<h1>Toestemming al verwerkt</h1><p>Controleer de verbinding in ChatGPT.</p>");
+    this.db.prepare("INSERT INTO mcp_oauth_completed VALUES (?,?)")
+      .run(hash(f.request),Date.now()+COMPLETED_MS);
     const dest=new URL(pending.redirect_uri);
     dest.searchParams.set("state",pending.state);
     dest.searchParams.set("iss",this.origin);

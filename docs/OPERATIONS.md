@@ -128,3 +128,34 @@ Provision once with `bash scripts/setup-local-ai.sh` (installs Ollama, starts it
 Article URLs are fetched only from public HTTP(S) pages, with limited response body, DNS allowlist, no local/private hosts or unsafe redirects. The source text is untrusted input. If content is behind a paywall or JavaScript login the user must paste authorized text manually. On generation, Blossom stores the article and locally generated brief using existing Studio persistence. OpenAI API credentials remain an optional alternative and are never implicitly derived from cookies.
 
 Local generation can take several minutes depending on machine, model size and source text. Once on a Mac with a compatible local model installed, no browser windows should appear during the Extract action. Inspect `.data/logs/server.log` for failed local model requests; retries do not silently fabricate lyrics.
+
+
+## Diagnosing the public ChatGPT MCP OAuth connection
+
+The Studio web UI stays on `http://127.0.0.1:8787`; the separate MCP
+resource and OAuth provider use `BLOSSOM_MCP_PUBLIC_URL=https://blossom.wenneker.dev`.
+Do not change `BLOSSOM_PUBLIC_URL` to the Cloudflare hostname. Cloudflare must
+forward `/mcp`, `/oauth/*` and `/.well-known/oauth-*` to the same running
+Blossom process and persisted SQLite database. Cloudflare Access authentication
+or an HTML challenge must not intercept machine-to-machine OAuth discovery or
+registration. Keep authentication through Blossom's OAuth grant and access
+control. Do not broadly expose the administrator UI or add a public bypass for it.
+
+Run the real HTTPS path test, which needs no administrator password:
+
+```bash
+node scripts/mcp-remote-smoke.mjs https://blossom.wenneker.dev
+```
+
+It validates OAuth discovery, MCP authentication challenge, ChatGPT client
+registration, creation of an authorization page, the matching POST to decline
+that exact consent (safe; issues no token), the redirect to ChatGPT, and safe
+handling of a repeated submission. A failure in the public GET -> POST step is
+evidence of inconsistent routing, instance/database changes, or a proxy
+intercept. The test does not prove approval with an actual password or that
+ChatGPT installed the app; those require an end-user authorization.
+
+The approval form is valid for twenty minutes. Repeating a completed approval
+does not issue another grant, and an expired form requires starting a fresh
+connection from ChatGPT. Check the Blossom process is running with the intended
+database and avoid routing different OAuth requests to different instances.
