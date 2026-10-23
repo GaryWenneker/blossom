@@ -51,7 +51,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
   const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
   const studioApi=new StudioAPI({store,vault,composer,draw,
-    sunoBrowser:sunoBrowser||browserAccounts.suno,assetDir});
+    sunoBrowser:sunoBrowser||browserAccounts.suno,nativeChatgptOptions:nativeBrowserOptions,assetDir});
   const musicDna=new MusicDNA(store);
   const musicDnaApi=new MusicDnaAPI(musicDna);
   const musicDnaMcp=new MusicDnaMCP(musicDna);
