@@ -154,3 +154,67 @@ test("OAuth denies invalid callbacks, absent PKCE and public admin paths",async 
   const noEntry=await postForm(base,"/oauth/token",{grant_type:"client_credentials"});
   assert.equal(noEntry.status,400);
 });
+
+
+test("Consent redirect, ChatGPT code redemption, tool scan and permissions are diagnosable privately",async t=>{
+  const {base}=await withApp(t);
+  assert.equal((await fetch(base+"/api/oauth/diagnostics")).status,401);
+  assert.equal(await requestWithHost(base,"/api/oauth/diagnostics","blossom.wenneker.dev"),404);
+  const login=await fetch(base+"/auth/login",{
+    method:"POST",headers:{"Content-Type":"application/json","X-Blossom-Request":"ui"},
+    body:JSON.stringify({username:"admin",password:"very-long-local-blossom-password"})
+  });
+  assert.equal(login.status,200);
+  const cookie=login.headers.get("set-cookie").split(";")[0];
+  const status=()=>fetch(base+"/api/oauth/diagnostics",{headers:{Cookie:cookie}}).then(r=>r.json());
+  const initial=await status();
+  assert.equal(initial.latestStage,"none");
+  const unauth=await postJson(base,"/mcp",{jsonrpc:"2.0",id:7,method:"initialize"});
+  assert.match(unauth.headers.get("www-authenticate"),/blossom:write/);
+  const registered=await postJson(base,"/oauth/register",{redirect_uris:[callback]});
+  const {client_id}=await registered.json();
+  const verifier="x".repeat(50);
+  const params=new URLSearchParams({
+    response_type:"code",client_id,redirect_uri:callback,
+    code_challenge:createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method:"S256",state:"valid-client-state-78910",
+    resource,scope:"blossom:read blossom:write offline_access"
+  });
+  const consent=await fetch(base+"/oauth/authorize?"+params);
+  const nonce=(await consent.text()).match(/name="request" value="([^"]+)"/)?.[1];
+  assert.ok(nonce);
+  assert.equal((await status()).latestStage,"consent_shown");
+  const grant=await postForm(base,"/oauth/authorize",
+    {request:nonce,decision:"approve",username:"admin",
+      password:"very-long-local-blossom-password"});
+  assert.equal(grant.status,303);
+  let diagnostic=await status();
+  assert.equal(diagnostic.latestStage,"consent_redirected");
+  assert.equal(diagnostic.activeTokenCount,0);
+  const authUrl=new URL(grant.headers.get("location"));
+  assert.equal(authUrl.searchParams.get("iss"),origin);
+  const repeated=await postForm(base,"/oauth/authorize",
+    {request:nonce,decision:"approve",username:"admin",
+      password:"very-long-local-blossom-password"});
+  assert.equal(repeated.status,200);
+  assert.match(await repeated.text(),/Create as a plugin/);
+  const redeemed=await postForm(base,"/oauth/token",{
+    grant_type:"authorization_code",client_id,
+    redirect_uri:callback,code:authUrl.searchParams.get("code"),
+    code_verifier:verifier,resource
+  });
+  assert.equal(redeemed.status,200);
+  const tokens=await redeemed.json();
+  diagnostic=await status();
+  assert.equal(diagnostic.latestStage,"token_issued");
+  assert.equal(diagnostic.activeTokenCount,1);
+  assert.equal(diagnostic.events.find(e=>e.stage==="token_issued").scope,
+    "blossom:read blossom:write offline_access");
+  assert.ok(!JSON.stringify(diagnostic).includes(tokens.access_token));
+  assert.ok(!JSON.stringify(diagnostic).includes(tokens.refresh_token));
+  assert.ok(!JSON.stringify(diagnostic).includes(authUrl.searchParams.get("code")));
+  const scan=await postJson(base,"/mcp",{jsonrpc:"2.0",id:2,method:"tools/list"},
+    {Authorization:"Bearer "+tokens.access_token});
+  assert.equal(scan.status,200);
+  assert.equal((await status()).latestStage,"tools_listed");
+});
