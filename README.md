@@ -190,3 +190,7 @@ If setup reports your Draw Things checkpoint is missing, use `draw-things-cli mo
 Connections opens Suno, Spotify and ChatGPT in your existing default browser, rather than an automated Playwright/Chrome profile. Google's login blocks automated browsers with "This browser or app may not be secure"; native browser tabs avoid that automation-specific problem without hiding browser identity or moving cookies. The regular browser controls its own session: if you are already signed in, you normally continue without login. Blossom never reads, copies or injects your cookies. Credentials for optional developer APIs remain in Advanced.
 
 In News to Song, **Open Suno in browser** uses the same normal browser. **View / copy Suno blueprint** shows lyrics and settings to paste into Suno. Direct Playwright prefill into a Google-authenticated tab is no longer offered in the default workflow. See docs/OPERATIONS.md.
+
+### Google blocks the Playwright login window
+
+If Google says that the browser or app may not be safe, use **Connections → Suno → Open in Safari (Mac)** after updating Blossom. Native macOS Safari is opened via LaunchServices and is never attached to Playwright. An older Playwright-controlled Chrome window must be closed; a new tab inside that same window remains controlled. The current Studio Suno flow also uses Safari or a copyable blueprint instead of attempting an asynchronous popup.

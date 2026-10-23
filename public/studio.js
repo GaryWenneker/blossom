@@ -83,7 +83,7 @@ const panels=(p,assets,state)=>{
  slider("weirdness","Weirdness",params.weirdness)+slider("styleInfluence","Style Influence",params.styleInfluence)+slider("variety","Variety",params.variety)+
  field("Creative instructions",'<textarea id="studio-notes" rows="2" placeholder="No echo, warm analogue mix, early 1960s feel...">'+esc(params.customInstructions||"")+'</textarea>')+
  '<div class="studio-control-footer"><button class="secondary" data-action="studio-save-preset">Save as artist default</button><button class="primary" data-action="studio-recipe">Suno blueprint ↗</button></div>'+
- '<div class="studio-suno-handoff"><button type="button" class="secondary" data-action="studio-suno-open">Open Suno in browser ↗</button>'+
+ '<div class="studio-suno-handoff"><button type="button" class="secondary" data-action="studio-suno-open">Open Suno in Safari / browser ↗</button>'+
  '<button type="button" class="primary" data-action="studio-suno-prefill">View / copy Suno blueprint</button>'+
  '<p class="studio-hint">Use your regular browser for Google login. Copy the blueprint into Suno and click Generate yourself.</p></div></section>'+
  '<section class="studio-panel studio-art"><div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">DRAW THINGS</span></div>'+
@@ -179,9 +179,24 @@ export async function studioAction(el,state,api,refresh,message){
     await api("studio/projects/"+p.id+"/result",result);await refresh();message("Lyrics edits saved");return;
   }
   if(action==="studio-suno-open"){
-    // User gesture opens a normal browser tab, never a Google-blocked WebDriver window.
-    window.open("https://suno.com/create","_blank","noopener,noreferrer");
-    message("Suno opened in your regular browser. Use your Google session there.");
+    const canOpenSafari=state.data.browserAccounts?.nativeSafariAvailable &&
+      ["localhost","127.0.0.1"].includes(location.hostname);
+    if(canOpenSafari){
+      await api("browser-accounts/suno/open-safari",{});
+      message("Suno opened in the normal Safari application. Sign in with Google there.");
+      return;
+    }
+    if(navigator.webdriver===true){
+      message("This Chrome window is automated. Open https://suno.com/create in normal Safari or Chrome instead.",true);
+      return;
+    }
+    // Saving the project is asynchronous. Show a safe ordinary link instead
+    // of calling window.open after await, which browsers can block as a popup.
+    const recipe=await api("studio/projects/"+p.id+"/recipe");
+    const dialog=document.querySelector("#recipe-dialog");
+    document.querySelector("#recipe-text").value=JSON.stringify(recipe,null,2);
+    dialog.showModal();
+    message("Open https://suno.com/create in your normal browser and copy the blueprint.");
     return;
   }
   if(action==="studio-suno-prefill"){

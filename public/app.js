@@ -124,13 +124,18 @@ function genres(){
 function browserAccountCard({ provider, title, login, usage, hint }) {
  const session = state.data.browserAccounts?.[provider] || {};
  const stateLabel = "Browser sign-in";
+ const nativeSafari = state.data.browserAccounts?.nativeSafariAvailable &&
+   ["localhost","127.0.0.1"].includes(location.hostname);
+ const webdriver = navigator.webdriver===true;
  return '<section class="panel browser-account-card"><div class="panel-header"><h2>'+e(title)+'</h2>'+
    badge(stateLabel)+'</div>'+
    '<p class="browser-account-identity">'+e(login)+'</p>'+
    '<p class="hint">'+e(usage)+'</p>'+
-   '<div class="browser-account-actions"><button type="button" class="primary" data-action="browser-connect" data-provider="'+e(provider)+'">'+
-   "Open in your browser"+
-   '</button></div>'+
+   '<div class="browser-account-actions">'+
+   (nativeSafari?'<button type="button" class="primary" data-action="browser-safari" data-provider="'+e(provider)+'">Open in Safari (Mac) ↗</button>':"")+
+   (!webdriver?'<button type="button" class="'+(nativeSafari?"secondary":"primary")+'" data-action="browser-connect" data-provider="'+e(provider)+'">Open in this browser ↗</button>':
+      '<span class="small browser-blocked">Automated Chrome detected; use Safari or copy the site address into your normal browser.</span>')+
+   '</div>'+
    '<p class="small">'+e(hint)+'</p></section>';
 }
 function connections(){
@@ -138,6 +143,7 @@ function connections(){
  const hasSpotifyApp=!!c.spotifyClientId;
  return '<div class="browser-connections-layout">'+
  header("Account connections","Sign in through your regular browser. Existing cookies and sessions are managed by that browser, not by Playwright.")+
+ (navigator.webdriver===true?'<div class="browser-browser-warning" role="alert"><strong>Automated browser detected</strong><span>This Blossom window is being controlled by automation. Google can refuse sign-in here. Open Suno in Safari on this Mac, or reopen Blossom in a normal browser.</span></div>':"")+
  '<div class="browser-accounts-grid">'+
  browserAccountCard({provider:"suno",title:"Suno · Google",login:"Continue with Google",
    usage:"Open Suno in your ordinary browser and sign in with Google. Your existing browser session can be reused.",
@@ -202,13 +208,30 @@ async function action(el){
    if(next==="render")render();
    return;
  }
+ if(act==="browser-safari"){
+   const provider=el.dataset.provider;
+   showBrowserLogin(provider);
+   try{
+     await api("browser-accounts/"+provider+"/open-safari",{});
+     document.querySelector("#account-login-status").textContent=
+       "Safari opened as a normal macOS application. Sign in there, or continue your existing Safari session.";
+   }catch(error){
+     document.querySelector("#account-login-status").textContent=error.message;
+     throw error;
+   }
+   return;
+ }
  if(act==="browser-connect"||act==="browser-reopen"){
    const provider=act==="browser-connect"?el.dataset.provider:
      document.querySelector("#account-login-dialog").dataset.provider;
    const url={suno:"https://suno.com/create",spotify:"https://open.spotify.com/",
      chatgpt:"https://chatgpt.com/"}[provider];
    if(!url)throw Error("Unknown browser provider");
-   // Runs directly in the real user click. No Playwright/WebDriver or browser cookie access.
+   // A new tab inherits this browser process. Never use it for Google login
+   // from a Playwright-controlled page: it would still be flagged as automated.
+   if(navigator.webdriver===true){
+     throw Error("This Chrome window is automated. Open in Safari on your Mac, or open the URL in your normal browser.");
+   }
    if(act==="browser-connect")showBrowserLogin(provider);
    window.open(url,"_blank","noopener,noreferrer");
    document.querySelector("#account-login-status").textContent=
