@@ -325,7 +325,25 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
       if (await checkHealth()) return "http://127.0.0.1:8787/login";
       if (!check) await new Promise(resolve => setTimeout(resolve, 500));
     }
-    throw Error("Blossom server did not respond on localhost:8787");
+    const logPath = join(root, ".data", "logs", "server.log");
+    let diagnostic = "";
+    try {
+      const log = await readFile(logPath, "utf8");
+      const lines = log.split(/\\r?\\n/).filter(Boolean);
+      diagnostic = lines.slice(-12).join(" ").slice(-1200);
+    } catch (error) {
+      diagnostic = "Server log unavailable: " + String(error.message || error);
+    }
+    let agentState = "";
+    if (process.platform === "darwin") {
+      try {
+        const state = await exec("launchctl", ["print", "gui/" + process.getuid() + "/io.wenneker.blossom.server"], { timeout: 5000 });
+        agentState = String(state.stdout || "").split(/\\r?\\n/).filter(line => /state =|pid =|last exit code =|runs =/.test(line)).join(" ").slice(0, 300);
+      } catch (error) { agentState = "launchctl status unavailable: " + String(error.message || error); }
+    }
+    throw Error("Blossom server did not respond on localhost:8787. " +
+      "Check .data/logs/server.log. " + (agentState ? "launchd: " + agentState + ". " : "") +
+      "Recent server log: " + (diagnostic || "(empty)"));
   });
   emit("DONE|" + stages + "|Blossom installation checks passed");
   return config;
