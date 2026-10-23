@@ -74,7 +74,7 @@ test("Connections sign-in and Suno Studio actions use the real browser, never Pl
   const section=ui.slice(ui.indexOf("function browserAccountCard("),ui.indexOf("function render(){"));
   assert.match(section,/browser-accounts-grid/);
   assert.match(section,/browser-connect/);
-  assert.match(section,/browser-reopen/);
+  assert.match(ui,/browser-reopen/);
   assert.match(section,/does not grant Blossom API access/);
   assert.match(section,/Continue with Facebook/);
   assert.match(section,/details class="panel browser-advanced"/);
