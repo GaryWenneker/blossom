@@ -1,7 +1,8 @@
+import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload } from "./music-dna.js";
 import { studioView,studioAction,studioInput,studioAudio,studioActiveId } from "./studio.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
-const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[]}};
+const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
 const nextStage={idea:"brief",brief:"generated",generated:"review",review:"approved",rejected:"brief"};
 const releaseChecks={audioUploaded:"Audio at distributor",artworkUploaded:"Cover art at distributor",creditsVerified:"Credits verified",codesVerified:"ISRC/UPC verified",aiDisclosuresDone:"AI disclosure completed",distributorRightsConfirmed:"Rights and distribution terms verified"};
 const capitals=s=>s.replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());
@@ -24,7 +25,15 @@ async function refresh(){
   const results=await Promise.all(names.map(apiName=>api(apiName)));
   state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets"),results[i]]));
   const id=studioActiveId(state);
-  state.data.studioAssets=id?await api("studio/projects/"+id+"/assets"):[];
+  const [assets,dnaProfiles,dnaJobs,dnaReferences]=await Promise.all([
+    id?api("studio/projects/"+id+"/assets"):Promise.resolve([]),
+    api("music-dna/search?limit=100"),api("music-dna/jobs"),
+    id?api("studio/projects/"+id+"/references"):Promise.resolve({references:[]})
+  ]);
+  state.data.studioAssets=assets;
+  state.data.musicDnaProfiles=dnaProfiles.results;
+  state.data.musicDnaJobs=dnaJobs.jobs;
+  state.data.studioReferences=dnaReferences.references;
   render();
 }
 function badge(value){return '<span class="pill '+(["needs_reconciliation","rejected"].includes(value)?"warning":value==="draft"?"neutral":"")+'">'+e(capitals(value))+"</span>";}
@@ -141,11 +150,16 @@ function connections(){
 function render(){
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
- view.innerHTML=({studio:()=>studioView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
+ view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
  if(act?.startsWith("studio-"))return studioAction(el,state,api,refresh,message);
+ if(act?.startsWith("dna-")){
+   const next=await musicDnaAction(el,state,api,refresh,message);
+   if(next==="render")render();
+   return;
+ }
  if(act==="remove-openai"){if(confirm("Delete stored OpenAI API key?")){await api("studio/openai-key/remove",{});await refresh();message("OpenAI key removed");}return;}
  if(act==="verify-spotify"){const p=await api("connections/spotify/profile");message("Spotify connection verified: "+p.displayName);return;}
  if(act==="logout"){await fetch("/auth/logout",{method:"POST",headers:{"Content-Type":"application/json","X-Blossom-Request":"ui"},body:"{}"});window.location.assign("/login");return;}
@@ -193,13 +207,17 @@ document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-"))stud
 document.addEventListener("change",async e=>{
  if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
+ if(e.target.matches("[data-dna-upload]")){
+   try{await musicDnaUpload(e.target,refresh,message);}catch(error){message(error.message,true);}
+ }
 });
 document.addEventListener("submit",async event=>{
- if(!["artist-form","track-form","release-form","suno-connection-form","spotify-connection-form","openai-connection-form"].includes(event.target.id))return;
+ if(!["artist-form","track-form","release-form","suno-connection-form","spotify-connection-form","openai-connection-form","dna-reference-form"].includes(event.target.id))return;
  event.preventDefault();const button=event.target.querySelector("button[type=submit],button:not([type])");
  if(button)button.disabled=true;
  try{
   const data=Object.fromEntries(new FormData(event.target).entries());
+  if(event.target.id==="dna-reference-form"){await musicDnaCreate(event.target,api,refresh,message);return;}
   if(event.target.id==="artist-form"){
    data.countries=data.countries.split(",").map(x=>x.trim().toUpperCase()).filter(Boolean);
    await api("artists",data);
