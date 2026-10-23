@@ -36,9 +36,9 @@ function authenticated(req, secret) {
   if (!auth.startsWith("Bearer ") || auth.length > 1024) return false;
   return timingSafeEqual(HASH(auth.slice(7)), HASH(secret));
 }
-function send(res, status, data) {
+function send(res, status, data, headers = {}) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store",
-    "MCP-Protocol-Version": "2025-06-18" });
+    "MCP-Protocol-Version": "2025-06-18", ...headers });
   res.end(data == null ? "" : JSON.stringify(data));
 }
 function errorResponse(id, code, message) {
@@ -58,19 +58,22 @@ async function readBody(req) {
 }
 export class MusicDnaMCP {
   constructor(dna, { readToken = process.env.BLOSSOM_MCP_READ_TOKEN,
-    writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN } = {}) {
+    writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN, oauth = null } = {}) {
     this.dna = dna;
     this.studio = new StudioStore(dna.store);
     this.readToken = readToken;
     this.writeToken = writeToken;
+    this.oauth = oauth;
   }
-  enabled() { return (this.readToken?.length || 0) >= 32 || (this.writeToken?.length || 0) >= 32; }
+  enabled() { return !!this.oauth?.enabled() || (this.readToken?.length || 0) >= 32 || (this.writeToken?.length || 0) >= 32; }
   async handle(req, res) {
     if (!this.enabled()) return send(res, 404, { error: "MCP is disabled" });
     if (req.method !== "POST") return send(res, 405, { error: "MCP requires POST" });
-    const write = authenticated(req, this.writeToken);
-    const read = write || authenticated(req, this.readToken);
-    if (!read) return send(res, 401, { error: "Bearer authentication required" });
+    const oauthAccess = this.oauth?.verify(req);
+    const write = authenticated(req, this.writeToken) || !!oauthAccess?.write;
+    const read = write || authenticated(req, this.readToken) || !!oauthAccess?.read;
+    if (!read) return send(res, 401, { error: "Bearer authentication required" },
+      this.oauth?.enabled() ? this.oauth.challengeHeaders() : {});
     let request;
     try { request = await readBody(req); }
     catch (e) { return send(res, e.status || 400, { error: e.message }); }
