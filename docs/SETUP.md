@@ -87,3 +87,17 @@ GitHub cannot remotely edit the private .env on your Mac. The downloaded-model c
 ### Homebrew 6 tap trust warnings
 
 Blossom uses the stable official Homebrew Core package `brew install draw-things-cli` instead of adding or trusting `drawthingsai/draw-things`. Homebrew 6 can warn about *other* untrusted third-party taps, for example `libkrun/krun`, when running a brew command. These warnings alone do not mean the Draw Things install failed. **Do not untap, trust, or disable trust checks on unrelated repositories just for Blossom.** If Homebrew reports a real error after the warnings, collect the final lines and run `brew list --versions draw-things-cli` and `draw-things-cli --help` to identify the failing step. Existing trusted taps and other packages are left unchanged.
+
+## Draw Things model not found in CLI
+
+A model selected in the Draw Things graphical interface is not necessarily visible to the separate CLI, especially if it is stored in a custom external folder or originates in another image application. To inspect the CLI's local model inventory:
+
+    draw-things-cli models list --downloaded-only
+
+The normal Draw Things app model folder is:
+
+    ~/Library/Containers/com.liuliu.draw-things/Data/Documents/Models
+
+If you used a custom model directory, configure `DRAWTHINGS_MODELS_DIR` in Blossom's private `.env` and use the exact filename or ID shown by the CLI for `BLOSSOM_DRAW_MODEL`. If the model isn't listed at all, import it into Draw Things and finish downloading/converting it before trying again.
+
+**Setup behavior:** artwork generation is optional. A model missing from the local CLI inventory generates a `WARN` with available model IDs and the checked folder, rather than aborting the entire installation. Other components, including Music DNA and the web server, can still initialize. This warning does **not** mean artwork is ready. Once the model has been imported/configured, rerun `bash setup.sh --check --headless` to verify it. The setup never silently chooses a different model or downloads large model weights without your decision.
