@@ -5,7 +5,7 @@ import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
 import { VisibleBrowserSession } from "./browser-connections.mjs";
-import { localMacBrowserRequest, submitChatGptStudioInSafari } from "./native-browser.mjs";
+import { localMacBrowserRequest, submitChatGptStudioInBrowser } from "./native-browser.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -85,7 +85,12 @@ export class StudioAPI{
         throw new DomainError("Paste an article or supply an article URL first",400);
       if(this.store.browserAccountStatus("chatgpt").state!=="user_confirmed")
         throw new DomainError("Confirm your ChatGPT Safari sign-in under Connections first",409);
-      const sent=await submitChatGptStudioInSafari(project.id,this.nativeChatgptOptions);
+      // Use the actual desktop browser requesting Blossom, so its existing login is reused.
+      const userAgent=String(req.headers["user-agent"]||"");
+      const selectedBrowser=/Chrome\\//.test(userAgent) && !/Edg\\//.test(userAgent)?"chrome":"safari";
+      const sent=await submitChatGptStudioInBrowser(project.id,{
+        ...this.nativeChatgptOptions,browser:this.nativeChatgptOptions.browser||selectedBrowser
+      });
       this.store.audit("chatgpt_submitted","studio_project",project.id,{mode:"safari-ui"});
       return send(res,200,sent);
     }
