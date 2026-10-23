@@ -76,7 +76,7 @@ export class StudioAPI{
       return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime));
     }
     const data=await readJSON(req);
-    const chatGptExtract=path.match(/^\\/api\\/studio\\/projects\\/([a-f0-9-]{36})\\/chatgpt-extract$/);
+    const chatGptExtract=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-extract$/);
     if(chatGptExtract) {
       if(!localMacBrowserRequest(req))
         throw new DomainError("ChatGPT Safari submission is available only from Blossom on this Mac",403);
