@@ -82,6 +82,11 @@ export class BlossomMcpOAuth {
       "resource TEXT NOT NULL, expires_at INTEGER NOT NULL);"+
       "CREATE TABLE IF NOT EXISTS mcp_oauth_completed ("+
       "hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);");
+    // Existing Blossom installs have a 2-column completed table.
+    // Add outcome without throwing away pending requests or prior grants.
+    const columns=db.prepare("PRAGMA table_info(mcp_oauth_completed)").all();
+    if(!columns.some(column=>column.name==="decision"))
+      db.exec("ALTER TABLE mcp_oauth_completed ADD COLUMN decision TEXT NOT NULL DEFAULT 'unknown'");
   }
   enabled() {return !!this.origin;}
   // Local-only operational markers. Never record access tokens, PKCE values,
@@ -225,7 +230,10 @@ export class BlossomMcpOAuth {
       '<label>Blossom-gebruikersnaam<br><input name="username" required autocomplete="username" style="width:100%;padding:10px"></label><p>'+
       '<label>Blossom-wachtwoord<br><input name="password" type="password" required autocomplete="current-password" style="width:100%;padding:10px"></label></p>'+
       '<button type="submit" name="decision" value="approve" style="padding:14px;background:#9aff63">Verbinden met ChatGPT</button> '+
-      '<button type="submit" name="decision" value="deny" style="padding:14px">Weigeren</button></form>'+
+      '<details style="display:inline-block;margin-left:8px"><summary style="cursor:pointer;color:#ddd">Weigeren</summary>'+
+      '<p style="font-size:13px;color:#aaa">Als je weigert, wordt deze aanvraag geannuleerd. Je kunt later opnieuw beginnen in ChatGPT.</p>'+
+      '<button type="submit" name="decision" value="deny" formnovalidate style="padding:12px;background:#3d2525;color:#fff">Weigering bevestigen</button>'+
+      '</details></form>'+
       '<p style="font-size:12px;color:#aaa">De toestemming is eenmalig. Tokens kunnen later worden ingetrokken.</p></body></html>');
   }
   async authorizeDecision(req,res) {
@@ -238,18 +246,19 @@ export class BlossomMcpOAuth {
     if(!pending||pending.expires_at<=Date.now()) {
       // A double-click, browser retry, or repeated form submission must never
       // create a second grant or strand users on an opaque JSON error.
-      const completed=this.db.prepare("SELECT expires_at FROM mcp_oauth_completed WHERE hash=?")
+      const completed=this.db.prepare("SELECT expires_at, decision FROM mcp_oauth_completed WHERE hash=?")
         .get(hash(f.request));
       if(completed?.expires_at>Date.now()) {
         this.record("consent_repeated");
+        const denied=completed.decision==="deny";
+        const heading=denied?"Toestemming geweigerd":"Toestemming al verwerkt";
+        const details=denied?
+          "Deze aanvraag is geweigerd. Daardoor is er geen toegangscode voor ChatGPT uitgegeven. Start een nieuwe koppeling vanuit ChatGPT en kies expliciet Verbinden met ChatGPT.":
+          "De aanvraag is al afgehandeld. Een tweede klik maakt geen nieuwe verbinding. Controleer in ChatGPT of de autorisatie is afgerond en voltooi zo nodig Create as a plugin.";
         return html(res,200,'<!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'+
           '<body style="margin:8vh auto;padding:24px;max-width:580px;background:#101315;color:#fff;font:16px system-ui">'+
-          '<h1 style="color:#9aff63">Toestemming al verwerkt</h1>'+
-          '<p>De eerste klik heeft de OAuth-terugverwijzing al verzonden. Opnieuw klikken maakt geen nieuwe verbinding.</p>'+
-          '<p>Ga terug naar ChatGPT. Voltooi daar <strong>Scan Tools</strong> en <strong>Create as a plugin</strong>. '+
-          'Als Blossom niet verschijnt, start een nieuwe koppeling vanuit ChatGPT.</p>'+
-          '<p style="color:#aaa;font-size:13px">De toestemming alleen installeert nog geen plugin. '+
-          'De beheerder kan de stappen controleren bij Blossom → API → OAuth-diagnose.</p></body></html>');
+          '<h1 style="color:#9aff63">'+heading+'</h1><p>'+details+'</p>'+
+          '<p style="color:#aaa;font-size:13px">Als ChatGPT niet verbonden is, begin opnieuw vanuit ChatGPT. Controleer de lokale OAuth-diagnose in Blossom Connections.</p></body></html>');
       }
       return html(res,410,"<h1>Toestemming verlopen</h1><p>Start een nieuwe koppeling vanuit ChatGPT. Gebruik deze oude pagina niet opnieuw.</p>");
     }
@@ -267,8 +276,8 @@ export class BlossomMcpOAuth {
       .get(hash(f.request));
     if(!claimed)
       return html(res,200,"<h1>Toestemming al verwerkt</h1><p>Controleer de verbinding in ChatGPT.</p>");
-    this.db.prepare("INSERT INTO mcp_oauth_completed VALUES (?,?)")
-      .run(hash(f.request),Date.now()+COMPLETED_MS);
+    this.db.prepare("INSERT INTO mcp_oauth_completed (hash, expires_at, decision) VALUES (?,?,?)")
+      .run(hash(f.request),Date.now()+COMPLETED_MS,f.decision);
     const dest=new URL(pending.redirect_uri);
     dest.searchParams.set("state",pending.state);
     dest.searchParams.set("iss",this.origin);
