@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let (name, result, info) = (fields[0], fields[1], fields[2]);
                     if result == "RUN" {
                         active = format!("Working: {name}");
-                    } else if result == "OK" || result == "FAIL" {
+                    } else if result == "OK" || result == "FAIL" || result == "WARN" {
                         completed += 1;
                     }
                     lines.push_back(format!("{:>5}  {}  {}", result, name, info));
