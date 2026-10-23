@@ -141,7 +141,7 @@ function connections(){
  '<div class="browser-accounts-grid">'+
  browserAccountCard({provider:"suno",title:"Suno · Google",login:"Continue with Google",
    usage:"Open Suno in your ordinary browser and sign in with Google. Your existing browser session can be reused.",
-   hint:"Copy your Suno blueprint from News to Song. Google sign-in cannot run inside Playwright, and website login is not API access."})+
+   hint:"Copy your Suno blueprint from News to Song. Google sign-in cannot run inside Playwright, and website login does not grant Blossom API access."})+
  browserAccountCard({provider:"spotify",title:"Spotify · Facebook",login:"Continue with Facebook",
    usage:"Use Spotify’s official website and choose Facebook if your account still offers it.",
    hint:"Browser playback/session is separate from the Spotify developer API."})+
@@ -184,7 +184,7 @@ function showBrowserLogin(provider) {
  dialog.dataset.provider=provider;
  document.querySelector("#account-login-title").textContent="Connect "+selected.title;
  document.querySelector("#account-login-instructions").textContent=selected.instruction;
- document.querySelector("#account-login-status").textContent="Opening the local browser...";
+ document.querySelector("#account-login-status").textContent="Opening your regular browser...";
  dialog.showModal();
 }
 
