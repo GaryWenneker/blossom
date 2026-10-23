@@ -55,7 +55,7 @@ const cleanText=input=>unescapeHTML(String(input)
  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi," ")
  .replace(/<!--[\s\S]*?-->/g," ")
  .replace(/<\/(?:p|li|h[1-6]|div|section)>/gi,"\n")
- .replace(/<[^>]*>/g," "))
+ .replace(/<[^>]*>/g," ")
  .replace(/[ \t\u00a0]+/g," ")
  .replace(/\n\s*\n+/g,"\n")
  .trim()).slice(0,12000);
