@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { configureLaunchd, launchdStatus, launchPlist } from "../scripts/setup-blossom.mjs";
+import { configureLaunchd, launchdStatus, launchPlist, plistOnlyPathChanged } from "../scripts/setup-blossom.mjs";
 
 const labels=["io.wenneker.blossom.server","io.wenneker.blossom.dna-worker"];
 async function harness(t,{preinstalled=false, changedPlist=false, dropAfterBootstrap=false}={}) {
@@ -103,4 +103,19 @@ test("launchd running state is parsed correctly from output",async()=>{
     uid:502,launch:async()=>{throw Error("Could not find service")}
   });
   assert.equal(missing.registered,false);
+});
+
+
+test("A different interactive shell PATH never triggers launchd bootout",async t=>{
+  const {envFile,calls,opts,agentDir}=await harness(t,{preinstalled:true});
+  const original=await readFile(join(agentDir,labels[0]+".plist"),"utf8");
+  opts.searchPath="/opt/homebrew/bin:/usr/bin:/bin";
+  const expected=launchPlist({label:labels[0],nodePath:opts.nodePath,root:opts.root,envPath:envFile,
+    worker:false,logPath:join(opts.logsDir,"server.log"),searchPath:opts.searchPath});
+  assert.equal(plistOnlyPathChanged(original,expected),true);
+  const result=await configureLaunchd(envFile,opts);
+  assert.ok(result.every(s=>s.state.includes("restart")));
+  assert.equal(calls.filter(c=>c[0]==="bootout").length,0);
+  assert.equal(calls.filter(c=>c[0]==="bootstrap").length,0);
+  assert.equal(await readFile(join(agentDir,labels[0]+".plist"),"utf8"),original);
 });
