@@ -16,7 +16,7 @@ npm run seed
 npm start
 ```
 
-Open **http://127.0.0.1:8787** and sign in as `admin` with your configured password. The seeded names are *unverified proposals*: perform artist-name and trademark checks before release.
+Open **http://127.0.0.1:8787/login** and sign in as `admin`. This is a web form compatible with 1Password autofill, not the old HTTP Basic dialog. The seeded names are *unverified proposals*: perform artist-name and trademark checks before release.
 
 Run `npm test` and `npm run check` before changes. For development, `npm run dev` enables file watching. Local state is stored in `.data/blossom.db`, ignored by Git.
 
@@ -57,7 +57,7 @@ The process checks a fixed set of official pages on startup and approximately ev
 
 ## Security caveats
 
-The MVP uses HTTP Basic authentication for a **single administrator**, with the password provided through `BLOSSOM_ADMIN_PASSWORD` (12+ characters), an explicit custom header on state-changing requests, restricted content types, server-only credentials, and a localhost default binding. Basic authentication is only acceptable on a trusted local machine or **behind HTTPS** and further access controls. Do not expose this pilot directly to the public internet.
+The MVP now uses a cookie-based browser sign-in for a **single administrator**, with the password provided through `BLOSSOM_ADMIN_PASSWORD` (12+ characters), an explicit custom header on state-changing requests, restricted content types, server-only credentials, and a localhost default binding. The authenticated browser form uses an HTTP-only session cookie, custom request header and origin check. Do not expose this single-admin pilot directly to the internet without HTTPS, a reverse proxy, MFA and operational hardening.
 
 SQLite supports a single local process for the pilot. Before distributed deployment, migrate persistence to PostgreSQL and add proper users, roles, MFA, backups, monitoring and queued jobs.
 
@@ -70,3 +70,22 @@ SQLite supports a single local process for the pilot. Before distributed deploym
 - Distribution is never triggered by merely creating or generating a track.
 
 Read [architecture](docs/ARCHITECTURE.md), [implementation plan](docs/ROADMAP.md) and [operator checks](docs/OPERATIONS.md) for scope, limitations and next steps.
+
+## Web sign-in, secure connections and musical genres (Phase 2)
+
+The login page at `/login` has standard `autocomplete=username` and `autocomplete=current-password` attributes, so you can save and autofill Blossom's own login in **1Password**. The server password remains `BLOSSOM_ADMIN_PASSWORD` (12+ characters). Sessions are stored as hashes, expire after eight hours, and can be revoked by signing out.
+
+For the **Connections** page, configure an independent encryption key first:
+
+```bash
+npm run vault:key
+# Copy the base64 value into BLOSSOM_VAULT_KEY in your secure environment
+```
+
+Keep the key separate from the SQLite database and back up both. Suno can store your email address and your official Suno Platform API key (if your account has API access). Spotify connects through official OAuth2 Authorization Code + PKCE; your Spotify website password is **not** stored. Configure the Spotify app's Client ID and register the precise redirect URI `http://127.0.0.1:8787/auth/spotify/callback` for local development, or `https://your-domain.example/auth/spotify/callback` for hosting. Set `BLOSSOM_PUBLIC_URL` to the corresponding origin.
+
+**Important:** the Spotify Web API can read authorized profile information but cannot upload music directly; music distribution continues through LabelGrid. Saving a Suno API key does not yet initiate real Suno music generation. That requires access to official, verified API documentation for your account.
+
+The new **Genres** view contains a broad editorial taxonomy (100+ styles), including Traditional Country, Contemporary Country, Country Pop, Outlaw Country, Americana, Bluegrass and Honky Tonk. When creating artists, choose a known style using suggestions or enter your own custom genre.
+
+The secret vault encrypts values with AES-256-GCM. It never returns credentials to the browser. Losing your `BLOSSOM_VAULT_KEY` makes existing saved secrets unrecoverable.

@@ -23,7 +23,10 @@
 - [ ] Audio uploads, listening QA and mastering QC (peak, duration, clipping, duplicates).
 - [ ] LabelGrid artist, track, release and artwork creation/upload.
 - [ ] Webhook verification, delivery-state reconciliation and take-down handling.
-- [ ] Multi-user auth with MFA, encrypted credentials, cost budgets and metering.
+- [x] Web login with password-manager autofill, secure sessions and sign-out.
+- [x] Encrypted Suno API key storage and OAuth2 Spotify account connection.
+- [x] Editorial global genre directory including Country & Americana.
+- [ ] Multi-user auth with MFA, externally managed secrets, cost budgets and metering.
 
 ## Phase 3: commercial intelligence
 - [ ] Paid streaming analytics and statement ingestion, by territory and platform.

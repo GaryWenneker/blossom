@@ -4,7 +4,6 @@ import { once } from "node:events";
 import { createAppServer } from "../src/server.mjs";
 import { Store } from "../src/storage.mjs";
 import { RIGHTS_FIELDS, RELEASE_CHECKS } from "../src/domain.mjs";
-function auth() {return "Basic "+Buffer.from("admin:very-long-test-password").toString("base64");}
 async function fixture(t,{allowLive=false,provider}={}) {
   const db=new Store(":memory:");
   const gateway=provider||{available:()=>false,validate:async()=>({valid:true}),distribute:async()=>({ok:true})};
@@ -12,8 +11,12 @@ async function fixture(t,{allowLive=false,provider}={}) {
   app.listen(0,"127.0.0.1");await once(app,"listening");
   t.after(async()=>{await new Promise(resolve=>app.close(resolve));db.close()});
   const root="http://127.0.0.1:"+app.address().port;
+  const login=await fetch(root+"/auth/login",{method:"POST",headers:{"content-type":"application/json","x-blossom-request":"ui"},
+    body:JSON.stringify({username:"admin",password:"very-long-test-password"})});
+  assert.equal(login.status,200);
+  const cookie=login.headers.get("set-cookie").split(";")[0];
   const req=async(path,{method="GET",json,headers={}}={})=>{
-    const res=await fetch(root+path,{method,headers:{authorization:auth(),...(json!==undefined?{"content-type":"application/json","x-blossom-request":"ui"}:{}),...headers},body:json===undefined?undefined:JSON.stringify(json)});
+    const res=await fetch(root+path,{method,headers:{cookie,...(json!==undefined?{"content-type":"application/json","x-blossom-request":"ui"}:{}),...headers},body:json===undefined?undefined:JSON.stringify(json)});
     return {status:res.status,body:await res.json()};
   };
   return {db,app,root,req};
@@ -25,6 +28,7 @@ test("Server requires credentials and protects POST against cross-origin forms",
   assert.equal(csrf.status,403);
   assert.equal((await req("/api/summary")).status,200);
   assert.equal((await fetch(root+"/healthz")).status,200);
+  assert.equal((await fetch(root+"/login")).status,200);
 });
 test("HTTP happy path: artist, track and blueprint",async t=>{
   const {req}=await fixture(t);

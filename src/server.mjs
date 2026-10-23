@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
+import { SpotifyOAuth } from "./spotify.mjs";
+import { GENRES } from "./genres.mjs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { Store } from "./storage.mjs";
@@ -7,19 +9,9 @@ import { LabelGrid } from "./providers/labelgrid.mjs";
 import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "./domain.mjs";
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
-const sha = s => createHash("sha256").update(s).digest();
-const secureEquals = (a,b) => timingSafeEqual(sha(a),sha(b));
-const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css"};
+const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
+  "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8"};
-function authorized(req,password) {
-  const auth=req.headers.authorization||"";
-  if(!auth.startsWith("Basic "))return false;
-  try {
-    const pair=Buffer.from(auth.slice(6),"base64").toString("utf8");
-    const split=pair.indexOf(":");
-    return split>0&&secureEquals(pair.slice(0,split),"admin")&&secureEquals(pair.slice(split+1),password);
-  } catch {return false;}
-}
 function reply(res,code,data,headers={}) {
   res.writeHead(code,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers});
   res.end(JSON.stringify(data));
@@ -43,19 +35,59 @@ function validateRemoteResponse(data) {
   if (data?.valid===false || data?.success===false || (Array.isArray(data?.errors) && data.errors.length>0))
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
-export function createAppServer({store,provider,password,allowLive=false,monitor=false}={}) {
+export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
+  const sessions=new Sessions(store.db,{username,password});
+  const vault=new Vault(store.db,vaultKey);
+  const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
+  const secure=publicUrl.startsWith("https:");
+  const permittedOrigin=new URL(publicUrl).origin;
   const timer=enableMonitor(store,{enabled:monitor});
   const server=createServer(async(req,res)=>{
     res.setHeader("X-Content-Type-Options","nosniff");
     res.setHeader("X-Frame-Options","DENY");
     res.setHeader("Referrer-Policy","no-referrer");
     res.setHeader("Content-Security-Policy","default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
-    const path=new URL(req.url||"/","http://localhost").pathname;
+    const parsedUrl=new URL(req.url||"/","http://localhost");
+    const path=parsedUrl.pathname;
     if(path==="/healthz" && req.method==="GET")return reply(res,200,{status:"ok"});
-    if(!authorized(req,password))return reply(res,401,{error:"Authentication required"},{"WWW-Authenticate":'Basic realm="Blossom", charset="UTF-8"'});
+    const sessionHash=sessions.session(req);
+    if(req.method==="POST"&&req.headers.origin&&req.headers.origin!==permittedOrigin)
+      return reply(res,403,{error:"Origin verification failed"});
+    if(req.method==="POST"&&req.headers["x-blossom-request"]!=="ui")
+      return reply(res,403,{error:"Missing request protection header"});
     try {
+      if(path==="/auth/login"&&req.method==="POST"){
+        const incoming=await body(req);
+        const token=sessions.login(incoming?.username,incoming?.password,req.socket.remoteAddress||"unknown");
+        return reply(res,200,{authenticated:true,username},{ "Set-Cookie":encodeCookie(token,secure)});
+      }
+      if(path==="/login"&&req.method==="GET"&&sessionHash){
+        res.writeHead(303,{Location:"/","Cache-Control":"no-store"});res.end();return;
+      }
+      if(["/login","/login.js","/login.css","/styles.css"].includes(path)&&req.method==="GET"){
+        const name=PUBLIC[path],extension=name.split(".").pop(),content=await readFile(new URL("../public/"+name,import.meta.url));
+        res.writeHead(200,{"Content-Type":MIME[extension],"Cache-Control":"no-store"});
+        res.end(content);return;
+      }
+      if(!sessionHash) {
+        if(path==="/"&&req.method==="GET"){res.writeHead(303,{Location:"/login","Cache-Control":"no-store"});res.end();return;}
+        return reply(res,401,{error:"Authentication required"});
+      }
+      if(path==="/auth/logout"&&req.method==="POST"){
+        sessions.logout(req);return reply(res,200,{authenticated:false},{"Set-Cookie":expireCookie(secure)});
+      }
+      if(path==="/auth/session"&&req.method==="GET")return reply(res,200,{authenticated:true,username});
+      if(path==="/auth/spotify/start"&&req.method==="GET"){
+        res.writeHead(303,{Location:spotify.start(sessionHash),"Cache-Control":"no-store"});res.end();return;
+      }
+      if(path==="/auth/spotify/callback"&&req.method==="GET"){
+        if(parsedUrl.searchParams.has("error"))throw new DomainError("Spotify authorization was cancelled",400);
+        await spotify.complete(sessionHash,parsedUrl.searchParams.get("state"),parsedUrl.searchParams.get("code"));
+        res.writeHead(303,{Location:"/?spotify=connected","Cache-Control":"no-store"});res.end();return;
+      }
       if(path in PUBLIC && req.method==="GET") {
         const name=PUBLIC[path],extension=name.split(".").pop();
         const content=await readFile(new URL("../public/"+name,import.meta.url));
@@ -74,6 +106,8 @@ export function createAppServer({store,provider,password,allowLive=false,monitor
         if(path==="/api/events")return reply(res,200,store.events());
         if(path==="/api/watches")return reply(res,200,{sources:WATCH_URLS,records:store.watches()});
         if(path==="/api/integrations")return reply(res,200,{suno:"manual blueprint only",labelgrid:provider.available()?"token configured":"not configured",liveDistributionEnabled:allowLive,monitorEnabled:!!timer});
+        if(path==="/api/genres")return reply(res,200,GENRES);
+        if(path==="/api/connections")return reply(res,200,vault.list());
         let match=path.match(/^\/api\/tracks\/([a-z0-9-]+)\/blueprint$/i);
         if(match) {
           const t=required(store,match[1],"track");
@@ -92,6 +126,25 @@ export function createAppServer({store,provider,password,allowLive=false,monitor
       if(path==="/api/artists")return reply(res,201,store.addArtist(incoming));
       if(path==="/api/tracks")return reply(res,201,store.addTrack(incoming));
       if(path==="/api/releases")return reply(res,201,store.addRelease(incoming));
+      if(path==="/api/connections/suno"){
+        if(incoming?.email!==undefined)vault.setSetting("suno_email",incoming.email);
+        if(incoming?.apiKey)vault.save("suno_api_key",vault.getSetting("suno_email"),incoming.apiKey);
+        store.audit("connection_updated","integration","suno",{hasKey:!!incoming?.apiKey});
+        return reply(res,200,vault.list());
+      }
+      if(path==="/api/connections/spotify"){
+        vault.setSetting("spotify_client_id",incoming?.clientId);
+        store.audit("connection_updated","integration","spotify",{oauthApp:true});
+        return reply(res,200,vault.list());
+      }
+      if(path==="/api/connections/suno/remove"){
+        vault.delete("suno_api_key");store.audit("connection_removed","integration","suno");
+        return reply(res,200,vault.list());
+      }
+      if(path==="/api/connections/spotify/remove"){
+        vault.delete("spotify_refresh_token");store.audit("connection_removed","integration","spotify");
+        return reply(res,200,vault.list());
+      }
       if(path==="/api/watches/check")return reply(res,200,await checkTerms(store));
       let match=path.match(/^\/api\/watches\/([a-z0-9-]+)\/ack$/i);
       if(match)return reply(res,200,store.acknowledgeWatch(match[1]));
@@ -149,9 +202,11 @@ if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {
   const store=new Store(process.env.BLOSSOM_DB||".data/blossom.db");
   const provider=new LabelGrid();
   const app=createAppServer({store,provider,password,
+    username:process.env.BLOSSOM_ADMIN_USERNAME||"admin",
+    publicUrl:process.env.BLOSSOM_PUBLIC_URL||"http://127.0.0.1:"+port,
     allowLive:process.env.BLOSSOM_ALLOW_LIVE_DISTRIBUTION==="true",
     monitor:process.env.BLOSSOM_MONITOR_ENABLED==="true"});
-  app.listen(port,host,()=>console.log("Blossom listening on http://"+host+":"+port+" (user: admin)"));
+  app.listen(port,host,()=>console.log("Blossom listening on http://"+host+":"+port+" (web login)"));
   const shutdown=()=>app.close(()=>{store.close();process.exit(0)});
   process.on("SIGTERM",shutdown);process.on("SIGINT",shutdown);
 }
