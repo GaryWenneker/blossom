@@ -87,7 +87,7 @@ export class StudioAPI{
         throw new DomainError("Confirm your ChatGPT Safari sign-in under Connections first",409);
       // Use the actual desktop browser requesting Blossom, so its existing login is reused.
       const userAgent=String(req.headers["user-agent"]||"");
-      const selectedBrowser=/Chrome\\//.test(userAgent) && !/Edg\\//.test(userAgent)?"chrome":"safari";
+      const selectedBrowser=/Chrome\//.test(userAgent) && !/Edg\//.test(userAgent)?"chrome":"safari";
       const sent=await submitChatGptStudioInBrowser(project.id,{
         ...this.nativeChatgptOptions,browser:this.nativeChatgptOptions.browser||selectedBrowser
       });
