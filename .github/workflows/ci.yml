@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: bash -n setup.sh
+      - run: npm install --no-audit --no-fund
       - run: npm run check
       - run: npm test
       - name: Real FFmpeg Music DNA smoke test
