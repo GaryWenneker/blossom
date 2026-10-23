@@ -236,10 +236,10 @@ async function checkHealth() {
     return r.ok && (await r.json()).status === "ok";
   } catch { return false; }
 }
-async function launchdStatus(label) {
-  const service = "gui/" + process.getuid() + "/" + label;
+export async function launchdStatus(label, { launch = exec, uid = process.getuid() } = {}) {
+  const service = "gui/" + uid + "/" + label;
   try {
-    const { output } = await exec("launchctl", ["print", service], { timeout: 5000 });
+    const { output } = await launch("launchctl", ["print", service], { timeout: 5000 });
     return { registered: true, running: /\bstate = running\b/.test(output || ""),
       detail: (output || "").split("\n").filter(line =>
         /state =|pid =|last exit code =|runs =/.test(line)).join(" ").trim() };
