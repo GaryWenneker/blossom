@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   nodeSupported, parseEnv, missingSettings, validateSettings,
-  configureEnv, makeTestWave, launchPlist, xmlEscape
+  configureEnv, restoreLoopbackAdminUrl, makeTestWave, launchPlist, xmlEscape
 } from "../scripts/setup-blossom.mjs";
 
 test("Node version requirement enforces >=22.13.0", () => {
@@ -80,4 +80,64 @@ test("Environment parser preserves pre-existing values and defaults fill only mi
   assert.equal(current.BLOSSOM_ADMIN_PASSWORD, "long-enough-secret");
   assert.equal(missingSettings(current).BLOSSOM_ADMIN_PASSWORD, undefined);
   assert.equal(missingSettings(current).BLOSSOM_PORT, undefined);
+});
+
+
+test("Installer restores a misplaced public MCP URL without rotating secrets or exposing the admin UI", async () => {
+  const dir=await mkdtemp(join(tmpdir(),"blossom-mcp-setup-"));
+  const file=join(dir,".env");
+  try {
+    await configureEnv(file);
+    const before=await readFile(file,"utf8");
+    const original=parseEnv(before);
+    const mistaken=before.replace("BLOSSOM_PUBLIC_URL=http://127.0.0.1:8787",
+      "BLOSSOM_PUBLIC_URL=https://blossom.wenneker.dev");
+    await writeFile(file,mistaken,{mode:0o600});
+    const restored=await configureEnv(file);
+    assert.equal(restored.repairedPublicUrl,true);
+    assert.deepEqual(restored.generatedKeys,[]);
+    const after=await readFile(file,"utf8");
+    const updated=parseEnv(after);
+    assert.equal(updated.BLOSSOM_PUBLIC_URL,"http://127.0.0.1:8787");
+    assert.equal(updated.BLOSSOM_MCP_PUBLIC_URL,"https://blossom.wenneker.dev");
+    assert.equal(updated.BLOSSOM_ADMIN_PASSWORD,original.BLOSSOM_ADMIN_PASSWORD);
+    assert.equal(updated.BLOSSOM_VAULT_KEY,original.BLOSSOM_VAULT_KEY);
+    assert.equal(updated.BLOSSOM_MCP_READ_TOKEN,original.BLOSSOM_MCP_READ_TOKEN);
+    assert.equal(updated.BLOSSOM_MCP_WRITE_TOKEN,original.BLOSSOM_MCP_WRITE_TOKEN);
+    assert.equal((await lstat(file)).mode&0o777,0o600);
+    const again=await configureEnv(file);
+    assert.equal(again.repairedPublicUrl,false);
+    assert.equal(await readFile(file,"utf8"),after);
+    await writeFile(file,after.replace("BLOSSOM_PUBLIC_URL=http://127.0.0.1:8787",
+      "BLOSSOM_PUBLIC_URL=https://blossom.wenneker.dev/mcp"),{mode:0o600});
+    await configureEnv(file);
+    assert.equal(parseEnv(await readFile(file,"utf8")).BLOSSOM_PUBLIC_URL,
+      "http://127.0.0.1:8787");
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test("Installer does not silently change custom network bindings or unknown public URLs", async () => {
+  const dir=await mkdtemp(join(tmpdir(),"blossom-invalid-config-"));
+  const file=join(dir,".env");
+  try {
+    await configureEnv(file);
+    const before=await readFile(file,"utf8");
+    const known=parseEnv(before);
+    assert.equal(restoreLoopbackAdminUrl(
+      "BLOSSOM_PUBLIC_URL=https://not-my-tunnel.example\n",
+      {...known,BLOSSOM_PUBLIC_URL:"https://not-my-tunnel.example"}).repaired,false);
+    const invalid=before.replace("BLOSSOM_PUBLIC_URL=http://127.0.0.1:8787",
+      "BLOSSOM_PUBLIC_URL=https://elsewhere.example");
+    await writeFile(file,invalid,{mode:0o600});
+    await assert.rejects(configureEnv(file),/BLOSSOM_PUBLIC_URL is for the local admin/);
+    assert.equal(await readFile(file,"utf8"),invalid);
+    const externalHost=before.replace("BLOSSOM_HOST=127.0.0.1","BLOSSOM_HOST=0.0.0.0");
+    await writeFile(file,externalHost,{mode:0o600});
+    await assert.rejects(configureEnv(file),/BLOSSOM_HOST must remain 127.0.0.1/);
+    assert.equal(await readFile(file,"utf8"),externalHost);
+    const wrongPort=before.replace("BLOSSOM_PORT=8787","BLOSSOM_PORT=8888");
+    await writeFile(file,wrongPort,{mode:0o600});
+    await assert.rejects(configureEnv(file),/BLOSSOM_PORT must remain 8787/);
+    assert.equal(await readFile(file,"utf8"),wrongPort);
+  } finally {await rm(dir,{recursive:true,force:true});}
 });
