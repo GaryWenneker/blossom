@@ -266,6 +266,28 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     catch { throw Error("Playwright Core not installed; run npm install"); }
     return "Supervised Playwright Core package ready (Google Chrome required for use)";
   });
+  await step("Draw Things diagnostics", async () => {
+    const { access } = await import("node:fs/promises");
+    const appPaths = [
+      "/Applications/Draw Things.app",
+      join(process.env.HOME || "", "Applications", "Draw Things.app")
+    ];
+    const installedApp = (await Promise.all(appPaths.map(async path => {
+      try { await access(path); return true; } catch { return false; }
+    }))).some(Boolean);
+    const cli = process.env.BLOSSOM_DRAW_COMMAND || "draw-things-cli";
+    const { delimiter } = await import("node:path");
+    const paths = (process.env.PATH || "").split(delimiter);
+    const foundCli = await Promise.all(paths.map(async dir => {
+      try { await access(join(dir, cli), (await import("node:fs")).constants.X_OK); return true; }
+      catch { return false; }
+    }));
+    if (!foundCli.some(Boolean)) {
+      emit("NOTICE|Draw Things CLI not found in PATH. Image generation needs a working CLI. Install/configure the Draw Things command, then rerun setup. The app alone is not proof the CLI is available.");
+      return installedApp ? "Draw Things app found; CLI not available" : "Draw Things CLI not found (optional)";
+    }
+    return "Draw Things CLI executable found; image model availability still requires a generation smoke test";
+  });
   await step("Syntax validation", async () => { await exec("npm", ["run", "check"], { cwd: root }); return "syntax checks passed"; });
   await step("Automated tests", async () => { await exec("npm", ["test"], { cwd: root }); return "test suite passed"; });
   await step("Audio self-test", async () => {
