@@ -38,6 +38,20 @@ jobs:
             echo "Unexpected secret or local database committed"; exit 1
           fi
 
+  public-mcp-oauth:
+    # Diagnostic against the actual Cloudflare hostname. The Mac tunnel may be
+    # offline in CI; report failure without preventing the code tests from merging.
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check live OAuth discovery, consent persistence and MCP routing
+        run: node scripts/test-mcp-remote.mjs https://blossom.wenneker.dev
+
   installer:
     runs-on: ubuntu-latest
     steps:
