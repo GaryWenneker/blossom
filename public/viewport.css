@@ -1,0 +1,173 @@
+/* Blossom viewport shell / News-to-Song mock-up parity.
+ * Fixed app chrome; only explicitly bounded data panes can scroll.
+ * Keep this stylesheet last so base and feature styles cannot reintroduce body scrolling.
+ */
+html,body{height:100%;width:100%;margin:0;overflow:hidden}
+body{overscroll-behavior:none}
+.shell{display:flex;width:100%;height:100vh;height:100dvh;min-height:0;overflow:hidden}
+.sidebar{position:relative;top:auto;height:100%;min-height:0;width:220px;flex:0 0 220px;padding:12px 10px;overflow:hidden}
+.sidebar .brand{flex:0 0 auto;padding:4px 5px 14px}
+.sidebar nav{display:flex;flex-direction:column;gap:2px;min-height:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.sidebar .side-bottom{flex:0 0 auto;padding:10px 5px 2px}
+.sidebar .side-label{padding:4px 11px 8px;margin:0}
+.sidebar .nav-button{padding:8px 11px;min-height:34px;flex:0 0 auto}
+.main{height:100%;min-height:0;min-width:0;flex:1 1 auto;overflow:hidden;display:flex;flex-direction:column}
+.topbar{flex:0 0 55px;height:55px;padding:0 17px;min-height:0}
+.content{max-width:none;width:100%;min-width:0;min-height:0;flex:1 1 auto;overflow:auto;padding:12px 13px;overscroll-behavior:contain}
+.footer{display:none}
+#toast{z-index:120}
+dialog{max-height:90dvh;overflow:auto}
+#recipe-text{max-height:55dvh;min-height:100px;resize:none}
+:is(.content,.studio-panel,.studio-tracks,.music-dna-results,.sidebar nav,.studio-ideas,.studio-bottom-pane){scrollbar-color:#465349 #15191a;scrollbar-width:thin}
+body[data-view="studio"] .content{display:flex;overflow:hidden;padding:10px 12px 9px}
+.studio-workspace{
+  width:100%;height:100%;min-height:0;min-width:0;padding:0;margin:0;
+  display:grid;grid-template-rows:auto auto minmax(0,1fr) minmax(148px,32%) auto;
+  gap:8px;overflow:hidden
+}
+.studio-toolbar{min-height:44px;min-width:0;gap:10px;margin:0;flex-direction:row;align-items:center}
+.studio-title{min-width:0;gap:9px}
+.studio-title h1{font-size:19px;line-height:1.12}
+.studio-title p{font-size:10px;line-height:1.3;margin:2px 0 0}
+.studio-square-icon{width:36px;height:36px;font-size:21px;flex:0 0 auto}
+.studio-toolbar-actions{gap:6px;min-width:0;flex-wrap:nowrap}
+.studio-toolbar-actions select{width:clamp(120px,17vw,195px);padding:7px 8px}
+.studio-toolbar-actions .primary,.studio-toolbar-actions .secondary{padding:8px 10px}
+.studio-stepper{height:27px;min-height:0;justify-content:center;gap:8px;margin:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;font-size:10px}
+.studio-stepper span{gap:5px}.studio-stepper b{width:20px;height:20px}.studio-stepper i{width:17px}
+.studio-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.13fr) minmax(0,.95fr);gap:8px;min-height:0;min-width:0;align-items:stretch;overflow:hidden}
+.studio-columns>.studio-panel{min-height:0;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding:11px 11px 9px}
+.studio-panel-head{margin-bottom:9px;gap:5px}
+.studio-panel-head h2,.studio-panel-head h2 span{font-size:12px}
+.studio-panel-head h2{letter-spacing:0}
+.studio-field{margin-bottom:7px}
+.studio-field input,.studio-field select,.studio-field textarea{padding:7px 8px}
+.studio-label,.studio-field>span{margin:8px 0 4px;font-size:10px}
+.studio-tabstrip{margin:6px -2px 7px}
+.studio-tabstrip span{padding:5px 2px}
+.studio-article{display:flex;flex-direction:column}
+#studio-article{flex:1 1 auto;min-height:105px;resize:none;overflow-y:auto}
+.studio-panel-bottom{padding-top:8px;gap:7px;flex:0 0 auto}
+.studio-panel-bottom .primary{width:100%}
+.studio-concept{padding:8px;min-height:60px}
+.studio-chiprow{min-height:22px}
+.studio-chip{padding:3px 7px}
+.studio-ideas{gap:2px}
+.studio-ideas>div{padding:4px 7px}
+#studio-lyrics{height:clamp(95px,16dvh,168px);resize:none;overflow-y:auto}
+.studio-slider{margin:10px 0}.studio-slider label{margin-bottom:6px}
+.studio-duration{margin:8px 0}.studio-duration>div:first-child{margin-bottom:6px}
+.studio-toggles{padding:7px 2px;margin:10px 0}
+.studio-control-footer{margin-top:9px}
+.studio-assetpreview{aspect-ratio:1;width:100%;max-height:min(29dvh,230px)}
+.studio-arttabs{margin:8px 0 5px}
+.studio-photo-thumb img{height:38px;width:38px}
+.wide{margin:5px 0 8px}
+.studio-dna-picker{padding:7px;margin:7px 0}
+.studio-lower.studio-output{
+  display:flex;flex-direction:column;min-height:0;min-width:0;gap:0;margin:0;
+  border:1px solid #2c3033;border-radius:10px;background:#151719;overflow:hidden
+}
+.studio-output-tabs{
+  display:flex;gap:3px;align-items:center;min-height:34px;flex:0 0 34px;padding:0 8px;
+  background:#181b1e;border-bottom:1px solid #2c3033;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin
+}
+.studio-output-tab{
+  flex:0 0 auto;align-self:stretch;background:transparent;border:0;border-bottom:2px solid transparent;
+  border-radius:0;color:#a6aca9;padding:0 13px;font-size:11px;font-weight:650;white-space:nowrap
+}
+.studio-output-tab[aria-selected="true"]{color:#eaf0ea;border-bottom-color:var(--lime)}
+.studio-output-tab:hover{color:#e7f2dd;background:#202625}
+.studio-output-tab:focus-visible{outline:2px solid var(--lime);outline-offset:-3px}
+.studio-bottom-pane{min-height:0;min-width:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:8px 12px;border:0;border-radius:0;background:transparent}
+.studio-bottom-pane[hidden]{display:none!important}
+.studio-bottom-pane .studio-panel-head{margin-bottom:6px}
+.studio-trackline{padding:5px 8px;gap:8px}
+.studio-trackline>img,.studio-note{height:30px;width:30px}
+.studio-tracks{display:grid;gap:4px}
+.studio-file-actions{margin-top:8px}
+.studio-assistant textarea{height:62px;resize:none}
+.studio-assistant .studio-answer{min-height:45px}
+.studio-files,.studio-assistant{min-height:0}
+.studio-statusline{display:flex;align-items:center;gap:14px;padding:0 4px;min-height:12px;line-height:1.2;font-size:9px;margin:0;white-space:nowrap;overflow:hidden}
+.studio-statusline span{overflow:hidden;text-overflow:ellipsis}
+/* Fixed Music DNA library, with scrolling confined to record and queue lists. */
+body[data-view="music-dna"] .content{overflow:hidden}
+.music-dna-library{height:100%;min-height:0;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+.music-dna-library>.studio-toolbar{flex:0 0 auto}
+.music-dna-grid{flex:0 0 min(40%,315px);min-height:0;gap:9px;overflow:hidden}
+.music-dna-grid>.studio-panel{min-height:0;overflow:auto;overscroll-behavior:contain}
+.music-dna-library>.studio-panel{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.music-dna-library .music-dna-search{flex:0 0 auto}
+.music-dna-results{min-height:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain}
+.music-dna-details{flex:0 0 auto;max-height:27%;min-height:0;overflow:auto;margin-top:6px}
+@media(max-width:1550px){
+  .studio-columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.13fr) minmax(0,.95fr)}
+}
+@media(max-width:1180px){
+  .studio-columns{
+    grid-template-columns:repeat(4,minmax(254px,1fr));
+    overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x proximity;
+    scrollbar-width:thin
+  }
+  .studio-columns>.studio-panel{scroll-snap-align:start}
+  .studio-title p{display:none}
+  .studio-output-tabs{min-height:31px;flex-basis:31px}
+}
+@media(max-width:850px){
+  .sidebar{width:175px;flex-basis:175px;padding:9px 6px}
+  .sidebar .brand{padding-bottom:9px}
+  .brand strong{font-size:20px}
+  .sidebar .nav-button{padding:7px 8px;font-size:11px}
+  .studio-toolbar-actions select{width:116px}
+  .studio-toolbar-actions .secondary{display:none}
+  .studio-stepper{justify-content:flex-start}
+  .music-dna-grid{grid-template-columns:repeat(2,minmax(250px,1fr));overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity}
+  .music-dna-grid>.studio-panel{scroll-snap-align:start}
+}
+@media(max-width:700px){
+  .shell{display:grid;grid-template-rows:auto minmax(0,1fr)}
+  .sidebar{width:100%;height:auto;min-height:0;display:flex;flex-direction:column;position:relative;padding:5px 8px;gap:3px}
+  .sidebar .brand{padding:0 2px;gap:6px}
+  .sidebar .brand-mark{height:26px;width:26px}
+  .sidebar .brand strong{font-size:18px}
+  .sidebar .brand small{font-size:6px}
+  .sidebar nav{flex-direction:row;gap:4px;overflow-x:auto;overflow-y:hidden;min-height:31px;flex:none;white-space:nowrap;scrollbar-width:none}
+  .sidebar .nav-button{font-size:10px;padding:5px 8px;min-height:29px}
+  .sidebar .nav-icon{display:inline-block;width:14px;font-size:13px}
+  .sidebar .side-label,.sidebar .side-bottom{display:none}
+  .main{width:100%;height:100%;min-height:0}
+  .topbar{height:39px;flex-basis:39px;padding:0 10px}
+  .topbar-right{gap:6px}
+  .topbar-right .small-label{display:none}
+  .topbar-right .secondary{padding:5px 7px;font-size:10px}
+  .content{padding:8px 9px}
+  body[data-view="studio"] .content{padding:6px 8px}
+  .studio-workspace{gap:5px;grid-template-rows:auto auto minmax(0,1fr) minmax(110px,26%) 0px}
+  .studio-toolbar{flex-direction:row;align-items:center;min-height:35px;gap:5px}
+  .studio-square-icon{height:29px;width:29px}
+  .studio-title h1{font-size:15px;white-space:nowrap}
+  .studio-toolbar-actions{margin-left:auto}
+  .studio-toolbar-actions select{max-width:95px;font-size:10px;padding:6px}
+  .studio-toolbar-actions .studio-run{min-width:0;padding:6px 8px;font-size:10px}
+  .studio-stepper{height:23px;min-height:23px;font-size:9px;justify-content:flex-start}
+  .studio-stepper b{width:17px;height:17px}
+  .studio-columns{grid-template-columns:repeat(4,minmax(270px,83vw));gap:7px}
+  .studio-columns>.studio-panel{padding:9px}
+  .studio-statusline{display:none}
+  .studio-output-tab{padding:0 10px;font-size:10px}
+  .studio-output-tabs{min-height:29px;flex-basis:29px}
+  .music-dna-grid{flex-basis:35%}
+}
+@media(max-height:690px){
+  .topbar{height:44px;flex-basis:44px}
+  .studio-workspace{grid-template-rows:auto auto minmax(0,1fr) minmax(110px,26%) auto;gap:5px}
+  .studio-toolbar{min-height:34px}
+  .studio-stepper{height:20px}
+  .studio-title h1{font-size:17px}
+  .studio-title p{display:none}
+  .studio-statusline{display:none}
+}
+@media(max-width:700px) and (max-height:690px){
+  .studio-workspace{grid-template-rows:auto auto minmax(0,1fr) minmax(90px,24%) 0px}
+}
