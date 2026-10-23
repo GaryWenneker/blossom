@@ -17,10 +17,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - run: bash -n setup.sh
       - run: npm run check
       - run: npm test
+      - name: Real FFmpeg Music DNA smoke test
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+          fi
+          node --input-type=module -e "import { smokeAudio } from './scripts/setup-blossom.mjs'; const result = await smokeAudio(); console.log(result);"
       - name: Repository secret safety check
         run: |
           if git ls-files | grep -E '(^|/)(\.env$|\.data/|.*\.db$)'; then
             echo "Unexpected secret or local database committed"; exit 1
           fi
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Ratatui installer compiles
+        run: cargo check --manifest-path setup/ratatui-installer/Cargo.toml
