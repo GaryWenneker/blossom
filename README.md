@@ -127,3 +127,7 @@ Spotify currently counts a song stream after **30 seconds played**. That does no
 **What still needs authorized provider integration:** Direct Suno generation/download under your account, automatic distributor media creation/upload, Spotify for Artists portrait publication, and durable background artwork jobs. The linked artist image can be prepared for Spotify but is not automatically posted there. Album art is linked to the Blossom project; it must still pass rights/artwork review before distributor submission.
 
 Store `.data/blossom.db` and `.data/assets` securely. Neither audio nor model files belong in the public repository.
+
+## Music DNA reference library (initial implementation)
+
+Reference recordings can be saved as versioned, indexed musical DNA profiles, searched by full text and instrument/genre/mood/vocal facets, and enqueued for future bulk audio analysis. REST endpoints are protected by the existing browser session and a separate optional MCP endpoint uses read/write bearer tokens. **Automatic audio analysis and the PostgreSQL cutover are not yet implemented.** See [Music DNA documentation](docs/MUSIC_DNA.md) and [PostgreSQL schema](db/postgres/001_music_dna.sql).

@@ -1,0 +1,303 @@
+import { randomUUID } from "node:crypto";
+import { DomainError } from "./domain.mjs";
+
+const timestamp = () => new Date().toISOString();
+const toJson = value => JSON.stringify(value);
+const fromJson = value => value ? JSON.parse(value) : null;
+const UUID = /^[a-f0-9-]{36}$/i;
+function text(value, label, max = 300, required = false) {
+  if (value == null && !required) return "";
+  if (typeof value !== "string" || (required && !value.trim()) || value.length > max) {
+    throw new DomainError(label + " must be text with at most " + max + " characters");
+  }
+  return value.trim();
+}
+function list(value, label, max = 32) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > max) throw new DomainError("Invalid " + label);
+  return value.map(v => text(v, label + " item", 120, true));
+}
+function optionalNumber(value, label, min, max) {
+  if (value == null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
+    throw new DomainError("Invalid " + label);
+  return value;
+}
+function httpUrl(value) {
+  const result = text(value, "Source URL", 2000);
+  if (!result) return "";
+  let url;
+  try { url = new URL(result); } catch { throw new DomainError("Invalid source URL"); }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+    throw new DomainError("Only public HTTP(S) source URLs are allowed");
+  return url.toString();
+}
+function ensureId(value) {
+  if (typeof value !== "string" || !UUID.test(value)) throw new DomainError("Invalid ID");
+  return value;
+}
+function checkShape(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new DomainError("Invalid " + label);
+  return value;
+}
+function analysisInput(incoming) {
+  const data = checkShape(incoming, "DNA analysis");
+  const genres = list(data.genres, "genres");
+  const moods = list(data.moods, "moods");
+  const instruments = Array.isArray(data.instruments) ? data.instruments : [];
+  if (instruments.length > 48) throw new DomainError("Too many instruments");
+  const normalizedInstruments = instruments.map(instrument => {
+    checkShape(instrument, "instrument");
+    return { name: text(instrument.name, "Instrument name", 100, true),
+      technique: text(instrument.technique, "Playing technique", 200),
+      timbre: text(instrument.timbre, "Instrument timbre", 200),
+      role: text(instrument.role, "Instrument role", 140),
+      confidence: optionalNumber(instrument.confidence, "instrument confidence", 0, 1) };
+  });
+  const vocals = data.vocals == null ? {} : checkShape(data.vocals, "vocals");
+  const production = data.production == null ? {} : checkShape(data.production, "production");
+  const sections = Array.isArray(data.sections) ? data.sections : [];
+  if (sections.length > 256) throw new DomainError("Too many sections");
+  let previousStart = -1;
+  const normalizedSections = sections.map(section => {
+    checkShape(section, "section");
+    const startMs = optionalNumber(section.startMs, "section start", 0, 86_400_000);
+    const endMs = optionalNumber(section.endMs, "section end", 1, 86_400_000);
+    if (startMs == null || endMs == null || endMs <= startMs || startMs < previousStart)
+      throw new DomainError("Sections must have ordered, valid time boundaries");
+    previousStart = startMs;
+    return { startMs, endMs, label: text(section.label, "Section label", 100, true),
+      instruments: list(section.instruments, "section instruments", 48),
+      techniques: list(section.techniques, "section techniques", 48),
+      notes: text(section.notes, "Section notes", 1200),
+      confidence: optionalNumber(section.confidence, "section confidence", 0, 1) };
+  });
+  const durationMs = optionalNumber(data.durationMs, "duration", 1000, 86_400_000);
+  if (durationMs != null && normalizedSections.some(s => s.endMs > durationMs))
+    throw new DomainError("Section extends beyond recording duration");
+  const normalized = {
+    schemaVersion: 1, bpm: optionalNumber(data.bpm, "BPM", 20, 350),
+    musicalKey: text(data.musicalKey, "Musical key", 32),
+    timeSignature: text(data.timeSignature, "Time signature", 20),
+    durationMs, genres, moods, instruments: normalizedInstruments,
+    vocals: {
+      type: text(vocals.type, "Vocal type", 80),
+      register: text(vocals.register, "Vocal register", 100),
+      timbre: text(vocals.timbre, "Vocal timbre", 250),
+      delivery: text(vocals.delivery, "Vocal delivery", 250),
+      harmonies: text(vocals.harmonies, "Harmonies", 250)
+    },
+    production: {
+      era: text(production.era, "Production era", 100),
+      texture: text(production.texture, "Production texture", 400),
+      stereo: text(production.stereo, "Stereo image", 300),
+      dynamics: text(production.dynamics, "Dynamics", 300),
+      effects: list(production.effects, "effects")
+    },
+    sections: normalizedSections,
+    summary: text(data.summary, "Summary", 3000),
+    analysisMethod: text(data.analysisMethod, "Analysis method", 100, true),
+    analyzer: text(data.analyzer, "Analyzer", 160, true),
+    confidence: optionalNumber(data.confidence, "confidence", 0, 1),
+    analyzedAt: timestamp()
+  };
+  if (toJson(normalized).length > 100_000) throw new DomainError("Analysis exceeds size limit", 413);
+  return normalized;
+}
+function searchable(profile, analysis) {
+  return [profile.artist, profile.title, analysis.summary, ...analysis.genres, ...analysis.moods,
+    ...analysis.instruments.flatMap(i => [i.name, i.technique, i.timbre, i.role]),
+    ...Object.values(analysis.vocals), analysis.production.era, analysis.production.texture,
+    analysis.production.stereo, analysis.production.dynamics, ...analysis.production.effects,
+    ...analysis.sections.flatMap(s => [s.label, s.notes, ...s.instruments, ...s.techniques])]
+    .filter(Boolean).join(" ");
+}
+function fullTextTerms(value) {
+  const words = text(value, "Search query", 180).toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  return words.slice(0, 12).map(word => '"' + word + '"').join(" AND ");
+}
+
+export class MusicDNA {
+  constructor(store) {
+    this.store = store;
+    this.db = store.db;
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS music_dna_profiles (" +
+        "id TEXT PRIMARY KEY, artist TEXT NOT NULL, title TEXT NOT NULL, release_year INTEGER," +
+        "source_url TEXT NOT NULL DEFAULT '', source_kind TEXT NOT NULL," +
+        "recording_sha256 TEXT NOT NULL DEFAULT '', source_note TEXT NOT NULL DEFAULT ''," +
+        "current_analysis_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);" +
+      "CREATE UNIQUE INDEX IF NOT EXISTS music_dna_source_unique ON music_dna_profiles(source_url) WHERE source_url != '';" +
+      "CREATE UNIQUE INDEX IF NOT EXISTS music_dna_hash_unique ON music_dna_profiles(recording_sha256) WHERE recording_sha256 != '';" +
+      "CREATE INDEX IF NOT EXISTS music_dna_artist_title ON music_dna_profiles(artist COLLATE NOCASE, title COLLATE NOCASE);" +
+      "CREATE TABLE IF NOT EXISTS music_dna_analyses (" +
+        "id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES music_dna_profiles(id) ON DELETE CASCADE," +
+        "version INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(profile_id,version));" +
+      "CREATE TABLE IF NOT EXISTS music_dna_sections (" +
+        "id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL REFERENCES music_dna_analyses(id) ON DELETE CASCADE," +
+        "ordinal INTEGER NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL," +
+        "label TEXT NOT NULL, instruments TEXT NOT NULL, techniques TEXT NOT NULL, notes TEXT NOT NULL);" +
+      "CREATE INDEX IF NOT EXISTS music_dna_section_timeline ON music_dna_sections(analysis_id,start_ms);" +
+      "CREATE TABLE IF NOT EXISTS music_dna_features (" +
+        "profile_id TEXT NOT NULL REFERENCES music_dna_profiles(id) ON DELETE CASCADE," +
+        "kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(profile_id,kind,value));" +
+      "CREATE INDEX IF NOT EXISTS music_dna_feature_lookup ON music_dna_features(kind,value,profile_id);" +
+      "CREATE VIRTUAL TABLE IF NOT EXISTS music_dna_fts USING fts5(profile_id UNINDEXED, artist, title, description, tokenize='unicode61');" +
+      "CREATE TABLE IF NOT EXISTS music_dna_jobs (" +
+        "id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES music_dna_profiles(id)," +
+        "status TEXT NOT NULL, worker TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0," +
+        "leased_until TEXT, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);" +
+      "CREATE INDEX IF NOT EXISTS music_dna_jobs_status ON music_dna_jobs(status,created_at);"
+    );
+  }
+  create(input = {}) {
+    checkShape(input, "reference");
+    const artist = text(input.artist, "Artist", 180, true);
+    const title = text(input.title, "Title", 180, true);
+    const sourceUrl = httpUrl(input.sourceUrl);
+    const sourceKind = text(input.sourceKind || "metadata", "Source kind", 50);
+    if (!["metadata", "local-audio", "licensed-audio", "manual"].includes(sourceKind))
+      throw new DomainError("Invalid source kind");
+    const hash = text(input.recordingSha256, "Recording SHA-256", 64);
+    if (hash && !/^[0-9a-f]{64}$/i.test(hash)) throw new DomainError("Invalid recording SHA-256");
+    const releaseYear = optionalNumber(input.releaseYear, "release year", 1850, 2200);
+    if (releaseYear != null && !Number.isInteger(releaseYear)) throw new DomainError("Invalid release year");
+    let existing;
+    if (hash) existing = this.db.prepare("SELECT id FROM music_dna_profiles WHERE recording_sha256=?").get(hash.toLowerCase());
+    if (!existing && sourceUrl) existing = this.db.prepare("SELECT id FROM music_dna_profiles WHERE source_url=?").get(sourceUrl);
+    if (existing) return { ...this.get(existing.id), duplicate: true };
+    const id = randomUUID(), created = timestamp();
+    this.db.prepare(
+      "INSERT INTO music_dna_profiles(id,artist,title,release_year,source_url,source_kind,recording_sha256,source_note,created_at,updated_at)" +
+      " VALUES(?,?,?,?,?,?,?,?,?,?)"
+    ).run(id, artist, title, releaseYear, sourceUrl, sourceKind, hash.toLowerCase(),
+      text(input.sourceNote, "Source note", 800), created, created);
+    this.db.prepare("INSERT INTO music_dna_fts(profile_id,artist,title,description) VALUES(?,?,?,?)")
+      .run(id, artist, title, "");
+    this.store.audit("created", "music_dna_reference", id, { artist, title });
+    return this.get(id);
+  }
+  get(id) {
+    ensureId(id);
+    const p = this.db.prepare("SELECT * FROM music_dna_profiles WHERE id=?").get(id);
+    if (!p) throw new DomainError("Music DNA reference not found", 404);
+    const analysis = p.current_analysis_id ?
+      this.db.prepare("SELECT id,version,payload FROM music_dna_analyses WHERE id=?").get(p.current_analysis_id) : null;
+    return { id: p.id, artist: p.artist, title: p.title, releaseYear: p.release_year,
+      sourceUrl: p.source_url, sourceKind: p.source_kind, recordingSha256: p.recording_sha256,
+      sourceNote: p.source_note, createdAt: p.created_at, updatedAt: p.updated_at,
+      analysisVersion: analysis?.version || 0, analysis: analysis ? fromJson(analysis.payload) : null };
+  }
+  versions(profileId) {
+    this.get(profileId);
+    return this.db.prepare("SELECT id,version,created_at FROM music_dna_analyses WHERE profile_id=? ORDER BY version DESC")
+      .all(profileId).map(row => ({ id: row.id, version: row.version, createdAt: row.created_at }));
+  }
+  saveAnalysis(profileId, input) {
+    const profile = this.get(profileId), data = analysisInput(input), analysisId = randomUUID();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const version = (this.db.prepare("SELECT COALESCE(MAX(version),0)+1 AS n FROM music_dna_analyses WHERE profile_id=?")
+        .get(profileId).n);
+      this.db.prepare("INSERT INTO music_dna_analyses VALUES(?,?,?,?,?)")
+        .run(analysisId, profileId, version, toJson(data), timestamp());
+      const insert = this.db.prepare("INSERT INTO music_dna_sections VALUES(?,?,?,?,?,?,?,?,?)");
+      data.sections.forEach((s, ordinal) => insert.run(randomUUID(), analysisId, ordinal, s.startMs,
+        s.endMs, s.label, toJson(s.instruments), toJson(s.techniques), s.notes));
+      this.db.prepare("UPDATE music_dna_profiles SET current_analysis_id=?,updated_at=? WHERE id=?")
+        .run(analysisId, timestamp(), profileId);
+      this.db.prepare("DELETE FROM music_dna_fts WHERE profile_id=?").run(profileId);
+      this.db.prepare("INSERT INTO music_dna_fts(profile_id,artist,title,description) VALUES(?,?,?,?)")
+        .run(profileId, profile.artist, profile.title, searchable(profile, data));
+      this.db.prepare("DELETE FROM music_dna_features WHERE profile_id=?").run(profileId);
+      const feature = this.db.prepare("INSERT OR IGNORE INTO music_dna_features VALUES(?,?,?)");
+      for (const genre of data.genres) feature.run(profileId, "genre", genre.toLocaleLowerCase());
+      for (const mood of data.moods) feature.run(profileId, "mood", mood.toLocaleLowerCase());
+      for (const instrument of data.instruments) feature.run(profileId, "instrument", instrument.name.toLocaleLowerCase());
+      if (data.vocals.type) feature.run(profileId, "vocal", data.vocals.type.toLocaleLowerCase());
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+    this.store.audit("analysis_saved", "music_dna_reference", profileId, { analysisId, analyzer: data.analyzer });
+    return this.get(profileId);
+  }
+  search(options = {}) {
+    checkShape(options, "search options");
+    const limit = options.limit == null ? 20 : optionalNumber(options.limit, "limit", 1, 100);
+    const offset = options.offset == null ? 0 : optionalNumber(options.offset, "offset", 0, 10_000_000);
+    if (!Number.isInteger(limit) || !Number.isInteger(offset)) throw new DomainError("Invalid pagination");
+    const clauses = [], bindings = [];
+    const term = fullTextTerms(options.q || "");
+    if (term) { clauses.push("music_dna_fts MATCH ?"); bindings.push(term); }
+    for (const [kind, value] of [["genre", options.genre], ["mood", options.mood],
+      ["instrument", options.instrument], ["vocal", options.vocal]]) {
+      if (value) {
+        clauses.push("EXISTS (SELECT 1 FROM music_dna_features f WHERE f.profile_id=p.id AND f.kind=? AND f.value=?)");
+        bindings.push(kind, text(value, kind, 120).toLocaleLowerCase());
+      }
+    }
+    const sql = "SELECT p.id,p.artist,p.title,p.release_year,p.source_kind,p.updated_at," +
+      "a.version,a.payload FROM music_dna_profiles p " +
+      "JOIN music_dna_fts ON music_dna_fts.profile_id=p.id " +
+      "LEFT JOIN music_dna_analyses a ON a.id=p.current_analysis_id " +
+      (clauses.length ? "WHERE " + clauses.join(" AND ") + " " : "") +
+      "ORDER BY " + (term ? "bm25(music_dna_fts), " : "") + "p.updated_at DESC LIMIT ? OFFSET ?";
+    return this.db.prepare(sql).all(...bindings, limit, offset).map(row => ({
+      id: row.id, artist: row.artist, title: row.title, releaseYear: row.release_year,
+      sourceKind: row.source_kind, updatedAt: row.updated_at,
+      analysisVersion: row.version || 0, analysis: row.payload ? fromJson(row.payload) : null
+    }));
+  }
+  importBatch(items) {
+    if (!Array.isArray(items) || items.length < 1 || items.length > 500)
+      throw new DomainError("Import batch must contain 1–500 references");
+    const result = [];
+    for (const item of items) {
+      const profile = this.create(item);
+      const pending = this.db.prepare(
+        "SELECT id FROM music_dna_jobs WHERE profile_id=? AND status IN ('queued','running')").get(profile.id);
+      let jobId = pending?.id;
+      if (!jobId && !profile.analysisVersion) {
+        jobId = randomUUID();
+        this.db.prepare("INSERT INTO music_dna_jobs(id,profile_id,status,created_at,updated_at) VALUES(?,?,?,?,?)")
+          .run(jobId, profile.id, "queued", timestamp(), timestamp());
+      }
+      result.push({ profileId: profile.id, jobId: jobId || null, duplicate: !!profile.duplicate });
+    }
+    return result;
+  }
+  jobs(status = "", limit = 50) {
+    if (status && !["queued", "running", "completed", "failed"].includes(status))
+      throw new DomainError("Invalid job status");
+    const rows = status
+      ? this.db.prepare("SELECT * FROM music_dna_jobs WHERE status=? ORDER BY created_at LIMIT ?").all(status, limit)
+      : this.db.prepare("SELECT * FROM music_dna_jobs ORDER BY created_at DESC LIMIT ?").all(limit);
+    return rows.map(r => ({ id:r.id, profileId:r.profile_id, status:r.status, worker:r.worker,
+      attempts:r.attempts, error:r.error, createdAt:r.created_at, updatedAt:r.updated_at }));
+  }
+  claimJob(worker = "blossom-local") {
+    worker = text(worker, "Worker", 100, true);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const queued = this.db.prepare(
+        "SELECT id,profile_id FROM music_dna_jobs WHERE status='queued' OR " +
+        "(status='running' AND leased_until < ?) ORDER BY created_at LIMIT 1").get(timestamp());
+      if (!queued) { this.db.exec("COMMIT"); return null; }
+      const leased = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      this.db.prepare("UPDATE music_dna_jobs SET status='running',worker=?,attempts=attempts+1,leased_until=?,updated_at=? WHERE id=?")
+        .run(worker, leased, timestamp(), queued.id);
+      this.db.exec("COMMIT");
+      return { jobId: queued.id, profile: this.get(queued.profile_id), leaseUntil: leased };
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
+  completeJob(jobId, analysis, error = "") {
+    ensureId(jobId);
+    const job = this.db.prepare("SELECT * FROM music_dna_jobs WHERE id=?").get(jobId);
+    if (!job) throw new DomainError("Job not found", 404);
+    if (job.status !== "running") throw new DomainError("Job must be claimed before completion", 409);
+    let profile;
+    if (!error) profile = this.saveAnalysis(job.profile_id, analysis);
+    this.db.prepare("UPDATE music_dna_jobs SET status=?,error=?,leased_until=NULL,updated_at=? WHERE id=?")
+      .run(error ? "failed" : "completed", text(error, "Job error", 800), timestamp(), jobId);
+    return { jobId, status: error ? "failed" : "completed", profile: profile || null };
+  }
+}
