@@ -51,3 +51,16 @@ For monitoring, set `BLOSSOM_MONITOR_ENABLED=true`; confirm changes by reviewing
 8. Before distributing, do originality, licensing, name/likeness and metadata reviews. Spotify playlist pitching is manual and not guaranteed.
 
 **Host caveat:** Draw Things executes on the server host, not the browser user's machine. For the Mac GPU to be used, run this Node app locally on that Mac. Limit file uploads to 40 MB; keep the local .data directory private and back it up.
+
+## Existing Suno Google and Spotify Facebook account sign-ins
+
+In **Connections → Suno · Google**, open the official Suno site, and choose the same Google account used for the existing Suno music library. Suno controls that single-sign-on flow. Browser sign-in is **not** an OAuth or API grant to Blossom; an official, separately authorized Suno API key is still required for future automatic song generation. Do not copy Google/Suno passwords, browser session cookies, Google access tokens or browser credentials into Blossom. Existing user-owned Suno exports can be imported manually through the existing Studio audio upload.
+
+In **Connections → Spotify · Facebook**, create/configure a Spotify developer application (this needs an eligible Spotify developer account), save its Client ID and configure its redirect URI to exactly \`http://127.0.0.1:8787/auth/spotify/callback\` (or the configured HTTPS public origin). Choose **Connect Spotify · Choose Facebook**, which invokes Spotify's OAuth Authorization Code PKCE with \`show_dialog=true\`. On Spotify's own sign-in page, choose **Continue with Facebook** if it remains an enabled sign-in method for your original Spotify account. No Facebook credential or Facebook API token passes through Blossom. Once approved, Blossom verifies the Spotify user profile and saves the Spotify refresh token in its AES-encrypted local vault. Run **Verify connected Spotify account** to check the account identity.
+
+Spotify states that existing Facebook login may be used but Facebook cannot currently be added as a new Spotify sign-in method when not already active. A social sign-in method cannot be forced with a Facebook-specific OAuth query parameter: the official Spotify screen makes that choice. The original account is preserved when the correct login is used. Google and Facebook sign-in alone cannot grant Blossom access to songs or recordings from Suno/Spotify.
+
+References:
+- Suno SSO: https://help.suno.com/en/articles/2553409
+- Spotify Facebook login: https://support.spotify.com/nl/article/facebook-login-help/
+- Spotify PKCE: https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow

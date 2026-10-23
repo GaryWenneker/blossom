@@ -91,7 +91,10 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       }
       if(path==="/auth/session"&&req.method==="GET")return reply(res,200,{authenticated:true,username});
       if(path==="/auth/spotify/start"&&req.method==="GET"){
-        res.writeHead(303,{Location:spotify.start(sessionHash),"Cache-Control":"no-store"});res.end();return;
+        // Account selection remains on Spotify's own login page, where an existing
+        // Facebook login method can be chosen. Never request Facebook credentials.
+        const chooseAccount=parsedUrl.searchParams.get("choose")==="1";
+        res.writeHead(303,{Location:spotify.start(sessionHash,{chooseAccount}),"Cache-Control":"no-store"});res.end();return;
       }
       if(path==="/auth/spotify/callback"&&req.method==="GET"){
         if(parsedUrl.searchParams.has("error"))throw new DomainError("Spotify authorization was cancelled",400);

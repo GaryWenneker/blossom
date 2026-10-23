@@ -123,28 +123,36 @@ function genres(){
 }
 function connections(){
  const c=state.data.connections||{};
- return header("Account connections","Link Suno and Spotify securely without sharing website passwords with Blossom.")+
- (!c.vaultReady?'<div class="warning-banner">The encrypted vault is locked. Set BLOSSOM_VAULT_KEY on the server before saving credentials or connecting Spotify.</div>':"")+
- '<div class="grid2"><section class="panel"><div class="panel-header"><h2>Suno</h2>'+badge(c.suno_api_key?.configured?"configured":"not connected")+'</div>'+
- '<p class="hint">Store your Suno account email and, if Suno has granted API access, its official API key. The key is AES-256-GCM encrypted. Your account password is not requested or stored. Generation remains manual until API capabilities are verified.</p>'+
- '<form id="suno-connection-form" class="stack"><div class="field"><label for="suno-email">Account email</label><input id="suno-email" type="email" name="email" autocomplete="email" value="'+e(c.sunoEmail||"")+'" placeholder="you@example.com"></div>'+
- '<div class="field"><label for="suno-token">Suno API key (optional)</label><input id="suno-token" type="password" name="apiKey" autocomplete="off" placeholder="'+(c.suno_api_key?.configured?"Saved key is hidden · enter to replace":"Paste official Suno Platform API key")+'"></div>'+
- '<div class="actions"><button class="primary" '+(!c.vaultReady?"disabled":"")+' type="submit">Save Suno connection</button>'+(c.suno_api_key?.configured?'<button type="button" data-action="remove-suno" class="danger">Remove key</button>':"")+'</div></form>'+
- '<p class="small">Official developer portal: <a href="https://platform.suno.com" target="_blank" rel="noopener noreferrer">platform.suno.com</a></p></section>'+
- '<section class="panel"><div class="panel-header"><h2>Spotify</h2>'+badge(c.spotify_refresh_token?.configured?"connected":"not connected")+'</div>'+
- '<p class="hint">Register a Spotify Web API app, save its Client ID, then authorize via Spotify. Blossom receives an encrypted refresh token. Your Spotify password stays with Spotify. This connection supports account data, not direct audio distribution.</p>'+
- '<form id="spotify-connection-form" class="stack"><div class="field"><label for="spotify-client-id">Spotify developer Client ID</label><input id="spotify-client-id" type="text" name="clientId" spellcheck="false" autocomplete="off" value="'+e(c.spotifyClientId||"")+'" placeholder="32-character developer Client ID" maxlength="32"></div>'+
+ const hasSpotifyApp=!!c.spotifyClientId;
+ return header("Account connections","Use your existing Google login for Suno and Facebook login for Spotify. Blossom never handles your social-network passwords.")+
+ (!c.vaultReady?'<div class="warning-banner">The encrypted vault is locked. Set BLOSSOM_VAULT_KEY on the server before saving API credentials or connecting Spotify.</div>':"")+
+ '<div class="grid2"><section class="panel"><div class="panel-header"><h2>Suno · Google</h2>'+badge(c.suno_api_key?.configured?"API key saved":"Browser sign-in")+'</div>'+
+ '<p class="hint">Your Suno account uses Google single sign-on. Sign in on the official Suno website with the <strong>same Google account</strong> you used to create your Suno library. You do not need a separate Suno password.</p>'+
+ '<div class="actions"><a href="https://suno.com/" target="_blank" rel="noopener noreferrer" class="primary" style="text-decoration:none">Open Suno · Continue with Google ↗</a></div>'+
+ '<p class="hint">This opens your Suno browser session. <strong>It does not connect your Google account to Blossom</strong> and does not grant Blossom API access. Import exported music into Blossom using your existing audio workflow. Automatic Suno generation requires separately authorized API access.</p>'+
+ '<details><summary>Optional developer API credentials</summary><p class="hint">Only use a genuine API key issued for your Suno account, if available. Do not paste a Google token, browser cookie, Suno website password or social-login credentials here.</p>'+
+ '<form id="suno-connection-form" class="stack"><div class="field"><label for="suno-email">Account email (optional account label)</label><input id="suno-email" type="email" name="email" autocomplete="email" value="'+e(c.sunoEmail||"")+'" placeholder="Google account email"></div>'+
+ '<div class="field"><label for="suno-token">Official Suno API key (optional)</label><input id="suno-token" type="password" name="apiKey" autocomplete="off" placeholder="'+(c.suno_api_key?.configured?"Saved key is hidden · enter to replace":"Only an officially issued API key")+'"></div>'+
+ '<div class="actions"><button class="secondary" '+(!c.vaultReady?"disabled":"")+' type="submit">Save API credentials</button>'+(c.suno_api_key?.configured?'<button type="button" data-action="remove-suno" class="danger">Remove API key</button>':"")+'</div></form>'+
+ '<p class="small">Developer portal: <a href="https://platform.suno.com" target="_blank" rel="noopener noreferrer">platform.suno.com</a></p></details></section>'+
+ '<section class="panel"><div class="panel-header"><h2>Spotify · Facebook</h2>'+badge(c.spotify_refresh_token?.configured?"authorized":"not connected")+'</div>'+
+ '<p class="hint">Blossom uses Spotify’s official OAuth authorization. On the Spotify sign-in page choose <strong>Continue with Facebook</strong>, if your existing Spotify account still offers it. Your Facebook password stays with Facebook and Spotify, not Blossom.</p>'+
+ '<p class="hint">A Spotify developer app <strong>Client ID</strong> is still required for API authorization. It is an application ID, not your Facebook login. Create one at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Spotify for Developers ↗</a>, and register the exact redirect URI shown below.</p>'+
+ '<form id="spotify-connection-form" class="stack"><div class="field"><label for="spotify-client-id">Spotify developer Client ID</label><input id="spotify-client-id" type="text" name="clientId" spellcheck="false" autocomplete="off" value="'+e(c.spotifyClientId||"")+'" placeholder="32-character application Client ID" maxlength="32"></div>'+
  '<button type="submit" class="secondary">Save Client ID</button></form>'+
- '<div class="actions" style="margin-top:14px"><a class="primary" style="text-decoration:none" href="/auth/spotify/start">Connect with Spotify ↗</a>'+(c.spotify_refresh_token?.configured?'<button data-action="remove-spotify" class="danger">Disconnect Spotify</button>':"")+'</div>'+
- (c.spotify_refresh_token?.configured?'<p class="small">Authorized account: '+e(c.spotify_refresh_token.label)+'</p><button data-action="verify-spotify" class="secondary" type="button">Verify Spotify connection</button><p class="hint">Spotify requires reauthorization after six months.</p>':"")+
- '<p class="small">Set the Spotify developer redirect URL exactly to <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section></div>'+
+ '<div class="actions" style="margin-top:14px">'+
+ (hasSpotifyApp?'<a class="primary" style="text-decoration:none" href="/auth/spotify/start?choose=1">Connect Spotify · Choose Facebook ↗</a>':'<span class="hint">Save your Spotify Client ID to enable sign-in.</span>')+
+ (c.spotify_refresh_token?.configured?'<button data-action="remove-spotify" class="danger">Disconnect Spotify</button>':"")+'</div>'+
+ (c.spotify_refresh_token?.configured?'<p class="small">Authorized Spotify profile: '+e(c.spotify_refresh_token.label)+'</p><button data-action="verify-spotify" class="secondary" type="button">Verify connected Spotify account</button>':"")+
+ '<p class="small">If Spotify does not show Facebook, check <a href="https://support.spotify.com/nl/article/facebook-login-help/" target="_blank" rel="noopener noreferrer">Spotify’s Facebook login help</a>. Facebook cannot be added as a new Spotify login method if it is no longer enabled for your account.</p>'+
+ '<p class="small">Register this exact redirect URL in Spotify for Developers: <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section></div>'+
  '<div class="panel"><div class="panel-header"><h2>ChatGPT-powered creation via OpenAI API</h2>'+badge(c.openai_api_key?.configured?"configured":"not connected")+'</div>'+
  '<p class="hint">Connect your own OpenAI API key. Your ChatGPT website password or subscription is not an API credential. Requests use separate API billing. The API key is encrypted on this server and never returned to the browser.</p>'+
  '<form id="openai-connection-form" class="fields"><div class="field"><label for="openai-key">OpenAI API key</label><input id="openai-key" name="apiKey" type="password" autocomplete="off" placeholder="Enter OpenAI API key" required></div>'+
  '<div class="field"><button type="submit" class="primary" '+(!c.vaultReady?"disabled":"")+' >Save encrypted key</button></div></form>'+
  (c.openai_api_key?.configured?'<button class="danger" data-action="remove-openai">Remove key</button>':"")+
  '<p class="hint">Configure model and spend limits on the server. The default model can be changed with BLOSSOM_OPENAI_MODEL.</p></div>'+
- '<div class="panel"><h2>Connection security</h2><p class="muted">Secrets are encrypted at rest. Blossom never returns a saved API key or OAuth refresh token to the browser. Your credentials remain tied to this local server and its separately stored encryption key. Back up both safely; losing the key makes the secrets unrecoverable.</p></div>';
+ '<div class="panel"><h2>Connection security</h2><p class="muted">Blossom never asks for a Google or Facebook password. Spotify OAuth refresh credentials and any genuine provider API keys are encrypted at rest. A successful Suno browser login is separate from API integration; Blossom never claims an unverified connection.</p></div>';
 }
 
 function render(){
