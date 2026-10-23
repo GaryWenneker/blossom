@@ -230,7 +230,8 @@ async function configureLaunchd(envFile) {
       await import("node:fs/promises").then(fs => fs.rename(temp, target));
     }
     if (!await isLoaded()) await exec("launchctl", ["bootstrap", gui, target], { timeout: 15000 });
-    outcome.push({ label, state: "loaded" });
+    if (!await isLoaded()) throw Error("launchd bootstrap returned successfully but service " + label + " is not registered in " + gui + ". Check macOS launchd session and .data/logs/" + (worker ? "worker.log" : "server.log"));
+    outcome.push({ label, state: "registered" });
   }
   return outcome;
 }
@@ -321,7 +322,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
   });
   await step("Server health", async () => {
     if (noServices) return "not started (--no-services)";
-    for (let attempt = 0; attempt < (check ? 1 : 20); attempt++) {
+    for (let attempt = 0; attempt < (check ? 1 : 60); attempt++) {
       if (await checkHealth()) return "http://127.0.0.1:8787/login";
       if (!check) await new Promise(resolve => setTimeout(resolve, 500));
     }
