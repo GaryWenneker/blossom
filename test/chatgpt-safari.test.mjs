@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { Store } from "../src/storage.mjs";
 import { createAppServer } from "../src/server.mjs";
-import { chatGptStudioPrompt, submitChatGptStudioInSafari } from "../src/native-browser.mjs";
+import { chatGptStudioPrompt, submitChatGptStudioInSafari, submitChatGptStudioInBrowser } from "../src/native-browser.mjs";
 
 const projectId="9b5989a0-c982-45ce-a860-ed5466511227";
 test("Safari handoff uses only project ID and never reads ChatGPT output or login data",async()=>{
@@ -25,6 +25,11 @@ test("Safari handoff uses only project ID and never reads ChatGPT output or logi
   assert.equal(new URL(calls[0].args[1]).origin,"https://chatgpt.com");
   assert.equal(new URL(calls[0].args[1]).searchParams.get("prompt"),prompt);
   assert.doesNotMatch(JSON.stringify(calls),/cookie|Authorization|api_key/i);
+  assert.match(calls[0].args[2],/b\\.click\\(\\)/);
+  const chrome=await submitChatGptStudioInBrowser(projectId,{platform:"darwin",browser:"chrome",launcher:runner});
+  assert.equal(chrome.mode,"chrome-ui");
+  assert.ok(calls[1].args[0].endsWith("/scripts/chatgpt-chrome.applescript"));
+  assert.equal(calls[1].args[1],calls[0].args[1]);
   await assert.rejects(submitChatGptStudioInSafari("../evil",{platform:"darwin",launcher:runner}),/Invalid Studio project/);
   await assert.rejects(submitChatGptStudioInSafari(projectId,{platform:"linux",launcher:runner}),/macOS only/);
   await assert.rejects(submitChatGptStudioInSafari(projectId,{platform:"darwin",
@@ -62,5 +67,9 @@ test("Studio Safari ChatGPT handoff requires authenticated local session and con
   assert.equal(res.status,200);
   assert.equal((await res.json()).submitted,true);
   assert.equal(launches.length,1);
+  const chromeResponse=await post(path,{},cookie,{"user-agent":"Mozilla/5.0 Chrome/156.0.0.0"});
+  assert.equal(chromeResponse.status,200);
+  assert.equal(launches.length,2);
+  assert.ok(launches[1].args[0].endsWith("/scripts/chatgpt-chrome.applescript"));
   assert.equal((await post("/api/studio/projects/"+projectId+"/chatgpt-extract",{},cookie)).status,404);
 });
