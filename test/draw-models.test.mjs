@@ -5,8 +5,8 @@ import { PassThrough } from "node:stream";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PREFERRED_DRAW_MODEL, modelFromDownloadedList, verifyDrawModel,
-  listDownloadedDrawModels, validateDrawModelId } from "../src/draw-models.mjs";
+import { PREFERRED_DRAW_MODEL, DRAW_APP_MODELS_DIR, modelFromDownloadedList, verifyDrawModel,
+  listDownloadedDrawModels, validateDrawModelId, diagnoseDrawModel, summarizedModelIds } from "../src/draw-models.mjs";
 import { configureEnv, parseEnv } from "../scripts/setup-blossom.mjs";
 
 function cliRunner(message, code = 0) {
@@ -85,4 +85,48 @@ test("Draw Things missing CLI fails with actionable installation message", async
     return child;
   };
   await assert.rejects(listDownloadedDrawModels({runner}),/brew install draw-things-cli/);
+});
+
+test("Model diagnosis exposes available checkpoint IDs and the custom models directory", async () => {
+  const dir="/Users/example/Draw Things Custom Models";
+  let checkedEnv;
+  const runner=(command,args,options)=>{
+    assert.equal(command,"draw-things-cli");
+    assert.deepEqual(args,["models","list","--downloaded-only"]);
+    checkedEnv=options.env.DRAWTHINGS_MODELS_DIR;
+    return cliRunner("z_image_turbo_q8p.ckpt downloaded=yes\\nother_sdxl_v2.safetensors downloaded=yes")(command,args,options);
+  };
+  const info=await diagnoseDrawModel(PREFERRED_DRAW_MODEL,{modelsDir:dir,runner});
+  assert.equal(info.valid,false);
+  assert.equal(info.modelsDir,dir);
+  assert.equal(checkedEnv,dir);
+  assert.deepEqual(info.available,["z_image_turbo_q8p.ckpt","other_sdxl_v2.safetensors"]);
+  assert.equal(info.inventoryEmpty,false);
+  await assert.rejects(
+    verifyDrawModel(PREFERRED_DRAW_MODEL,{modelsDir:dir,runner}),
+    error=>error.message.includes("z_image_turbo_q8p.ckpt") && error.message.includes(dir)
+  );
+});
+
+test("Empty downloaded model inventory gives actionable warning context without choosing an unrelated model",async()=>{
+  const info=await diagnoseDrawModel(PREFERRED_DRAW_MODEL,{runner:cliRunner("")});
+  assert.equal(info.valid,false);
+  assert.equal(info.inventoryEmpty,true);
+  assert.equal(info.resolved,null);
+  assert.ok(DRAW_APP_MODELS_DIR.endsWith("/Library/Containers/com.liuliu.draw-things/Data/Documents/Models"));
+  assert.deepEqual(summarizedModelIds("Filename Downloaded\\n"),[]);
+  await assert.rejects(
+    verifyDrawModel(PREFERRED_DRAW_MODEL,{runner:cliRunner("")}),
+    /CLI lists no downloaded checkpoint IDs/
+  );
+});
+
+test("Ratatui and setup understand optional Draw Things warnings without aborting the installation", async()=>{
+  const root=new URL("../",import.meta.url);
+  const script=await readFile(new URL("scripts/setup-blossom.mjs",root),"utf8");
+  const tui=await readFile(new URL("setup/ratatui-installer/src/main.rs",root),"utf8");
+  assert.match(script,/optionalWarnings\+\+/);
+  assert.match(script,/STEP\|.*WARN/);
+  assert.match(script,/optional: true/);
+  assert.match(tui,/result == "WARN"/);
 });
