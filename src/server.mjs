@@ -8,6 +8,7 @@ import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
 import { MusicDnaMCP } from "./music-dna-mcp.mjs";
+import { CloudflareAccess } from "./cloudflare-access.mjs";
 import { BlossomMcpOAuth } from "./mcp-oauth.mjs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -44,10 +45,13 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,localComposer=null,articleImporter=undefined,draw=null,sunoBrowser=null,connectedBrowsers=null,nativeBrowserOptions={},mcpOrigin=process.env.BLOSSOM_MCP_PUBLIC_URL||"",assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,localComposer=null,articleImporter=undefined,draw=null,sunoBrowser=null,connectedBrowsers=null,nativeBrowserOptions={},mcpOrigin=process.env.BLOSSOM_MCP_PUBLIC_URL||"",publicUiEnabled=process.env.BLOSSOM_PUBLIC_UI_ENABLED==="true",cloudflareAccess=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
+  const access=cloudflareAccess||new CloudflareAccess();
+  if(publicUiEnabled && (!mcpOrigin || !access.configured()))
+    throw Error("Public Studio requires BLOSSOM_MCP_PUBLIC_URL, BLOSSOM_CF_ACCESS_TEAM_DOMAIN and BLOSSOM_CF_ACCESS_AUD");
   const mcpOAuth=new BlossomMcpOAuth(store.db,{publicUrl:mcpOrigin,
     authenticate:(user,pass,ip)=>sessions.authenticate(user,pass,ip)});
   const vault=new Vault(store.db,vaultKey);
@@ -74,7 +78,12 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     // MCP/OAuth ONLY. Studio and administrator APIs must remain on loopback.
     const gatewayHost=!!publicHost&&
       String(req.headers.host||"").split(":")[0].toLowerCase()===publicHost;
-    if(gatewayHost){
+    if(gatewayHost && publicUiEnabled && path!=="/mcp" && !oauthPath &&
+        path!=="/healthz") {
+      if(!await access.verifyRequest(req))
+        return reply(res,403,{error:"Valid Cloudflare Access login required"});
+    }
+    if(gatewayHost && !publicUiEnabled){
       if(req.method==="GET"&&(path==="/"||path==="/gateway.css")){
         const file=path==="/gateway.css"?"gateway.css":"gateway.html";
         const content=await readFile(new URL("../public/"+file,import.meta.url));
@@ -93,7 +102,10 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     }
     if(path==="/healthz" && req.method==="GET")return reply(res,200,{status:"ok"});
     const sessionHash=sessions.session(req);
-    if(req.method==="POST"&&req.headers.origin&&req.headers.origin!==permittedOrigin &&
+    const secureCookie=secure||(gatewayHost&&publicUiEnabled);
+    const allowedOrigin=req.headers.origin===permittedOrigin ||
+      (gatewayHost&&publicUiEnabled&&req.headers.origin===mcpOAuth.origin);
+    if(req.method==="POST"&&req.headers.origin&&!allowedOrigin &&
         !(path==="/mcp"&&(req.headers.origin==="https://chatgpt.com"||
           req.headers.origin===mcpOAuth.origin)))
       return reply(res,403,{error:"Origin verification failed"});
@@ -104,7 +116,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       if(path==="/auth/login"&&req.method==="POST"){
         const incoming=await body(req);
         const token=sessions.login(incoming?.username,incoming?.password,req.socket.remoteAddress||"unknown");
-        return reply(res,200,{authenticated:true,username},{ "Set-Cookie":encodeCookie(token,secure)});
+        return reply(res,200,{authenticated:true,username},{ "Set-Cookie":encodeCookie(token,secureCookie)});
       }
       if(path==="/login"&&req.method==="GET"&&sessionHash){
         res.writeHead(303,{Location:"/","Cache-Control":"no-store"});res.end();return;
@@ -119,7 +131,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         return reply(res,401,{error:"Authentication required"});
       }
       if(path==="/auth/logout"&&req.method==="POST"){
-        sessions.logout(req);return reply(res,200,{authenticated:false},{"Set-Cookie":expireCookie(secure)});
+        sessions.logout(req);return reply(res,200,{authenticated:false},{"Set-Cookie":expireCookie(secureCookie)});
       }
       if(path==="/auth/session"&&req.method==="GET")return reply(res,200,{authenticated:true,username});
       if(path==="/auth/spotify/start"&&req.method==="GET"){
