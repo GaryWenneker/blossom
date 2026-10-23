@@ -2,7 +2,7 @@
 
 **Blossom** is an independent operations platform for an original, AI-assisted music label. Manage distinct artist identities, develop original vocal and instrumental tracks, prepare reproducible Suno production blueprints, review commercial rights, and control distributor submissions through a guarded release workflow.
 
-> **Status: MVP foundation.** Running locally, with real SQLite persistence and an authenticated UI. This is not yet an autonomous music factory. Suno generation, audio uploads, distributor release creation, streaming analytics, and hosted multi-user identity are intentionally not claimed as working.
+> **Status: local creative-workspace pilot.** Running locally, with real SQLite persistence and an authenticated UI. This is not yet an autonomous music factory. Suno generation, audio uploads, distributor release creation, streaming analytics, and hosted multi-user identity are intentionally not claimed as working.
 
 ## Quick start
 
@@ -89,3 +89,41 @@ Keep the key separate from the SQLite database and back up both. Suno can store 
 The new **Genres** view contains a broad editorial taxonomy (100+ styles), including Traditional Country, Contemporary Country, Country Pop, Outlaw Country, Americana, Bluegrass and Honky Tonk. When creating artists, choose a known style using suggestions or enter your own custom genre.
 
 The secret vault encrypts values with AES-256-GCM. It never returns credentials to the browser. Losing your `BLOSSOM_VAULT_KEY` makes existing saved secrets unrecoverable.
+
+## Creative Studio (News to Song)
+
+The **News to Song** workspace combines the full label workflow in one authenticated, responsive dark interface. It uses original custom vector audio-wave branding, not screenshot backgrounds or mockups.
+
+- Paste a news article or original text, choose an existing artist, save a named project, and link the article URL for source attribution.
+- Send the article to your own **OpenAI API** account using the Responses API and strict structured-output JSON schema. Generate a concept, completely original lyrics, mood, suggested titles, Suno styles/exclusions, and separate cover/fictional artist photo prompts.
+- Edit and save the lyrics. Ask the AI production assistant about arrangements within the project.
+- Set instrument/vocal mode, gender, duration preset, target duration, additional/excluded styles, Max Mode, Weirdness, Style Influence, Variety, personalization and custom instructions. Save a production profile per artist.
+- Create and link a production track. Copy a real Suno-ready blueprint or upload MP3/WAV audio from your authorized Suno account.
+- Generate cover artwork (1024×1024) and fictional artist portraits (768×1024) **locally on macOS** through official Draw Things CLI. Generated images and imported audio are stored privately and linked to the same project.
+
+### OpenAI API setup
+
+A ChatGPT subscription is **not** the same as an OpenAI API account. Create an API key through your own OpenAI API account and add it under **Connections** with the AES-256-GCM vault enabled, or configure `OPENAI_API_KEY` on the server. API usage is separately billed. Optionally choose `BLOSSOM_OPENAI_MODEL` (default `gpt-4.1-mini`). Blossom sends only the chosen project article and production context to the API, with `store:false`; it does not automatically send your entire account content.
+
+### Draw Things CLI setup on your Mac
+
+Install the official CLI using Draw Things' current Homebrew tap:
+
+```bash
+brew install --HEAD drawthingsai/draw-things/draw-things-cli
+draw-things-cli generate --help
+```
+
+Set `BLOSSOM_DRAW_MODEL` to the **exact installed model identifier**, for example `flux_2_klein_4b_q6p.ckpt`. Run Blossom on **your Mac**, not on a remote Netlify worker, to access your local model cache and GPU. The worker runs `draw-things-cli generate` with explicit safe arguments and `--output`; it never invokes a shell using submitted prompts. Expect local model compatibility, disk/memory usage and occasional CLI-version differences to require real Mac testing.
+
+### Playlist strategy and audio durations
+
+Spotify currently counts a song stream after **30 seconds played**. That does not mean 30-second songs are guaranteed to enter playlists. Choose and override editorial duration presets per artist: radio, streaming, focus, ambient and custom. Target durations are guidance for creation, not guaranteed Suno output lengths. For Spotify editorial consideration, pitch an eligible unreleased track at least seven days before release via Spotify for Artists. There is no legitimate guaranteed-playlist-placement switch.
+
+### Important limits
+
+**What works:** Projects, AI generation/assistant with an OpenAI key, editable presets, audio upload/linkage, local artwork/artist photo generation with installed CLI/model, and the existing guarded release process.
+
+**What still needs authorized provider integration:** Direct Suno generation/download under your account, automatic distributor media creation/upload, Spotify for Artists portrait publication, and durable background artwork jobs. The linked artist image can be prepared for Spotify but is not automatically posted there. Album art is linked to the Blossom project; it must still pass rights/artwork review before distributor submission.
+
+Store `.data/blossom.db` and `.data/assets` securely. Neither audio nor model files belong in the public repository.

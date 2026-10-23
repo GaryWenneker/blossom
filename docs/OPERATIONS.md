@@ -38,3 +38,16 @@ For monitoring, set `BLOSSOM_MONITOR_ENABLED=true`; confirm changes by reviewing
 6. Sign out to invalidate the session. Never share your database and encryption key together, or put either in Git. Validate a restore from backups before relying on saved account connections.
 
 `BLOSSOM_VAULT_KEY` must not be logged or committed. The initial account integration does not perform Suno generation and Spotify OAuth cannot distribute music; LabelGrid remains the publishing integration.
+
+## Creative Studio operator guide
+
+1. Update `main`, run `npm run check && npm test`.
+2. Save an OpenAI API key in the encrypted Connections page, or set `OPENAI_API_KEY` in the server environment. Configure `BLOSSOM_OPENAI_MODEL` if needed. API billing is independent of your ChatGPT plan.
+3. Install the official `draw-things-cli`, inspect `generate --help`, set `BLOSSOM_DRAW_MODEL` to an available model, and restart the Mac-hosted Blossom server.
+4. Open News to Song; choose artist, paste source article, select duration preset and configure the sound. Save project.
+5. Use Extract with AI to create lyrics/styles/prompts. Review, correct and save lyrics before using them commercially.
+6. Create linked track; copy Suno blueprint into the authorized Suno session (no unsupported automated Suno login).
+7. Generate cover/portrait locally or upload your obtained Suno audio as MP3/WAV. Confirm output belongs to the right project.
+8. Before distributing, do originality, licensing, name/likeness and metadata reviews. Spotify playlist pitching is manual and not guaranteed.
+
+**Host caveat:** Draw Things executes on the server host, not the browser user's machine. For the Mac GPU to be used, run this Node app locally on that Mac. Limit file uploads to 40 MB; keep the local .data directory private and back it up.

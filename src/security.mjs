@@ -95,7 +95,7 @@ export class Vault {
     }catch{throw new DomainError("Saved secret cannot be decrypted. Check BLOSSOM_VAULT_KEY",503);}
   }
   save(name,label,value) {
-    if(!["suno_api_key","spotify_refresh_token"].includes(name))throw new DomainError("Unsupported credential type");
+    if(!["suno_api_key","spotify_refresh_token","openai_api_key"].includes(name))throw new DomainError("Unsupported credential type");
     if(typeof value!=="string" || !value.trim() || value.length>8192)throw new DomainError("Invalid credential");
     if(typeof label!=="string"||label.length>200)throw new DomainError("Account label too long");
     const encrypted=this.encrypt(name,value.trim());
@@ -108,12 +108,12 @@ export class Vault {
     return row?this.decrypt(name,row.ciphertext):null;
   }
   delete(name) {
-    if(!["suno_api_key","spotify_refresh_token"].includes(name))throw new DomainError("Unsupported credential type");
+    if(!["suno_api_key","spotify_refresh_token","openai_api_key"].includes(name))throw new DomainError("Unsupported credential type");
     this.db.prepare("DELETE FROM credentials WHERE name=?").run(name);
   }
   list() {
     const result={vaultReady:!!this.key};
-    for(const name of ["suno_api_key","spotify_refresh_token"]) {
+    for(const name of ["suno_api_key","spotify_refresh_token","openai_api_key"]) {
       const row=this.db.prepare("SELECT label,updated_at FROM credentials WHERE name=?").get(name);
       result[name]={configured:!!row,label:row?.label||"",updatedAt:row?.updated_at||null};
     }

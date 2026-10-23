@@ -28,6 +28,19 @@
 - [x] Editorial global genre directory including Country & Americana.
 - [ ] Multi-user auth with MFA, externally managed secrets, cost budgets and metering.
 
+## Phase 2.5: Creative Workspace
+- [x] Redesigned dark music-creation workspace matching the new Suno/Draw Things inspired product direction.
+- [x] Original audio-wave logo in code, reusable between login and dashboard.
+- [x] Article-to-original-lyrics and structured production brief through OpenAI Responses API with separate encrypted key.
+- [x] Artist-level duration/genre/mode settings, editable parameters, and playlist-intent presets.
+- [x] Draw Things CLI adapter for cover and fictional artist photo generation on the same Mac as the app.
+- [x] Linked local artwork, artist photo, and imported WAV/MP3 files.
+- [x] Session-protected studio operations, new tests and documentation.
+- [ ] Live Mac hardware validation with the actual installed Draw Things model.
+- [ ] Official Suno API entitlement, endpoints, callbacks and automatic generation.
+- [ ] Automatic LabelGrid release creation, source upload, thumbnails and account-specific integration tests.
+- [ ] Reliable queues, progress polling and resumable image generation.
+
 ## Phase 3: commercial intelligence
 - [ ] Paid streaming analytics and statement ingestion, by territory and platform.
 - [ ] Fresh chart and playlist monitoring from licensed providers.

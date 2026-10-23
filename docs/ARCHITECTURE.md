@@ -60,3 +60,22 @@ Spotify links via OAuth Authorization Code + PKCE. The flow stores a short-lived
 The genres module is an editorial taxonomy, including a full Country & Americana family. Artists may use any custom genre if a taxonomy value does not fit. Genres are not claims of live popularity.
 
 Hosting requirements: trusted HTTPS reverse proxy, exact `BLOSSOM_PUBLIC_URL` with Spotify callback allowlisted, backups and dedicated secret management. Production-grade MFA, network security and account management remain future work.
+
+## Creative Studio composition pipeline (Phase 3)
+
+```text
+Article / original brief
+  -> StudioStore (SQLite) with artist-specific production settings
+  -> OpenAI Responses (strict JSON schema, original lyrics and visual prompts)
+  -> User edit/review -> Suno manual production blueprint
+  -> Optional existing Suno MP3/WAV import
+  -> Draw Things CLI (macOS only) generates cover and fictional portrait
+  -> Encrypted/private asset storage keyed by project and asset UUID
+  -> Create a linked Track -> Existing rights and distributor release gates
+```
+
+A `StudioAPI` authenticated route adapter exposes JSON operations and validated binary audio upload. The host's existing session checks, CSRF header and same-origin policy guard all operations. OpenAI API keys are encrypted at rest by the existing Vault; only readiness information is shown to the browser. Never put submitted news text in a shell command. Draw Things runs with `spawn(..., {shell:false})`, a server-managed model identifier, resource limits and per-process mutual exclusion.
+
+Secrets and private files live outside Git. Generated images are not legal evidence of likeness clearance, and manual rights review remains mandatory. The browser never reads the local model directory or raw key.
+
+The browser renders HTML/CSS and SVG with functioning controls; historical tracks, releases and compliance views remain available from the same sidebar.
