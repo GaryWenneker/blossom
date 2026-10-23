@@ -94,7 +94,7 @@ test("Model diagnosis exposes available checkpoint IDs and the custom models dir
     assert.equal(command,"draw-things-cli");
     assert.deepEqual(args,["models","list","--downloaded-only"]);
     checkedEnv=options.env.DRAWTHINGS_MODELS_DIR;
-    return cliRunner("z_image_turbo_q8p.ckpt downloaded=yes\\nother_sdxl_v2.safetensors downloaded=yes")(command,args,options);
+    return cliRunner("z_image_turbo_q8p.ckpt downloaded=yes\nother_sdxl_v2.safetensors downloaded=yes")(command,args,options);
   };
   const info=await diagnoseDrawModel(PREFERRED_DRAW_MODEL,{modelsDir:dir,runner});
   assert.equal(info.valid,false);
@@ -114,7 +114,7 @@ test("Empty downloaded model inventory gives actionable warning context without 
   assert.equal(info.inventoryEmpty,true);
   assert.equal(info.resolved,null);
   assert.ok(DRAW_APP_MODELS_DIR.endsWith("/Library/Containers/com.liuliu.draw-things/Data/Documents/Models"));
-  assert.deepEqual(summarizedModelIds("Filename Downloaded\\n"),[]);
+  assert.deepEqual(summarizedModelIds("Filename Downloaded\n"),[]);
   await assert.rejects(
     verifyDrawModel(PREFERRED_DRAW_MODEL,{runner:cliRunner("")}),
     /CLI lists no downloaded checkpoint IDs/
