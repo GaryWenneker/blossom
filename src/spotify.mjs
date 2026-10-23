@@ -21,7 +21,7 @@ export class SpotifyOAuth {
     this.sessions.saveOAuth(state,sessionHash,this.vault.encrypt("oauth_verifier",verifier));
     const url=new URL("https://accounts.spotify.com/authorize");
     url.search=new URLSearchParams({client_id:clientId,response_type:"code",redirect_uri:this.redirectUri,
-      code_challenge_method:"S256",code_challenge:challenge,state,scope:"user-read-private",
+      code_challenge_method:"S256",code_challenge:challenge,state,scope:"user-read-private user-library-read",
       ...(chooseAccount?{show_dialog:"true"}:{})}).toString();
     return url.toString();
   }
@@ -52,28 +52,40 @@ export class SpotifyOAuth {
     this.vault.save("spotify_refresh_token",label,token.refresh_token);
     return {accountId:profile.account_id||profile.id,label};
   }
-  async profile() {
+  // A regular signed-in Spotify browser session is NOT an API grant.
+  // Obtain an API access token only from a prior PKCE consent, with refresh
+  // token kept inside the encrypted Blossom vault.
+  async accessToken() {
     const refreshToken=this.vault.read("spotify_refresh_token");
-    if(!refreshToken)throw new DomainError("Spotify is not connected. Authorize again.",409);
+    if(!refreshToken)throw new DomainError(
+      "Spotify API is not connected. In Blossom Connections, authorize Spotify with access to Liked Songs.",409);
+    const clientId=this.vault.getSetting("spotify_client_id");
+    if(!clientId)throw new DomainError("Spotify Client ID is missing. Configure Spotify Web API in Connections.",409);
     const response=await this.fetcher("https://accounts.spotify.com/api/token",{
       method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
-      body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refreshToken,client_id:this.vault.getSetting("spotify_client_id")}),
+      body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refreshToken,client_id:clientId}),
       signal:AbortSignal.timeout(15000)
     });
-    if(!response.ok) {
+    if(!response.ok){
       const failure=await response.json().catch(()=>({}));
       if(response.status===400&&failure?.error==="invalid_grant"){
         this.vault.delete("spotify_refresh_token");
-        throw new DomainError("Spotify authorization expired. Please reconnect.",409);
+        throw new DomainError("Spotify authorization expired. Reconnect in Blossom Connections.",409);
       }
       throw new DomainError("Spotify token refresh failed ("+response.status+")",502);
     }
     const token=await response.json();
-    if(typeof token?.access_token!=="string")throw new DomainError("Spotify did not provide an access token",502);
-    if(typeof token?.refresh_token==="string")
-      this.vault.save("spotify_refresh_token",this.vault.list().spotify_refresh_token.label,token.refresh_token);
+    if(typeof token?.access_token!=="string"||!token.access_token)
+      throw new DomainError("Spotify did not provide an access token",502);
+    if(typeof token?.refresh_token==="string"&&token.refresh_token)
+      this.vault.save("spotify_refresh_token",
+        this.vault.list().spotify_refresh_token?.label||"Spotify",token.refresh_token);
+    return token.access_token;
+  }
+  async profile() {
+    const accessToken=await this.accessToken();
     const result=await this.fetcher("https://api.spotify.com/v1/me",{
-      headers:{Authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(15000)
+      headers:{Authorization:"Bearer "+accessToken},signal:AbortSignal.timeout(15000)
     });
     if(!result.ok)throw new DomainError("Spotify profile verification failed ("+result.status+")",502);
     const p=await result.json();
@@ -81,5 +93,35 @@ export class SpotifyOAuth {
       throw new DomainError("Spotify did not provide an account ID",502);
     return {accountId:p.account_id||p.id,displayName:String(p.display_name||"Spotify").slice(0,160)};
   }
-
+  async likedTracksPage({ offset=0, limit=50 }={}) {
+    if(!Number.isInteger(offset)||offset<0||offset>1_000_000 ||
+      !Number.isInteger(limit)||limit<1||limit>50)
+      throw new DomainError("Spotify Liked Songs requires offset 0–1000000 and limit 1–50",400);
+    const token=await this.accessToken();
+    const url=new URL("https://api.spotify.com/v1/me/tracks");
+    url.searchParams.set("limit",String(limit));
+    url.searchParams.set("offset",String(offset));
+    const res=await this.fetcher(url.toString(),{
+      headers:{Authorization:"Bearer "+token,Accept:"application/json"},
+      signal:AbortSignal.timeout(20000)
+    });
+    if(!res.ok) {
+      if(res.status===401||res.status===403)throw new DomainError(
+        "Spotify cannot read Liked Songs. Reconnect through the official Spotify OAuth page with user-library-read; Spotify developer apps may also require Premium.",res.status);
+      if(res.status===429){
+        const retryRaw=Number(res.headers?.get?.("retry-after"));
+        const wait=Number.isFinite(retryRaw)?Math.min(Math.max(Math.ceil(retryRaw),1),3600):30;
+        throw new DomainError("Spotify rate limit reached; retry in "+wait+" seconds",429);
+      }
+      throw new DomainError("Spotify Liked Songs request failed ("+res.status+")",502);
+    }
+    const body=await res.json().catch(()=>null);
+    if(!body||!Array.isArray(body.items)||!Number.isInteger(body.total)||body.total<0||
+      body.items.length>limit)
+      throw new DomainError("Spotify returned an invalid saved-tracks response",502);
+    // Always compute the next page locally: never fetch third-party next URLs.
+    const nextOffset=body.next && body.items.length>0 && offset+body.items.length<body.total
+      ?offset+body.items.length:null;
+    return {offset,limit,total:body.total,items:body.items,nextOffset};
+  }
 }

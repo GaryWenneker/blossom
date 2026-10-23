@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
+import { SpotifyLikedImporter } from "./spotify-liked.mjs";
 import { ConnectedBrowsers, providerBrowserUrl } from "./browser-connections.mjs";
 import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
@@ -60,8 +61,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const studioApi=new StudioAPI({store,vault,composer,localComposer,...(articleImporter?{articleImporter}:{}),draw,
     sunoBrowser:sunoBrowser||browserAccounts.suno,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
   const musicDna=new MusicDNA(store);
-  const musicDnaApi=new MusicDnaAPI(musicDna);
-  const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth});
+  const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
+  const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked});
+  const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth,spotifyLiked});
   const secure=publicUrl.startsWith("https:");
   const permittedOrigin=new URL(publicUrl).origin;
   const timer=enableMonitor(store,{enabled:monitor});

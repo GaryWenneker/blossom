@@ -44,6 +44,8 @@ function barBlocksMarkup(analysis) {
     (blocks.length-observed-source)+' awaiting analysis. Bar positions are not audio-aligned unless explicit timestamps are present.</p>'+
     blocks.map(barBlockMarkup).join("")+'</section>';
 }
+let spotifyLikedImport = { running:false, offset:0, imported:0, duplicates:0, received:0,
+  total:0, finished:false, status:"" };
 let currentQuery = "";
 let selected = null;
 function summary(profile) {
@@ -77,6 +79,14 @@ export function musicDnaView(state) {
       (j.error ? '<small>' + esc(j.error) + '</small>' : "") + '</div>').join("") :
       '<p>No analysis jobs yet.</p>') +
     '</div><button class="secondary" data-action="dna-refresh">Refresh queue</button></section></div>' +
+    '<section class="studio-panel dna-spotify-liked"><div class="studio-panel-head"><h2>Spotify · Liked Songs</h2><span class="studio-mini-tag">PRIVATE LIBRARY</span></div>' +
+    '<p class="studio-hint">Import all of your Spotify Liked Songs to Music DNA without copying any list. Spotify account permission must include user-library-read. The import stores references and queues verification; it does not claim to have heard the recordings.</p>' +
+    (state.data.connections?.spotifyClientId ?
+      '<a class="secondary dna-spotify-consent" href="/auth/spotify/start?choose=1">Connect / reauthorize Spotify Library ↗</a>' :
+      '<p class="studio-hint">First enter your Spotify developer Client ID in Connections → Spotify Web API. A website login alone cannot grant library API access.</p>') +
+    '<button type="button" class="primary" data-action="dna-spotify-import" '+(spotifyLikedImport.running ? "disabled" : "")+'>Import all Liked Songs into Music DNA</button>' +
+    '<p class="dna-spotify-progress" aria-live="polite">'+
+      esc(spotifyLikedImport.status || "No sync started yet.")+'</p></section>' +
     '<section class="studio-panel"><div class="studio-panel-head"><h2>Reference recordings</h2>' +
     '<span class="studio-mini-tag">' + profiles.length + ' SHOWN</span></div>' +
     '<div class="music-dna-search"><input id="dna-query" placeholder="Search instruments, techniques, moods, song titles..." value="' + esc(currentQuery) + '">' +
@@ -112,6 +122,56 @@ export async function musicDnaAction(el, state, api, refresh, message) {
   }
   if (action === "dna-reset") {
     currentQuery = ""; selected = null; await refresh();
+  }
+
+  if (action === "dna-spotify-import") {
+    if (spotifyLikedImport.running) return;
+    if (spotifyLikedImport.finished) spotifyLikedImport={
+      running:false,offset:0,imported:0,duplicates:0,received:0,total:0,finished:false,status:""
+    };
+    if (!state.data.connections?.spotifyClientId) {
+      message("Configure your Spotify developer Client ID in Connections first",true);
+      return;
+    }
+    spotifyLikedImport.running=true;
+    const button=document.querySelector('[data-action="dna-spotify-import"]');
+    if(button)button.disabled=true;
+    let completed=false;
+    try {
+      // Bounded pagination and resumable in this browser session. Each API
+      // batch saves at most 50 source records and deduplicates on Spotify ID.
+      for(let pages=0;pages<200;pages++) {
+        const page=await api("music-dna/spotify-liked/import",
+          {offset:spotifyLikedImport.offset,limit:50});
+        spotifyLikedImport.imported+=page.imported;
+        spotifyLikedImport.duplicates+=page.duplicates;
+        spotifyLikedImport.received+=page.received;
+        spotifyLikedImport.total=page.total;
+        if(page.nextOffset!==null && page.nextOffset<=spotifyLikedImport.offset)
+          throw new Error("Spotify returned a repeated page; import paused");
+        spotifyLikedImport.offset=page.nextOffset===null?0:page.nextOffset;
+        completed=page.nextOffset===null;
+        spotifyLikedImport.finished=completed;
+        spotifyLikedImport.status=page.total+" liked songs · "+spotifyLikedImport.received+
+          " checked · "+spotifyLikedImport.imported+" new · "+
+          spotifyLikedImport.duplicates+" already in Blossom"+
+          (completed?" · complete":" · continuing");
+        const progress=document.querySelector(".dna-spotify-progress");
+        if(progress)progress.textContent=spotifyLikedImport.status;
+        if(completed)break;
+      }
+      message(completed ?
+        "Spotify Liked Songs imported. Audio analysis remains pending for metadata-only entries." :
+        "Imported 10,000 entries in this pass; click again to resume.");
+    } catch(error) {
+      spotifyLikedImport.status=(error.message||"Spotify import failed")+
+        ". Existing imports have been preserved; click again to resume.";
+      message(spotifyLikedImport.status,true);
+    } finally {
+      spotifyLikedImport.running=false;
+      await refresh();
+    }
+    return;
   }
   if (action === "dna-refresh") { await refresh(); message("Analysis jobs refreshed"); }
 }

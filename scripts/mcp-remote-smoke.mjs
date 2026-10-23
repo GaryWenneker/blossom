@@ -148,8 +148,12 @@ try {
   } else {
     expectStatus(replay, 200);
     assert.ok(replay.contentType.includes("text/html"));
-    assert.match(replay.body, /Toestemming al verwerkt/);
-    console.log("PASS duplicate form submission handled safely");
+    // On an explicit denial, the current server shows "Toestemming geweigerd"
+    // on replay. It is safe: the request cannot be approved again or issue
+    // an authorization code. Older live instances may say "al verwerkt".
+    assert.match(replay.body, /Toestemming (?:geweigerd|al verwerkt)/);
+    assert.doesNotMatch(replay.body, /name="request" value=|code=[A-Za-z0-9]/);
+    console.log("PASS duplicate denied consent remains denied, without a new authorization code");
   }
 
   console.log("SUCCESS: Public Blossom MCP OAuth consent routing is consistent.");
