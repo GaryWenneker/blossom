@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "../src/storage.mjs";
 import { MusicDNA } from "../src/music-dna.mjs";
 import { MusicDnaWorker } from "../src/music-dna-worker.mjs";
+import { PREFERRED_DRAW_MODEL } from "../src/draw-models.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const minimumNode = { major: 22, minor: 13 };
@@ -38,7 +39,8 @@ export function missingSettings(config, rng = randomBytes) {
     BLOSSOM_PORT: "8787",
     BLOSSOM_PUBLIC_URL: "http://127.0.0.1:8787",
     BLOSSOM_DB: ".data/blossom.db",
-    BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio"
+    BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio",
+    BLOSSOM_DRAW_MODEL: PREFERRED_DRAW_MODEL
   };
   return Object.fromEntries(Object.entries(defaults).filter(([key]) => !(key in config)));
 }
@@ -81,7 +83,16 @@ export async function configureEnv(envFile, { create = true } = {}) {
   }
   const parsed = parseEnv(existing);
   const additions = create ? missingSettings(parsed) : {};
+  const repairBlankModel = create && Object.hasOwn(parsed, "BLOSSOM_DRAW_MODEL") && !parsed.BLOSSOM_DRAW_MODEL.trim();
   if (create) {
+    if (repairBlankModel) {
+      const repaired = existing.replace(/^(\s*(?:export\s+)?BLOSSOM_DRAW_MODEL=)[^\r\n]*/m,
+        "$1" + PREFERRED_DRAW_MODEL);
+      if (repaired === existing) throw Error("Could not repair blank BLOSSOM_DRAW_MODEL");
+      existing = repaired;
+      parsed.BLOSSOM_DRAW_MODEL = PREFERRED_DRAW_MODEL;
+      await writeFile(envFile, existing, { mode: 0o600 });
+    }
     if (Object.keys(additions).length) {
       const block = (existing && !existing.endsWith("\n") ? "\n" : "") +
         Object.entries(additions).map(([key, value]) => key + "=" + value + "\n").join("");
