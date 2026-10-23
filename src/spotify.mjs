@@ -11,7 +11,7 @@ export class SpotifyOAuth {
     this.baseUrl=url.origin;
     this.redirectUri=url.origin+"/auth/spotify/callback";
   }
-  start(sessionHash) {
+  start(sessionHash, { chooseAccount = false } = {}) {
     this.vault.requireKey();
     const clientId=this.vault.getSetting("spotify_client_id");
     if(!clientId)throw new DomainError("Save Spotify Client ID before connecting",409);
@@ -21,7 +21,8 @@ export class SpotifyOAuth {
     this.sessions.saveOAuth(state,sessionHash,this.vault.encrypt("oauth_verifier",verifier));
     const url=new URL("https://accounts.spotify.com/authorize");
     url.search=new URLSearchParams({client_id:clientId,response_type:"code",redirect_uri:this.redirectUri,
-      code_challenge_method:"S256",code_challenge:challenge,state,scope:"user-read-private"}).toString();
+      code_challenge_method:"S256",code_challenge:challenge,state,scope:"user-read-private",
+      ...(chooseAccount?{show_dialog:"true"}:{})}).toString();
     return url.toString();
   }
   async complete(sessionHash,state,code) {
@@ -45,10 +46,11 @@ export class SpotifyOAuth {
     });
     if(!profileResponse.ok)throw new DomainError("Spotify profile verification failed",502);
     const profile=await profileResponse.json();
-    if(typeof profile?.id!=="string")throw new DomainError("Spotify profile has no account ID",502);
+    if(typeof profile?.account_id!=="string" && typeof profile?.id!=="string")
+      throw new DomainError("Spotify profile has no account ID",502);
     const label=String(profile.display_name||profile.id||"Spotify").slice(0,180);
     this.vault.save("spotify_refresh_token",label,token.refresh_token);
-    return {id:profile.account_id||profile.id,label};
+    return {accountId:profile.account_id||profile.id,label};
   }
   async profile() {
     const refreshToken=this.vault.read("spotify_refresh_token");
@@ -75,8 +77,9 @@ export class SpotifyOAuth {
     });
     if(!result.ok)throw new DomainError("Spotify profile verification failed ("+result.status+")",502);
     const p=await result.json();
-    if(!p||typeof p.account_id!=="string")throw new DomainError("Spotify did not provide a stable account ID",502);
-    return {accountId:p.account_id,displayName:String(p.display_name||"Spotify").slice(0,160)};
+    if(!p || (typeof p.account_id!=="string" && typeof p.id!=="string"))
+      throw new DomainError("Spotify did not provide an account ID",502);
+    return {accountId:p.account_id||p.id,displayName:String(p.display_name||"Spotify").slice(0,160)};
   }
 
 }
