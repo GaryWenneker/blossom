@@ -28,4 +28,6 @@ test("callback rejects state mismatch and missing issued client ID", () => {
 test("plan usage requires granted scope", () => {
   assert.equal(hasPlanPermission("openid profile"), false);
   assert.equal(hasPlanPermission("openid chatgpt.tokens.use.direct"), true);
+  assert.equal(hasPlanPermission("openid\tprofile\nchatgpt.tokens.use.direct"), true);
+  assert.equal(hasPlanPermission(["openid", "chatgpt.tokens.use.direct"]), true);
 });
