@@ -33,7 +33,7 @@ test("Safari handoff uses only project ID and never reads ChatGPT output or logi
   await assert.rejects(submitChatGptStudioInSafari("../evil",{platform:"darwin",launcher:runner}),/Invalid Studio project/);
   await assert.rejects(submitChatGptStudioInSafari(projectId,{platform:"linux",launcher:runner}),/macOS only/);
   await assert.rejects(submitChatGptStudioInSafari(projectId,{platform:"darwin",
-    launcher:(_b,_a,_o,done)=>done(new Error("permissions denied"),"","not allowed")}),/Safari could not submit/);
+    launcher:(_b,_a,_o,done)=>done(new Error("permissions denied"),"","not allowed")}),/Browser could not submit/);
   await assert.rejects(submitChatGptStudioInSafari(projectId,{platform:"darwin",
     launcher:(_b,_a,_o,done)=>done(null,"WAIT","")}),/did not confirm/);
 });
