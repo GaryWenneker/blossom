@@ -180,3 +180,5 @@ Playwright is not used to bypass Platform approval, automate account login, invo
 ## Draw Things model setup
 
 To enable local cover art, update the repository and run bash setup.sh. The installer now selects lustifySDXLNSFWSFW_v20 (from the screenshot) for BLOSSOM_DRAW_MODEL, repairs previously blank .env entries, installs the official draw-things-cli if missing, and verifies that this identifier appears in the local downloaded-model inventory. Non-empty custom model choices are preserved. See [setup details](docs/SETUP.md#draw-things-model-local-album-artwork).
+
+Draw Things CLI is now installed from **official Homebrew core**, not its older external tap, to avoid Homebrew 6 third-party trust problems. See [setup troubleshooting](docs/SETUP.md#homebrew-6-tap-trust-warnings).
