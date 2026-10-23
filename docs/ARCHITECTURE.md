@@ -48,3 +48,15 @@ A reviewer explicitly attests to rights, provenance, originality and AI disclosu
 - Monitored contract sources with semantic diff, legal review and alert delivery.
 
 No application is 'unbreakable'; recovery drills, external contracts and responsible operations are ongoing work.
+
+## Web authentication, vault, OAuth and genres (Phase 2)
+
+The former Basic Auth challenge has been replaced with an actual login page compatible with 1Password and other browser password managers. Sessions are random 256-bit tokens stored by SHA-256 hash in SQLite, with eight-hour expiry, logout revocation, HTTP-only SameSite=Lax cookies, and Secure cookies for HTTPS origins. A bounded per-IP login failure counter and same-origin JSON mutation guard limit basic abuse. This is single-admin local pilot authentication, not a hosted multi-user IAM system.
+
+The encrypted vault uses AES-256-GCM with a separate, externally managed 256-bit `BLOSSOM_VAULT_KEY`, authenticated with per-credential additional authenticated data. Only secret metadata/status is sent back to the browser. The API stores the official Suno account email/API key, not Suno's website password.
+
+Spotify links via OAuth Authorization Code + PKCE. The flow stores a short-lived encrypted verifier and one-time session-bound OAuth state; token exchange and profile verification happen server-side. The encrypted Spotify refresh token is never returned to the browser. The Spotify Client ID is publicly identifiable app configuration. Spotify OAuth does not provide upload rights: distribution remains with a licensed DSP distributor.
+
+The genres module is an editorial taxonomy, including a full Country & Americana family. Artists may use any custom genre if a taxonomy value does not fit. Genres are not claims of live popularity.
+
+Hosting requirements: trusted HTTPS reverse proxy, exact `BLOSSOM_PUBLIC_URL` with Spotify callback allowlisted, backups and dedicated secret management. Production-grade MFA, network security and account management remain future work.

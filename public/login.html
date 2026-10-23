@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1110"><title>Sign in · Blossom</title>
+<meta name="description" content="Secure sign-in to the Blossom label operations dashboard">
+<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/login.css"></head>
+<body class="login-page"><main class="login-wrap">
+<div class="login-brand"><span class="login-emblem">✳</span><span>blossom<span class="period">.</span></span></div>
+<section class="login-card" aria-labelledby="login-title">
+ <div class="eyebrow">YOUR MUSIC, YOUR LABEL</div>
+ <h1 id="login-title">Welcome back.</h1>
+ <p class="subtitle">Sign in to manage your artists, music and distribution.</p>
+ <form id="login-form" method="post" action="/auth/login" class="stack">
+   <div class="field"><label for="username">Username</label><input id="username" name="username" type="text" autocomplete="username" value="admin" autocapitalize="none" spellcheck="false" required autofocus></div>
+   <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+   <button type="submit" class="primary login-button">Sign in to Blossom →</button>
+   <p id="login-error" role="alert" class="login-error" hidden></p>
+ </form><p class="login-help">Works with 1Password and other browser password managers. Use a unique, strong Blossom password.</p>
+</section><p class="copyright">BLOSSOM · INDEPENDENT LABEL OPERATIONS</p>
+</main><script type="module" src="/login.js"></script></body></html>
