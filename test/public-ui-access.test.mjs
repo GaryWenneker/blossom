@@ -96,7 +96,8 @@ test("Public Studio login requires Access JWT and its own CSRF protection; sets 
   assert.ok(cookie);
   const home=await invoke("/","GET",{...signed(),cookie});
   assert.equal(home.status,200);
-  assert.match(home.body,/studio.js/);
+  assert.match(home.body,/News to Song/);
+  assert.match(home.body,/src="\/app.js"/);
   const api=await invoke("/api/studio/projects","GET",{...signed(),cookie});
   assert.equal(api.status,200);
   assert.equal((await invoke("/api/studio/projects","GET",{...host,cookie})).status,403);
