@@ -2,7 +2,7 @@ import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload } from "./
 import { studioView,studioAction,studioInput,studioAudio,studioActiveId } from "./studio.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
-const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
+const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
 const nextStage={idea:"brief",brief:"generated",generated:"review",review:"approved",rejected:"brief"};
 const releaseChecks={audioUploaded:"Audio at distributor",artworkUploaded:"Cover art at distributor",creditsVerified:"Credits verified",codesVerified:"ISRC/UPC verified",aiDisclosuresDone:"AI disclosure completed",distributorRightsConfirmed:"Rights and distribution terms verified"};
 const capitals=s=>s.replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());
@@ -21,9 +21,9 @@ async function api(path,data){
   return body;
 }
 async function refresh(){
-  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","genres","studio/projects","studio/status","studio/presets","studio/artists/presets"];
+  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets"];
   const results=await Promise.all(names.map(apiName=>api(apiName)));
-  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets"),results[i]]));
+  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("browser-accounts","browserAccounts"),results[i]]));
   const id=studioActiveId(state);
   const [assets,dnaProfiles,dnaJobs,dnaReferences]=await Promise.all([
     id?api("studio/projects/"+id+"/assets"):Promise.resolve([]),
@@ -121,38 +121,72 @@ function genres(){
  '<div class="market-grid" style="margin-bottom:18px">'+items.map(([category,subgenres])=>'<section class="panel" style="margin:0"><div class="eyebrow">'+e(category)+'</div><div class="tagrow">'+subgenres.map(g=>'<span class="tag">'+e(g)+'</span>').join("")+'</div><div class="hint">'+subgenres.length+' subgenres</div></section>').join("")+'</div>'+
  '<div class="panel"><h2>Genre strategy</h2><p class="muted">Choose a primary genre for each artist, then define the actual arrangement, vocal style and production in Artist DNA. Genre names are editorial categories, not real-time market-performance claims.</p><button data-tab="artists" class="primary">Create an artist →</button></div>';
 }
+function browserAccountCard({ provider, title, login, usage, hint }) {
+ const session = state.data.browserAccounts?.[provider] || {};
+ const stateLabel = session.browserOpen ? "Browser open" :
+   session.localProfilePresent ? "Local session saved" : "Not signed in here";
+ return '<section class="panel browser-account-card"><div class="panel-header"><h2>'+e(title)+'</h2>'+
+   badge(stateLabel)+'</div>'+
+   '<p class="browser-account-identity">'+e(login)+'</p>'+
+   '<p class="hint">'+e(usage)+'</p>'+
+   '<div class="browser-account-actions"><button type="button" class="primary" data-action="browser-connect" data-provider="'+e(provider)+'">'+
+   (session.browserOpen ? "Focus browser" : session.localProfilePresent ? "Continue session" : "Sign in with browser")+
+   '</button>'+(session.browserOpen?'<button type="button" class="secondary" data-action="browser-close" data-provider="'+e(provider)+'">Close window</button>':"")+'</div>'+
+   '<p class="small">'+e(hint)+'</p></section>';
+}
 function connections(){
  const c=state.data.connections||{};
  const hasSpotifyApp=!!c.spotifyClientId;
- return header("Account connections","Use your existing Google login for Suno and Facebook login for Spotify. Blossom never handles your social-network passwords.")+
- (!c.vaultReady?'<div class="warning-banner">The encrypted vault is locked. Set BLOSSOM_VAULT_KEY on the server before saving API credentials or connecting Spotify.</div>':"")+
- '<div class="grid2"><section class="panel"><div class="panel-header"><h2>Suno · Google</h2>'+badge(c.suno_api_key?.configured?"API key saved":"Browser sign-in")+'</div>'+
- '<p class="hint">Your Suno account uses Google single sign-on. Sign in on the official Suno website with the <strong>same Google account</strong> you used to create your Suno library. You do not need a separate Suno password.</p>'+
- '<div class="actions"><a href="https://suno.com/" target="_blank" rel="noopener noreferrer" class="primary" style="text-decoration:none">Open Suno · Continue with Google ↗</a></div>'+
- '<p class="hint">For a supervised Playwright workflow, open <strong>News to Song</strong>, choose Open Suno (Playwright), sign in with Google yourself, then Fill Suno draft. Review all fields and press Generate manually. This browser handoff does not grant Blossom API access and does not automate bulk song creation.</p><button type="button" class="secondary" data-tab="studio">Go to News to Song</button>'+
- '<details><summary>Optional developer API credentials</summary><p class="hint">Only use a genuine API key issued for your Suno account, if available. Do not paste a Google token, browser cookie, Suno website password or social-login credentials here.</p>'+
- '<form id="suno-connection-form" class="stack"><div class="field"><label for="suno-email">Account email (optional account label)</label><input id="suno-email" type="email" name="email" autocomplete="email" value="'+e(c.sunoEmail||"")+'" placeholder="Google account email"></div>'+
- '<div class="field"><label for="suno-token">Official Suno API key (optional)</label><input id="suno-token" type="password" name="apiKey" autocomplete="off" placeholder="'+(c.suno_api_key?.configured?"Saved key is hidden · enter to replace":"Only an officially issued API key")+'"></div>'+
- '<div class="actions"><button class="secondary" '+(!c.vaultReady?"disabled":"")+' type="submit">Save API credentials</button>'+(c.suno_api_key?.configured?'<button type="button" data-action="remove-suno" class="danger">Remove API key</button>':"")+'</div></form>'+
- '<p class="small">Developer portal: <a href="https://platform.suno.com" target="_blank" rel="noopener noreferrer">platform.suno.com</a></p></details></section>'+
- '<section class="panel"><div class="panel-header"><h2>Spotify · Facebook</h2>'+badge(c.spotify_refresh_token?.configured?"authorized":"not connected")+'</div>'+
- '<p class="hint">Blossom uses Spotify’s official OAuth authorization. On the Spotify sign-in page choose <strong>Continue with Facebook</strong>, if your existing Spotify account still offers it. Your Facebook password stays with Facebook and Spotify, not Blossom.</p>'+
- '<p class="hint">A Spotify developer app <strong>Client ID</strong> is still required for API authorization. It is an application ID, not your Facebook login. Create one at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Spotify for Developers ↗</a>, and register the exact redirect URI shown below.</p>'+
- '<form id="spotify-connection-form" class="stack"><div class="field"><label for="spotify-client-id">Spotify developer Client ID</label><input id="spotify-client-id" type="text" name="clientId" spellcheck="false" autocomplete="off" value="'+e(c.spotifyClientId||"")+'" placeholder="32-character application Client ID" maxlength="32"></div>'+
+ return '<div class="browser-connections-layout">'+
+ header("Connected accounts","Sign in once in Blossom’s local Chrome window. Your provider session may remain available on this Mac.")+
+ '<div class="browser-accounts-grid">'+
+ browserAccountCard({provider:"suno",title:"Suno · Google",login:"Continue with Google",
+   usage:"Open your regular Suno account and work with your music in a supervised browser.",
+   hint:"Playwright can fill a draft from News to Song. This browser handoff does not grant Blossom API access."})+
+ browserAccountCard({provider:"spotify",title:"Spotify · Facebook",login:"Continue with Facebook",
+   usage:"Use Spotify’s official website and choose Facebook if your account still offers it.",
+   hint:"Browser playback/session is separate from the Spotify developer API."})+
+ browserAccountCard({provider:"chatgpt",title:"ChatGPT · OpenAI",login:"Sign in to ChatGPT",
+   usage:"Reuse a separate ChatGPT website session in the local browser.",
+   hint:"A ChatGPT session is not an OpenAI API key for automatic lyrics generation."})+
+ '</div>'+
+ '<details class="panel browser-advanced"><summary><strong>Advanced · API integrations and developer credentials</strong><span class="small">Only needed for direct API features</span></summary>'+
+ '<div class="browser-advanced-grid">'+
+ '<section><h3>Suno developer API (optional)</h3><p class="hint">Open Suno · Continue with Google at <a href="https://suno.com/" target="_blank" rel="noopener noreferrer">suno.com</a>. The Suno Platform is separate; no platform account is required for browser use.</p>'+
+ '<form id="suno-connection-form" class="stack"><div class="field"><label for="suno-email">Account email (optional label)</label><input id="suno-email" type="email" name="email" autocomplete="email" value="'+e(c.sunoEmail||"")+'"></div>'+
+ '<div class="field"><label for="suno-token">Official Suno API key, if provided</label><input id="suno-token" type="password" name="apiKey" autocomplete="off" placeholder="Do not paste a Google token or browser cookie"></div>'+
+ '<button type="submit" class="secondary" '+(!c.vaultReady?"disabled":"")+'>Save API credentials</button>'+
+ (c.suno_api_key?.configured?'<button type="button" class="danger" data-action="remove-suno">Remove Suno API key</button>':"")+
+ '</form></section>'+
+ '<section><h3>Spotify Web API (optional)</h3><p class="hint">Official OAuth requires a Spotify developer app Client ID. To browse Spotify with Facebook, use the browser sign-in above.</p>'+
+ '<form id="spotify-connection-form" class="stack"><div class="field"><label for="spotify-client-id">Spotify developer Client ID</label><input id="spotify-client-id" type="text" name="clientId" value="'+e(c.spotifyClientId||"")+'" maxlength="32" placeholder="Only for Spotify Web API"></div>'+
  '<button type="submit" class="secondary">Save Client ID</button></form>'+
- '<div class="actions" style="margin-top:14px">'+
- (hasSpotifyApp?'<a class="primary" style="text-decoration:none" href="/auth/spotify/start?choose=1">Connect Spotify · Choose Facebook ↗</a>':'<span class="hint">Save your Spotify Client ID to enable sign-in.</span>')+
- (c.spotify_refresh_token?.configured?'<button data-action="remove-spotify" class="danger">Disconnect Spotify</button>':"")+'</div>'+
- (c.spotify_refresh_token?.configured?'<p class="small">Authorized Spotify profile: '+e(c.spotify_refresh_token.label)+'</p><button data-action="verify-spotify" class="secondary" type="button">Verify connected Spotify account</button>':"")+
- '<p class="small">If Spotify does not show Facebook, check <a href="https://support.spotify.com/nl/article/facebook-login-help/" target="_blank" rel="noopener noreferrer">Spotify’s Facebook login help</a>. Facebook cannot be added as a new Spotify login method if it is no longer enabled for your account.</p>'+
- '<p class="small">Register this exact redirect URL in Spotify for Developers: <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section></div>'+
- '<div class="panel"><div class="panel-header"><h2>ChatGPT-powered creation via OpenAI API</h2>'+badge(c.openai_api_key?.configured?"configured":"not connected")+'</div>'+
- '<p class="hint">Connect your own OpenAI API key. Your ChatGPT website password or subscription is not an API credential. Requests use separate API billing. The API key is encrypted on this server and never returned to the browser.</p>'+
- '<form id="openai-connection-form" class="fields"><div class="field"><label for="openai-key">OpenAI API key</label><input id="openai-key" name="apiKey" type="password" autocomplete="off" placeholder="Enter OpenAI API key" required></div>'+
- '<div class="field"><button type="submit" class="primary" '+(!c.vaultReady?"disabled":"")+' >Save encrypted key</button></div></form>'+
- (c.openai_api_key?.configured?'<button class="danger" data-action="remove-openai">Remove key</button>':"")+
- '<p class="hint">Configure model and spend limits on the server. The default model can be changed with BLOSSOM_OPENAI_MODEL.</p></div>'+
- '<div class="panel"><h2>Connection security</h2><p class="muted">Blossom never asks for a Google or Facebook password. Spotify OAuth refresh credentials and any genuine provider API keys are encrypted at rest. A successful Suno browser login is separate from API integration; Blossom never claims an unverified connection.</p></div>';
+ (hasSpotifyApp?'<a class="secondary" href="/auth/spotify/start?choose=1">Connect Spotify · Choose Facebook (API authorization) ↗</a>':"")+
+ (c.spotify_refresh_token?.configured?'<p class="small">OAuth authorized: '+e(c.spotify_refresh_token.label)+'</p><button type="button" class="secondary" data-action="verify-spotify">Verify Spotify API</button><button type="button" class="danger" data-action="remove-spotify">Revoke stored Spotify token</button>':"")+
+ '<p class="small">Callback: <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section>'+
+ '<section><h3>OpenAI API (optional)</h3><p class="hint">Your ChatGPT subscription and cookies do not authorize automated OpenAI API calls. API access needs its own key and billing.</p>'+
+ '<form id="openai-connection-form" class="stack"><div class="field"><label for="openai-key">OpenAI API key</label><input id="openai-key" name="apiKey" type="password" autocomplete="off" placeholder="Only for automatic Blossom AI generation" required></div>'+
+ '<button class="secondary" type="submit" '+(!c.vaultReady?"disabled":"")+'>Save encrypted key</button></form>'+
+ (c.openai_api_key?.configured?'<button class="danger" type="button" data-action="remove-openai">Remove API key</button>':"")+
+ '</section></div>'+
+ '</details>'+
+ '<p class="browser-security-note">Blossom stores separate browser profiles locally, not your passwords. Cookies stay with each provider inside that Chrome profile. Session presence does not guarantee that the provider still considers you signed in. No browser session is presented as API authorization.</p>'+
+ '</div>';
+}
+function showBrowserLogin(provider) {
+ const details={
+   suno: {title:"Suno",instruction:"Sign in with your Google account in the Chrome window that opens. If already signed in, the session continues automatically."},
+   spotify:{title:"Spotify",instruction:"Use Spotify’s own login page. Choose Continue with Facebook if that option is offered for your account."},
+   chatgpt:{title:"ChatGPT",instruction:"Sign in through ChatGPT’s official site inside the separate Chrome window. This does not grant OpenAI API access."}
+ };
+ const selected=details[provider];
+ if(!selected)throw Error("Unsupported browser provider");
+ const dialog=document.querySelector("#account-login-dialog");
+ dialog.dataset.provider=provider;
+ document.querySelector("#account-login-title").textContent="Connect "+selected.title;
+ document.querySelector("#account-login-instructions").textContent=selected.instruction;
+ document.querySelector("#account-login-status").textContent="Opening the local browser...";
+ dialog.showModal();
 }
 
 function render(){
@@ -168,6 +202,35 @@ async function action(el){
    const next=await musicDnaAction(el,state,api,refresh,message);
    if(next==="render")render();
    return;
+ }
+ if(act==="browser-connect"){
+   const provider=el.dataset.provider;
+   showBrowserLogin(provider);
+   try {
+     const result=await api("browser-accounts/"+provider+"/open",{});
+     document.querySelector("#account-login-status").textContent=
+       result.reusedWindow||result.reopened?"Existing Chrome window focused.":"Chrome opened. Complete sign-in there once, then return here.";
+     state.data.browserAccounts=await api("browser-accounts");
+     render();
+   } catch(error) {
+     document.querySelector("#account-login-status").textContent=error.message;
+     throw error;
+   }
+   return;
+ }
+ if(act==="browser-reopen"){
+   const provider=document.querySelector("#account-login-dialog").dataset.provider;
+   const result=await api("browser-accounts/"+provider+"/open",{});
+   document.querySelector("#account-login-status").textContent=
+     result.reusedWindow||result.reopened?"Existing Chrome window focused.":"Chrome opened. Sign in on the official site.";
+   state.data.browserAccounts=await api("browser-accounts");render();return;
+ }
+ if(act==="browser-finished"){document.querySelector("#account-login-dialog").close();
+   state.data.browserAccounts=await api("browser-accounts");render();return;}
+ if(act==="browser-close"){
+   await api("browser-accounts/"+el.dataset.provider+"/close",{});
+   state.data.browserAccounts=await api("browser-accounts");render();
+   message("Chrome window closed; its local browser profile was preserved.");return;
  }
  if(act==="remove-openai"){if(confirm("Delete stored OpenAI API key?")){await api("studio/openai-key/remove",{});await refresh();message("OpenAI key removed");}return;}
  if(act==="verify-spotify"){const p=await api("connections/spotify/profile");message("Spotify connection verified: "+p.displayName);return;}
