@@ -12,7 +12,7 @@ use ratatui::{
     widgets::{Block, Gauge, Paragraph, Wrap},
 };
 
-const TOTAL_STEPS: usize = 9;
+const TOTAL_STEPS: usize = 10;
 const MAX_LINES: usize = 12;
 
 fn collect_output<T: io::Read + Send + 'static>(input: T, sender: Sender<String>, kind: &'static str) {

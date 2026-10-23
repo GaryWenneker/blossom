@@ -1,3 +1,4 @@
+import { PREFERRED_DRAW_MODEL, verifyDrawModel } from "../src/draw-models.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFile, writeFile, appendFile, chmod, mkdir, lstat, copyFile, mkdtemp, rm } from "node:fs/promises";
@@ -38,7 +39,8 @@ export function missingSettings(config, rng = randomBytes) {
     BLOSSOM_PORT: "8787",
     BLOSSOM_PUBLIC_URL: "http://127.0.0.1:8787",
     BLOSSOM_DB: ".data/blossom.db",
-    BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio"
+    BLOSSOM_REFERENCE_AUDIO_DIR: ".data/reference-audio",
+    BLOSSOM_DRAW_MODEL: PREFERRED_DRAW_MODEL
   };
   return Object.fromEntries(Object.entries(defaults).filter(([key]) => !(key in config)));
 }
@@ -79,7 +81,17 @@ export async function configureEnv(envFile, { create = true } = {}) {
     if (err.code !== "ENOENT") throw err;
     if (!create) throw Error(".env does not exist. Run bash setup.sh to configure.");
   }
-  const parsed = parseEnv(existing);
+  // Older Blossom setups wrote BLOSSOM_DRAW_MODEL= with an empty value.
+  // Repair only that empty setting. Never replace an operator's model choice.
+  let parsed = parseEnv(existing);
+  if (create && Object.hasOwn(parsed,"BLOSSOM_DRAW_MODEL") && !parsed.BLOSSOM_DRAW_MODEL) {
+    const repaired = existing.replace(/^(\s*(?:export\s+)?BLOSSOM_DRAW_MODEL=).*$/m,
+      "$1" + PREFERRED_DRAW_MODEL);
+    if (repaired === existing) throw Error("Cannot repair empty BLOSSOM_DRAW_MODEL setting");
+    await writeFile(envFile, repaired, { mode: 0o600 });
+    existing = repaired;
+    parsed = parseEnv(existing);
+  }
   const additions = create ? missingSettings(parsed) : {};
   if (create) {
     if (Object.keys(additions).length) {
@@ -249,6 +261,10 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     if (data.generatedPassword)
       emit("NOTICE|First-run administrator password is stored privately in .env (BLOSSOM_ADMIN_PASSWORD)");
     return data;
+  });
+  await step("Draw Things model", async () => {
+    const exact = await verifyDrawModel(config.settings.BLOSSOM_DRAW_MODEL);
+    return "Installed model verified: " + exact;
   });
   await step("Private storage", async () => {
     if (check) {

@@ -78,6 +78,10 @@ if ! node_compatible; then
   printf '[setup] Node.js >=22.13 not found after installation.\n' >&2
   exit 1
 fi
+if ! command -v draw-things-cli >/dev/null 2>&1; then
+  # Official Draw Things CLI uses the models downloaded by the app.
+  install_brew_package drawthingsai/draw-things/draw-things-cli
+fi
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
   install_brew_package ffmpeg
 fi

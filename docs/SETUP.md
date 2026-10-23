@@ -11,16 +11,18 @@ From the cloned, up-to-date GitHub repository:
 
 The bootstrap installs Homebrew if missing (requires operator confirmation), a supported Node.js runtime, FFmpeg/ffprobe, Rust/Cargo, and the cloudflared binary through Homebrew. Brew packages are reused when already installed. No external shell installer is run except Homebrew's official, explicitly confirmed installer when Homebrew is missing.
 
-The Ratatui dashboard runs eight gated checks:
+The Ratatui dashboard runs ten gated checks:
 
 1. Node.js >=22.13, ffmpeg, ffprobe, npm.
 2. Secure .env configuration (does not replace existing passwords or vault keys).
-3. Private .data/reference-audio, .data/logs and local database preservation.
-4. Source syntax checks via npm run check.
-5. Full tests via npm test.
-6. Real FFmpeg decode and Music DNA analysis of a generated 1-second WAV (in a temporary database, with cleanup).
-7. macOS launchd service installation for the UI and worker.
-8. Local web server health at http://127.0.0.1:8787/healthz.
+3. Downloaded Draw Things model availability through the official CLI.
+4. Private .data/reference-audio, .data/logs and local database preservation.
+5. Playwright Core dependency installation/verification.
+6. Source syntax checks via npm run check.
+7. Full tests via npm test.
+8. Real FFmpeg decode and Music DNA analysis of a generated 1-second WAV (in a temporary database, with cleanup).
+9. macOS launchd service installation for the UI and worker.
+10. Local web server health at http://127.0.0.1:8787/healthz.
 
 On first run .env includes generated BLOSSOM_ADMIN_PASSWORD, BLOSSOM_VAULT_KEY, BLOSSOM_MCP_READ_TOKEN and BLOSSOM_MCP_WRITE_TOKEN, and only local loopback host/port settings. Keys are never printed in a log or embedded in the launch agent. File permissions are set to 0600. Keep .env securely backed up separately from the SQLite database; losing the vault key makes encrypted credentials inaccessible. Fetch the login password locally with:
 
@@ -57,3 +59,26 @@ A check-only invocation requires an existing Node.js >=22.13 and .env and report
 - Overwrite an existing administrator password, vault key, tokens or SQLite data.
 
 The setup script can be rerun safely to add missing settings or dependencies. New environment settings are appended, not replaced. If an existing .env contains invalid or conflicting settings, the installer stops and asks for remediation rather than silently rotating secrets.
+
+## Draw Things model (local album artwork)
+
+The installer now configures the screenshot-provided default model:
+
+    BLOSSOM_DRAW_MODEL=lustifySDXLNSFWSFW_v20
+
+On rerun it appends this value if missing or repairs an empty assignment in .env without changing other settings or overriding a non-empty alternative. The setup installs the official Draw Things CLI from the Homebrew tap if missing, and checks the local downloaded model inventory:
+
+    draw-things-cli models list --downloaded-only
+
+Setup fails with an actionable message if this model is not visible to the CLI, rather than claiming image generation works. The selected model must be fully downloaded in Draw Things on the Mac. For custom model storage, configure DRAWTHINGS_MODELS_DIR in the environment inherited by Blossom and its setup. The CLI normally shares the Draw Things app model directory.
+
+After updating Blossom:
+
+    git pull
+    bash setup.sh
+
+Check the selected model with:
+
+    grep '^BLOSSOM_DRAW_MODEL=' .env
+
+GitHub cannot remotely edit the private .env on your Mac. The downloaded-model check does not run a GPU generation. If actual generation fails, check draw-things-cli generate --help, GPU memory and the checkpoint's recommended settings. The CLI supports human-readable model names or exact .ckpt IDs. This setup does not download a model without user action.
