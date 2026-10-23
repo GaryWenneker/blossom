@@ -222,8 +222,9 @@ async function configureLaunchd(envFile) {
       outcome.push({ label, state: "existing local server detected; not replaced" });
       continue;
     }
+    // Restart managed agents even when the plist is unchanged: code and .env may have changed.
+    if (await isLoaded()) await exec("launchctl", ["bootout", gui + "/" + label], { timeout: 10000 });
     if (existing !== expected) {
-      if (await isLoaded()) await exec("launchctl", ["bootout", gui + "/" + label], { timeout: 10000 });
       const temp = target + "." + randomUUID() + ".tmp";
       await writeFile(temp, expected, { flag: "wx", mode: 0o600 });
       await import("node:fs/promises").then(fs => fs.rename(temp, target));
