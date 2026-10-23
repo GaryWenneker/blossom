@@ -236,12 +236,12 @@ async function checkHealth() {
     return r.ok && (await r.json()).status === "ok";
   } catch { return false; }
 }
-async function launchdStatus(label) {
-  const service = "gui/" + process.getuid() + "/" + label;
+export async function launchdStatus(label, { launch = exec, uid = process.getuid() } = {}) {
+  const service = "gui/" + uid + "/" + label;
   try {
-    const { output } = await exec("launchctl", ["print", service], { timeout: 5000 });
-    return { registered: true, running: /\\bstate = running\\b/.test(output || ""),
-      detail: (output || "").split("\\n").filter(line =>
+    const { output } = await launch("launchctl", ["print", service], { timeout: 5000 });
+    return { registered: true, running: /\bstate = running\b/.test(output || ""),
+      detail: (output || "").split("\n").filter(line =>
         /state =|pid =|last exit code =|runs =/.test(line)).join(" ").trim() };
   } catch (error) {
     return { registered: false, running: false, detail: String(error.message || error) };
@@ -252,71 +252,138 @@ async function recoverLaunchdServer(envFile) {
   const gui = "gui/" + process.getuid();
   const target = join(process.env.HOME, "Library", "LaunchAgents", label + ".plist");
   const before = await launchdStatus(label);
-  if (before.running) return "already running";
+  if (before.running) return "already running: " + before.detail;
   if (before.registered) {
     try { await exec("launchctl", ["kickstart", gui + "/" + label], { timeout: 10000 }); }
-    catch (error) { return "kickstart failed: " + error.message; }
+    catch (error) { return "kickstart failed: " + error.message + "; " + before.detail; }
     return "kickstart attempted";
   }
   try { await exec("launchctl", ["bootstrap", gui, target], { timeout: 15000 }); }
   catch (error) { return "bootstrap failed: " + error.message; }
   return "bootstrap attempted";
 }
-async function configureLaunchd(envFile) {
-  const uid = process.getuid(), gui = "gui/" + uid;
-  const dir = join(process.env.HOME, "Library", "LaunchAgents"), logs = join(ROOT, ".data", "logs");
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await mkdir(logs, { recursive: true, mode: 0o700 });
+// PATH order from an interactive shell can change between setup runs. Once a
+// managed LaunchAgent has a working PATH, don't tear it down merely because
+// the installer shell has a different PATH. Real plist changes still reload.
+export function plistOnlyPathChanged(existing, expected) {
+  if (typeof existing !== "string" || typeof expected !== "string") return false;
+  const redactPath = value => value.replace(
+    /(<key>PATH<\/key><string>)[^<]*(<\/string>)/g,"$1[existing PATH]$2");
+  return redactPath(existing) === redactPath(expected);
+}
+export async function configureLaunchd(envFile, {
+  launch = exec,
+  health = checkHealth,
+  uid = process.getuid(),
+  agentDir = join(process.env.HOME, "Library", "LaunchAgents"),
+  logsDir = join(ROOT, ".data", "logs"),
+  root = ROOT,
+  nodePath = process.execPath,
+  searchPath = process.env.PATH || "/usr/bin:/bin",
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+} = {}) {
+  const gui = "gui/" + uid;
+  await mkdir(agentDir, { recursive: true, mode: 0o700 });
+  await mkdir(logsDir, { recursive: true, mode: 0o700 });
   const managed = [
     ["io.wenneker.blossom.server", false],
     ["io.wenneker.blossom.dna-worker", true]
   ];
   const outcome = [];
   for (const [label, worker] of managed) {
-    const target = join(dir, label + ".plist");
-    const expected = launchPlist({ label, nodePath: process.execPath, envPath: envFile,
-      worker, logPath: join(logs, worker ? "worker.log" : "server.log") });
+    const service = gui + "/" + label;
+    const target = join(agentDir, label + ".plist");
+    const logPath = join(logsDir, worker ? "worker.log" : "server.log");
+    const expected = launchPlist({ label, nodePath, root, envPath: envFile,
+      worker, logPath, searchPath });
     let existing = null;
     try {
       const stat = await lstat(target);
       if (stat.isSymbolicLink() || !stat.isFile()) throw Error("Unsafe launch agent " + target);
       existing = await readFile(target, "utf8");
       if (!existing.includes("<string>" + label + "</string>") ||
-          !existing.includes(xmlEscape(ROOT)))
+          !existing.includes(xmlEscape(root)))
         throw Error("Refusing to overwrite an unrelated launch agent: " + target);
     } catch (err) { if (err.code !== "ENOENT") throw err; }
-    const isLoaded = async () => {
-      try { await exec("launchctl", ["print", gui + "/" + label], { timeout: 5000 }); return true; }
-      catch { return false; }
+    const status = async () => {
+      try {
+        const { output } = await launch("launchctl", ["print", service], { timeout: 5000 });
+        return { loaded: true, output: String(output || "") };
+      } catch (error) {
+        return { loaded: false, output: String(error.message || error) };
+      }
     };
-    if (!worker && !existing && await checkHealth()) {
+    let current = await status();
+    if (!worker && !existing && await health()) {
       outcome.push({ label, state: "existing local server detected; not replaced" });
       continue;
     }
-    // Restart managed agents even when the plist is unchanged: code and .env may have changed.
-    if (await isLoaded()) await exec("launchctl", ["bootout", gui + "/" + label], { timeout: 10000 });
-    if (existing !== expected) {
-      const temp = target + "." + randomUUID() + ".tmp";
-      await writeFile(temp, expected, { flag: "wx", mode: 0o600 });
-      await import("node:fs/promises").then(fs => fs.rename(temp, target));
+    const plistChanged = existing !== expected && !plistOnlyPathChanged(existing, expected);
+    let operation;
+    if (current.loaded && !plistChanged) {
+      // A registered LaunchAgent must be restarted in-place. Unconditional
+      // bootout -> bootstrap can lose the service on recent macOS versions.
+      operation = "restart";
+      try {
+        await launch("launchctl", ["kickstart", "-k", service], { timeout: 15000 });
+      } catch (error) {
+        const after = await status();
+        if (!after.loaded && (worker || !await health())) {
+          throw Error("launchctl kickstart failed and service disappeared: " + label +
+            " (" + error.message + "). Check " + logPath);
+        }
+        operation = "restart requested (launchctl returned " + String(error.message || error).slice(0,120) + ")";
+      }
+    } else {
+      // Only a materially different plist requires a bootout. When first
+      // installing, bootstrap directly without unloading anything.
+      operation = current.loaded ? "reload plist" : "bootstrap";
+      if (current.loaded) {
+        await launch("launchctl", ["bootout", service], { timeout: 15000 });
+        for (let attempt = 0; attempt < 40; attempt++) {
+          current = await status();
+          if (!current.loaded) break;
+          await sleep(250);
+        }
+        if (current.loaded)
+          throw Error("launchd did not finish removing the old " + label +
+            " definition; refusing to bootstrap over a live service");
+      }
+      if (plistChanged) {
+        const temp = target + "." + randomUUID() + ".tmp";
+        try {
+          await writeFile(temp, expected, { flag: "wx", mode: 0o600 });
+          const { rename } = await import("node:fs/promises");
+          await rename(temp, target);
+        } finally { await rm(temp, { force: true }); }
+      }
+      await launch("launchctl", ["bootstrap", gui, target], { timeout: 15000 });
     }
-    if (!await isLoaded()) await exec("launchctl", ["bootstrap", gui, target], { timeout: 15000 });
-    // RunAtLoad starts the job. launchctl can briefly report a missing service
-    // immediately after bootout/bootstrap, so allow registration to settle.
-    let registered = false;
+    // Verify launchd still owns the job. A brief successful bootstrap alone is
+    // insufficient; the process may exit and macOS may drop the service row.
+    let loaded = false;
     for (let attempt = 0; attempt < 20; attempt++) {
-      if (await isLoaded()) { registered = true; break; }
-      if (!worker && await checkHealth()) break;
-      await new Promise(resolve => setTimeout(resolve, 500));
+      current = await status();
+      if (current.loaded) { loaded = true; break; }
+      if (!worker && await health()) break;
+      await sleep(500);
     }
-    if (!registered && !worker && await checkHealth()) {
-      outcome.push({ label, state: "healthy on localhost (launchctl status unavailable)" });
+    if (!loaded && !worker && await health()) {
+      outcome.push({ label, state: "server healthy; launchctl status unavailable" });
       continue;
     }
-    if (!registered) throw Error("launchd service " + label + " not registered after waiting 10 seconds. " +
-      "Check .data/logs/" + (worker ? "worker.log" : "server.log") +
-      " and launchctl print " + gui + "/" + label);
-    outcome.push({ label, state: "registered (RunAtLoad)" });
+    if (!loaded) {
+      let recent = "";
+      try {
+        recent = (await readFile(logPath,"utf8")).split(/\r?\n/).filter(Boolean)
+          .slice(-10).join(" ").slice(-700);
+      } catch { recent = "No service log available"; }
+      throw Error("launchd lost " + label + " after " + operation +
+        ". Last launchctl response: " + current.output.slice(0,300) +
+        ". Recent service log: " + recent +
+        ". Run: launchctl print " + service);
+    }
+    outcome.push({ label, state: operation + " (registered)" });
   }
   return outcome;
 }
