@@ -75,3 +75,9 @@ All items marked complete were implemented in source; external services still re
 - [ ] Automatic instrument recognition, playing techniques, vocal timbre, song section detection, tempo and key estimation with validated models.
 - [ ] Concurrent worker scheduling/metrics, audio asset lifecycle and large batch ingestion.
 - [ ] Continuous hosted worker supervision and protected Cloudflare endpoint deployment.
+
+## Draw Things local model configuration
+- [x] Prefer the screenshot's Lustify SDXL model in fresh Blossom configuration.
+- [x] Repair a blank BLOSSOM_DRAW_MODEL while preserving non-empty choices.
+- [x] Install/check official Draw Things CLI and verify the selected local model.
+- [ ] Run a genuine image-generation test on the user's Mac and tune model-specific inference settings.
