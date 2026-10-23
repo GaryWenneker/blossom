@@ -201,7 +201,7 @@ export class MusicDNA {
         .get(profileId).n);
       this.db.prepare("INSERT INTO music_dna_analyses VALUES(?,?,?,?,?)")
         .run(analysisId, profileId, version, toJson(data), timestamp());
-      const insert = this.db.prepare("INSERT INTO music_dna_sections VALUES(?,?,?,?,?,?,?,?)");
+      const insert = this.db.prepare("INSERT INTO music_dna_sections VALUES(?,?,?,?,?,?,?,?,?)");
       data.sections.forEach((s, ordinal) => insert.run(randomUUID(), analysisId, ordinal, s.startMs,
         s.endMs, s.label, toJson(s.instruments), toJson(s.techniques), s.notes));
       this.db.prepare("UPDATE music_dna_profiles SET current_analysis_id=?,updated_at=? WHERE id=?")
