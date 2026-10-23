@@ -218,3 +218,49 @@ test("Consent redirect, ChatGPT code redemption, tool scan and permissions are d
   assert.equal(scan.status,200);
   assert.equal((await status()).latestStage,"tools_listed");
 });
+
+
+test("Explicit denial stays denied on repeat; primary approval remains available",async t=>{
+  const {base,store}=await withApp(t);
+  const registered=await postJson(base,"/oauth/register",{redirect_uris:[callback]});
+  const client=(await registered.json()).client_id;
+  const verifier="d".repeat(50);
+  const qs=new URLSearchParams({
+    response_type:"code",client_id:client,redirect_uri:callback,
+    code_challenge:createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method:"S256",state:"consent-outcome-test-123456",
+    scope:"blossom:read blossom:write offline_access",resource
+  });
+  const response=await fetch(base+"/oauth/authorize?"+qs);
+  assert.equal(response.status,200);
+  const form=await response.text();
+  assert.match(form,/name="decision" value="approve"/);
+  assert.match(form,/name="decision" value="deny"/);
+  assert.match(form,/Weigering bevestigen/);
+  const nonce=form.match(/name="request" value="([^"]+)"/)?.[1];
+  assert.ok(nonce);
+  const denied=await postForm(base,"/oauth/authorize",
+    {request:nonce,decision:"deny"});
+  assert.equal(denied.status,303);
+  const target=new URL(denied.headers.get("location"));
+  assert.equal(target.searchParams.get("error"),"access_denied");
+  assert.equal(target.searchParams.get("code"),null);
+  const repeated=await postForm(base,"/oauth/authorize",
+    {request:nonce,decision:"approve",username:"admin",
+      password:"very-long-local-blossom-password"});
+  assert.equal(repeated.status,200);
+  const info=await repeated.text();
+  assert.match(info,/Toestemming geweigerd/);
+  assert.doesNotMatch(info,/Toestemming al verwerkt/);
+  assert.equal(store.db.prepare("SELECT decision FROM mcp_oauth_completed").get().decision,"deny");
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM mcp_oauth_codes").get().count,0);
+  const second=await fetch(base+"/oauth/authorize?"+qs);
+  const fresh=(await second.text()).match(/name="request" value="([^"]+)"/)?.[1];
+  const approved=await postForm(base,"/oauth/authorize",{request:fresh,decision:"approve",
+    username:"admin",password:"very-long-local-blossom-password"});
+  assert.equal(approved.status,303);
+  assert.ok(new URL(approved.headers.get("location")).searchParams.get("code"));
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM mcp_oauth_codes").get().count,1);
+  assert.deepEqual(store.db.prepare("SELECT decision FROM mcp_oauth_completed ORDER BY rowid").all()
+    .map(x=>x.decision),["deny","approve"]);
+});
