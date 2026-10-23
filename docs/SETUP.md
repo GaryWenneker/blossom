@@ -57,3 +57,26 @@ A check-only invocation requires an existing Node.js >=22.13 and .env and report
 - Overwrite an existing administrator password, vault key, tokens or SQLite data.
 
 The setup script can be rerun safely to add missing settings or dependencies. New environment settings are appended, not replaced. If an existing .env contains invalid or conflicting settings, the installer stops and asks for remediation rather than silently rotating secrets.
+
+## Draw Things model (local album artwork)
+
+The installer now configures the screenshot-provided default model:
+
+    BLOSSOM_DRAW_MODEL=lustifySDXLNSFWSFW_v20
+
+On rerun it appends this value if missing or repairs an empty assignment in .env without changing other settings or overriding a non-empty alternative. The setup installs the official Draw Things CLI from the Homebrew tap if missing, and checks the local downloaded model inventory:
+
+    draw-things-cli models list --downloaded-only
+
+Setup fails with an actionable message if this model is not visible to the CLI, rather than claiming image generation works. The selected model must be fully downloaded in Draw Things on the Mac. For custom model storage, configure DRAWTHINGS_MODELS_DIR in the environment inherited by Blossom and its setup. The CLI normally shares the Draw Things app model directory.
+
+After updating Blossom:
+
+    git pull
+    bash setup.sh
+
+Check the selected model with:
+
+    grep '^BLOSSOM_DRAW_MODEL=' .env
+
+GitHub cannot remotely edit the private .env on your Mac. The downloaded-model check does not run a GPU generation. If actual generation fails, check draw-things-cli generate --help, GPU memory and the checkpoint's recommended settings. The CLI supports human-readable model names or exact .ckpt IDs. This setup does not download a model without user action.
