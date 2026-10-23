@@ -98,7 +98,7 @@ test("Draw Things selects installed ERNIE Image Turbo instead of unavailable pre
    child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
    setImmediate(async()=>{
      if(args[0]==="models") {
-       child.stdout.end("MODEL NAME SOURCE DOWNLOADED\\nernie_image_turbo_i8x.ckpt ERNIE Image Turbo official yes\\nwan_v2.2_a14b_hne_t2v_q8p.ckpt Wan T2V official yes\\n");
+       child.stdout.end("MODEL NAME SOURCE DOWNLOADED\nernie_image_turbo_i8x.ckpt ERNIE Image Turbo official yes\nwan_v2.2_a14b_hne_t2v_q8p.ckpt Wan T2V official yes\n");
      } else {
        generatedArgs=args;
        await writeFile(args[args.indexOf("--output")+1],Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(140)]));
