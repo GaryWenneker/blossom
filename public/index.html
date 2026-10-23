@@ -39,6 +39,13 @@
     </div>
   </div>
   <dialog id="recipe-dialog"><div class="dialog-header"><strong>Production blueprint</strong><button data-action="close-dialog" class="icon-button" aria-label="Close">×</button></div><p class="hint">Copy these reviewed parameters into your authorized Suno session. No live Suno API call occurs.</p><textarea id="recipe-text" readonly rows="17"></textarea><div class="actions"><button data-action="copy-recipe" class="primary">Copy blueprint</button><button data-action="close-dialog" class="secondary">Close</button></div></dialog>
+  <dialog id="account-login-dialog" aria-labelledby="account-login-title">
+    <div class="dialog-header"><strong id="account-login-title">Connect provider</strong><button type="button" data-action="browser-finished" class="icon-button" aria-label="Close login instructions">×</button></div>
+    <p id="account-login-instructions" class="hint">Sign in using the provider's official website.</p>
+    <p id="account-login-status" class="browser-login-status" role="status">Opening the local browser...</p>
+    <p class="hint">Your provider login happens in a separate visible Chrome window, not inside this panel. Cookies and website storage remain in that local provider-specific browser profile. Complete any MFA or consent yourself.</p>
+    <div class="actions"><button type="button" class="primary" data-action="browser-reopen">Open / focus Chrome</button><button type="button" class="secondary" data-action="browser-finished">Done</button></div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/app.js"></script>
 </body>
