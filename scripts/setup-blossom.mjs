@@ -191,6 +191,32 @@ async function checkHealth() {
     return r.ok && (await r.json()).status === "ok";
   } catch { return false; }
 }
+async function launchdStatus(label) {
+  const service = "gui/" + process.getuid() + "/" + label;
+  try {
+    const { output } = await exec("launchctl", ["print", service], { timeout: 5000 });
+    return { registered: true, running: /\\bstate = running\\b/.test(output || ""),
+      detail: (output || "").split("\\n").filter(line =>
+        /state =|pid =|last exit code =|runs =/.test(line)).join(" ").trim() };
+  } catch (error) {
+    return { registered: false, running: false, detail: String(error.message || error) };
+  }
+}
+async function recoverLaunchdServer(envFile) {
+  const label = "io.wenneker.blossom.server";
+  const gui = "gui/" + process.getuid();
+  const target = join(process.env.HOME, "Library", "LaunchAgents", label + ".plist");
+  const before = await launchdStatus(label);
+  if (before.running) return "already running";
+  if (before.registered) {
+    try { await exec("launchctl", ["kickstart", gui + "/" + label], { timeout: 10000 }); }
+    catch (error) { return "kickstart failed: " + error.message; }
+    return "kickstart attempted";
+  }
+  try { await exec("launchctl", ["bootstrap", gui, target], { timeout: 15000 }); }
+  catch (error) { return "bootstrap failed: " + error.message; }
+  return "bootstrap attempted";
+}
 async function configureLaunchd(envFile) {
   const uid = process.getuid(), gui = "gui/" + uid;
   const dir = join(process.env.HOME, "Library", "LaunchAgents"), logs = join(ROOT, ".data", "logs");
@@ -336,8 +362,11 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
   });
   await step("Server health", async () => {
     if (noServices) return "not started (--no-services)";
+    let recovery = "";
     for (let attempt = 0; attempt < (check ? 1 : 60); attempt++) {
       if (await checkHealth()) return "http://127.0.0.1:8787/login";
+      if (!check && process.platform === "darwin" && attempt === 6)
+        recovery = await recoverLaunchdServer(envFile);
       if (!check) await new Promise(resolve => setTimeout(resolve, 500));
     }
     const logPath = join(root, ".data", "logs", "server.log");
@@ -357,6 +386,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
       } catch (error) { agentState = "launchctl status unavailable: " + String(error.message || error); }
     }
     throw Error("Blossom server did not respond on localhost:8787. " +
+      (recovery ? "Recovery: " + recovery + ". " : "") +
       "Check .data/logs/server.log. " + (agentState ? "launchd: " + agentState + ". " : "") +
       "Recent server log: " + (diagnostic || "(empty)"));
   });
