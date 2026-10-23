@@ -114,3 +114,25 @@ test("Studio API requires session, stores project, generates AI and links track"
  const noKey=await request("/api/studio/openai-key",{apiKey:"unavailable"},cookie);
  assert.equal(noKey.status,503);
 });
+
+test("Draw Things without configured model uses CLI default model",async()=>{
+ const dir=await mkdtemp(join(tmpdir(),"blossom-image-default-"));
+ let runArgs;
+ const runner=(command,args)=>{
+   runArgs=args;
+   const child=new EventEmitter();
+   child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+   setImmediate(async()=>{
+     await writeFile(args[args.indexOf("--output")+1],
+       Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(140)]));
+     child.emit("close",0,null);
+   });
+   return child;
+ };
+ try {
+   const draw=new DrawThings({model:"",directory:dir,runner});
+   const result=await draw.generate({kind:"artist-photo",prompt:"A cinematic natural-light portrait of a fictional musician"});
+   assert.equal(result.mime,"image/png");
+   assert.equal(runArgs.includes("--model"),false);
+ } finally {await rm(dir,{recursive:true,force:true});}
+});
