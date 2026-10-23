@@ -100,7 +100,8 @@ function fetchPage(url,{resolver=dnsLookup,timeoutMs=12000,maxBytes=2*1024*1024}
           const list=Array.isArray(addresses)?addresses:[addresses];
           if(!list.length||list.some(x=>!isPublicAddress(x.address)))
             return callback(new Error("Article host resolves to a non-public address"));
-          const first=list[0];callback(null,first.address,first.family);
+          if(opts.all) callback(null,list.map(x=>({address:x.address,family:x.family})));
+          else {const first=list[0];callback(null,first.address,first.family);}
         });
       }
     },res=>{
