@@ -185,6 +185,8 @@ Draw Things CLI is now installed from **official Homebrew core**, not its older 
 
 If setup reports your Draw Things checkpoint is missing, use `draw-things-cli models list --downloaded-only` to find the exact model ID. The setup now reports the configured model folder and warns instead of stopping the rest of Blossom. You may set `DRAWTHINGS_MODELS_DIR` in the private `.env` if the Draw Things GUI uses a custom model location. Artwork remains unavailable until an installed model is verified.
 
-## Browser sign-in with Playwright
+## Browser sign-in in your normal browser
 
-Under Connections, Suno, Spotify and ChatGPT have a one-click local browser option. Sign in via the provider's own official login screen (Google or Facebook where supported). Reuse the same isolated provider-specific Chrome session on subsequent launches. A modal provides guidance, while API credential fields now stay hidden under Advanced until needed. A browser session does not grant API access or enable unapproved automation. See docs/OPERATIONS.md for security details.
+Connections opens Suno, Spotify and ChatGPT in your existing default browser, rather than an automated Playwright/Chrome profile. Google's login blocks automated browsers with "This browser or app may not be secure"; native browser tabs avoid that automation-specific problem without hiding browser identity or moving cookies. The regular browser controls its own session: if you are already signed in, you normally continue without login. Blossom never reads, copies or injects your cookies. Credentials for optional developer APIs remain in Advanced.
+
+In News to Song, **Open Suno in browser** uses the same normal browser. **View / copy Suno blueprint** shows lyrics and settings to paste into Suno. Direct Playwright prefill into a Google-authenticated tab is no longer offered in the default workflow. See docs/OPERATIONS.md.
