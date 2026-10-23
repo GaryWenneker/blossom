@@ -1,0 +1,17 @@
+{
+  "name": "blossom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Security-first music label operations MVP",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "test": "node --test",
+    "check": "node --check src/server.mjs && node --check src/domain.mjs && node --check src/storage.mjs && node --check src/providers/labelgrid.mjs && node --check src/monitor.mjs && node --check public/app.js",
+    "seed": "node scripts/seed.mjs"
+  }
+}

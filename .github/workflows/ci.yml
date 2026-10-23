@@ -1,0 +1,26 @@
+name: Build and tests
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm run check
+      - run: npm test
+      - name: Repository secret safety check
+        run: |
+          if git ls-files | grep -E '(^|/)(\.env$|\.data/|.*\.db$)'; then
+            echo "Unexpected secret or local database committed"; exit 1
+          fi
