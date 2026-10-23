@@ -8,6 +8,7 @@ import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
 import { MusicDnaMCP } from "./music-dna-mcp.mjs";
+import { BlossomMcpOAuth } from "./mcp-oauth.mjs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { Store } from "./storage.mjs";
@@ -43,10 +44,12 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,connectedBrowsers=null,nativeBrowserOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,connectedBrowsers=null,nativeBrowserOptions={},mcpOrigin=process.env.BLOSSOM_MCP_PUBLIC_URL||"",assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
+  const mcpOAuth=new BlossomMcpOAuth(store.db,{publicUrl:mcpOrigin,
+    authenticate:(user,pass,ip)=>sessions.authenticate(user,pass,ip)});
   const vault=new Vault(store.db,vaultKey);
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
   const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
@@ -54,7 +57,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     sunoBrowser:sunoBrowser||browserAccounts.suno,nativeChatgptOptions:nativeBrowserOptions,assetDir});
   const musicDna=new MusicDNA(store);
   const musicDnaApi=new MusicDnaAPI(musicDna);
-  const musicDnaMcp=new MusicDnaMCP(musicDna);
+  const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth});
   const secure=publicUrl.startsWith("https:");
   const permittedOrigin=new URL(publicUrl).origin;
   const timer=enableMonitor(store,{enabled:monitor});
@@ -65,9 +68,21 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     res.setHeader("Content-Security-Policy","default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     const parsedUrl=new URL(req.url||"/","http://localhost");
     const path=parsedUrl.pathname;
+    const oauthPath=path.startsWith("/oauth/")||path.startsWith("/.well-known/oauth-");
+    const publicHost=mcpOAuth.enabled()?new URL(mcpOAuth.origin).hostname:"";
+    // On the public Cloudflare hostname expose MCP and OAuth ONLY, not local admin UI.
+    if(publicHost&&String(req.headers.host||"").split(":")[0].toLowerCase()===publicHost &&
+        path!=="/mcp"&&!oauthPath)return reply(res,404,{error:"Not found"});
+    if(oauthPath) {
+      try {return await mcpOAuth.handle(req,res,path,parsedUrl);}
+      catch(error){console.error("Blossom OAuth error:",error.message);
+        return reply(res,500,{error:"OAuth request failed"});}
+    }
     if(path==="/healthz" && req.method==="GET")return reply(res,200,{status:"ok"});
     const sessionHash=sessions.session(req);
-    if(req.method==="POST"&&req.headers.origin&&req.headers.origin!==permittedOrigin)
+    if(req.method==="POST"&&req.headers.origin&&req.headers.origin!==permittedOrigin &&
+        !(path==="/mcp"&&(req.headers.origin==="https://chatgpt.com"||
+          req.headers.origin===mcpOAuth.origin)))
       return reply(res,403,{error:"Origin verification failed"});
     if(req.method==="POST"&&path!=="/mcp"&&req.headers["x-blossom-request"]!=="ui")
       return reply(res,403,{error:"Missing request protection header"});
