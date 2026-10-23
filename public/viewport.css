@@ -171,3 +171,51 @@ body[data-view="music-dna"] .content{overflow:hidden}
 @media(max-width:700px) and (max-height:690px){
   .studio-workspace{grid-template-rows:auto auto minmax(0,1fr) minmax(90px,24%) 0px}
 }
+
+
+/* Connections is a single-screen account hub, not a page of credential forms. */
+body[data-view="connections"] .content{overflow:hidden;display:flex;min-height:0;padding:12px 13px}
+.browser-connections-layout{display:flex;flex-direction:column;gap:10px;width:100%;min-height:0;min-width:0;overflow:hidden}
+.browser-connections-layout>.headrow{flex:0 0 auto;margin:0}
+.browser-connections-layout .headrow h1{font-size:22px;line-height:1.2}
+.browser-connections-layout .subtitle{max-width:860px}
+.browser-accounts-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-height:0;flex:1 1 auto;overflow:hidden}
+.browser-account-card{min-height:0;min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overscroll-behavior:contain;padding:16px}
+.browser-account-card .panel-header{margin-bottom:0}
+.browser-account-card .panel-header h2{font-size:15px}
+.browser-account-card .pill{font-size:10px;text-align:center}
+.browser-account-identity{font-size:15px;font-weight:700;color:var(--lime);margin:0}
+.browser-account-card .hint{margin:0;flex:1 1 auto;font-size:12px;line-height:1.5}
+.browser-account-actions{display:flex;gap:7px;flex-wrap:wrap}
+.browser-account-actions button{flex:1 1 auto;min-height:37px;font-size:11px}
+.browser-account-card .small{line-height:1.45;font-size:10px;margin:0;color:#a3b0a7}
+.browser-advanced{flex:0 0 auto;max-height:40%;min-height:0;overflow:auto;padding:10px 15px;overscroll-behavior:contain}
+.browser-advanced summary{display:flex;gap:16px;justify-content:space-between;align-items:center;font-size:12px;cursor:pointer;list-style:revert}
+.browser-advanced[open] summary{padding-bottom:12px;margin-bottom:8px;border-bottom:1px solid var(--stroke)}
+.browser-advanced-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.browser-advanced-grid section{min-width:0;display:flex;flex-direction:column;gap:7px}
+.browser-advanced-grid section h3{font-size:13px;margin:0}
+.browser-advanced-grid .stack{display:flex;flex-direction:column;gap:8px}
+.browser-advanced-grid .hint,.browser-advanced-grid .small{font-size:10px;overflow-wrap:anywhere}
+.browser-advanced-grid a{overflow-wrap:anywhere}
+.browser-security-note{flex:0 0 auto;font-size:10px;color:var(--muted);margin:0;line-height:1.35}
+#account-login-dialog{width:min(480px,92vw);max-height:85dvh;background:#141b18;border:1px solid #416049;border-radius:12px;color:var(--ink);padding:18px;box-shadow:0 15px 80px #0009}
+#account-login-dialog::backdrop{background:#000b}
+#account-login-dialog .dialog-header{display:flex;justify-content:space-between;align-items:center}
+#account-login-dialog .dialog-header strong{font-size:18px}
+#account-login-dialog .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+#account-login-dialog .actions button{flex:1}
+.browser-login-status{border:1px solid #385340;padding:10px;border-radius:7px;color:var(--lime);font-size:12px;line-height:1.5}
+@media(max-width:900px){
+ .browser-accounts-grid{grid-template-columns:repeat(3,minmax(225px,1fr));overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity}
+ .browser-account-card{scroll-snap-align:start}
+ .browser-advanced-grid{grid-template-columns:1fr}
+ .browser-advanced summary .small{display:none}
+}
+@media(max-width:700px){
+ .browser-connections-layout{gap:7px}
+ .browser-accounts-grid{grid-template-columns:repeat(3,minmax(245px,82vw))}
+ .browser-account-card{padding:12px;gap:9px}
+ .browser-advanced{max-height:35%}
+ .browser-security-note{font-size:9px}
+}

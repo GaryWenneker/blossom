@@ -63,6 +63,8 @@ function browserMeasure() {
 }
 
 test("Rendered Studio and Music DNA stay inside viewport at desktop and mobile widths",async t=>{
+  if(process.env.CI && process.env.BLOSSOM_BROWSER_LAYOUT_TEST==="false")
+    return t.skip("Chromium geometry checked on Node 22; static layouts on both versions");
   if(!chrome){
     if(process.env.CI)assert.fail("CI must provide Chrome/Chromium for viewport checks");
     return t.skip("Chromium is not installed locally");

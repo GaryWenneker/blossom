@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
+import { ConnectedBrowsers } from "./browser-connections.mjs";
 import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
@@ -41,13 +42,14 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,draw=null,sunoBrowser=null,connectedBrowsers=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
   const vault=new Vault(store.db,vaultKey);
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
   const studioApi=new StudioAPI({store,vault,composer,draw,sunoBrowser,assetDir});
+  const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:studioApi.sunoBrowser});
   const musicDna=new MusicDNA(store);
   const musicDnaApi=new MusicDnaAPI(musicDna);
   const musicDnaMcp=new MusicDnaMCP(musicDna);
@@ -106,6 +108,19 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         const content=await readFile(new URL("../public/"+name,import.meta.url));
         res.writeHead(200,{"Content-Type":MIME[extension],"Cache-Control":"no-store"});
         res.end(content);return;
+      }
+      // Only an authenticated Blossom session may open/focus a local GUI window.
+      // Browser cookies stay in Chrome's isolated profiles, not in HTTP replies.
+      if(path==="/api/browser-accounts"&&req.method==="GET")
+        return reply(res,200,await browserAccounts.status());
+      const browserAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/(open|close)$/);
+      if(browserAction&&req.method==="POST"){
+        // All POSTs have already passed same-origin and request-header checks.
+        const providerName=browserAction[1], action=browserAction[2];
+        const result=action==="open"?await browserAccounts.open(providerName):
+          await browserAccounts.close(providerName);
+        store.audit("browser_"+action,"connection",providerName,{windowOpen:!!result.browserOpen});
+        return reply(res,200,result);
       }
       if(!path.startsWith("/api/"))throw new DomainError("Not found",404);
       if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path);return;}
@@ -206,7 +221,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       return reply(res,safe.status||500,{error:safe.message});
     }
   });
-  server.on("close",()=>{if(timer)clearInterval(timer);Promise.resolve(studioApi.sunoBrowser.close()).catch(()=>{});});
+  server.on("close",()=>{if(timer)clearInterval(timer);Promise.resolve(browserAccounts.closeAll()).catch(()=>{});});
   return server;
 }
 if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {

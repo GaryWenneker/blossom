@@ -74,3 +74,17 @@ To prepare: run \`bash setup.sh\` to install \`playwright-core\` and Google Chro
 Suno explicitly restricts robots and scraping in its current terms, effective September 2026. Use the assistant only when authorized by the service, and do not automate blocked operations. If Google refuses login from Playwright Chrome or Suno's UI changes, open \`suno.com\` normally and copy the fields from Blossom's blueprint; do not add stealth plugins or circumvent controls.
 
 Reference: https://suno.com/terms-of-service
+
+## One-click provider browser accounts (Playwright)
+
+Blossom Connections offers three separate visible Chrome sessions: Suno (https://suno.com/create), Spotify (https://open.spotify.com/) and ChatGPT (https://chatgpt.com/).
+
+Select Sign in with browser. Blossom shows a small modal guide and opens a separate Chrome window. Sign in manually, including provider Google/Facebook login and MFA. When using Continue session later, the same provider-specific Chrome profile is reused. Closing Chrome does not remove the session.
+
+Data stays in ignored local directories: .data/suno-playwright-profile for Suno, and .data/browser-accounts/spotify or .data/browser-accounts/chatgpt for other services. Protect these folders with macOS disk encryption and do not share, synchronize or commit them. No cookies or localStorage are read, copied from regular Chrome, returned over Blossom HTTP, or transferred between providers.
+
+The modal does not embed the provider login, because third-party SSO providers commonly block embedding. Login occurs in a separate visible Chrome window. A saved profile is not proof you are currently signed in. If the provider expires or revokes a session, sign in again using the same Chrome profile.
+
+Spotify Web API requires an official developer Client ID and OAuth authorization even when browser Facebook sign-in works. OpenAI API requires a separate API key even if ChatGPT website login works. Consumer Suno login never grants Suno Platform developer access. Technical credentials remain in the Advanced area rather than interrupting browser use. Browser access is for supervised website interactions, not undocumented APIs, automatic bulk song generation, scraping or bypassing provider safeguards.
+
+Chrome must be installed and a user GUI session available on the Mac. On a first run, bash setup.sh prepares the local Playwright dependency. No existing personal Chrome profile is read or imported.
