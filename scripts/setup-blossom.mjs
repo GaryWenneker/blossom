@@ -270,7 +270,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     return data;
   });
   await step("Draw Things model", async () => {
-    const exact = await verifyDrawModel(config.settings.BLOSSOM_DRAW_MODEL);
+    const exact = await verifyDrawModel(config.settings.BLOSSOM_DRAW_MODEL, { modelsDir: config.settings.DRAWTHINGS_MODELS_DIR || process.env.DRAWTHINGS_MODELS_DIR });
     return "Installed model verified: " + exact;
   }, { optional: true });
   await step("Private storage", async () => {
