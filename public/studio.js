@@ -82,7 +82,10 @@ const panels=(p,assets,state)=>{
  '<label><input id="studio-personalize" type="checkbox" '+(params.personalize?"checked":"")+'> Personalize</label></div>'+
  slider("weirdness","Weirdness",params.weirdness)+slider("styleInfluence","Style Influence",params.styleInfluence)+slider("variety","Variety",params.variety)+
  field("Creative instructions",'<textarea id="studio-notes" rows="2" placeholder="No echo, warm analogue mix, early 1960s feel...">'+esc(params.customInstructions||"")+'</textarea>')+
- '<div class="studio-control-footer"><button class="secondary" data-action="studio-save-preset">Save as artist default</button><button class="primary" data-action="studio-recipe">Suno blueprint ↗</button></div></section>'+
+ '<div class="studio-control-footer"><button class="secondary" data-action="studio-save-preset">Save as artist default</button><button class="primary" data-action="studio-recipe">Suno blueprint ↗</button></div>'+
+ '<div class="studio-suno-handoff"><button type="button" class="secondary" data-action="studio-suno-open">Open Suno (Playwright) ↗</button>'+
+ '<button type="button" class="primary" data-action="studio-suno-prefill">Fill Suno draft</button>'+
+ '<p class="studio-hint">Sign in with Google in the opened Chrome window, review the draft, then click Generate yourself. No unofficial API calls.</p></div></section>'+
  '<section class="studio-panel studio-art"><div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">DRAW THINGS</span></div>'+
  '<div class="studio-assetpreview">'+(image?'<img src="'+esc(image.url)+'" alt="Generated album artwork" loading="lazy">':'<div class="studio-empty-art"><div>♫</div><strong>ALBUM ART</strong><small>Local Draw Things output</small></div>')+'</div>'+
  '<div class="studio-arttabs"><span>Album cover</span><span>Artist portrait</span></div>'+
@@ -174,6 +177,22 @@ export async function studioAction(el,state,api,refresh,message){
   if(action==="studio-save-lyrics"){
     const result={...p.result,lyrics:document.querySelector("#studio-lyrics").value};
     await api("studio/projects/"+p.id+"/result",result);await refresh();message("Lyrics edits saved");return;
+  }
+  if(action==="studio-suno-open"){
+    const result=await api("studio/projects/"+p.id+"/suno-browser/open",{});
+    message(result.reopened?"Suno Chrome window focused":"Suno opened in Chrome. Sign in with Google there.");
+    return;
+  }
+  if(action==="studio-suno-prefill"){
+    if(p.result?.concept){
+      await api("studio/projects/"+p.id+"/result",
+        {...p.result,lyrics:document.querySelector("#studio-lyrics").value});
+    }
+    const result=await api("studio/projects/"+p.id+"/suno-browser/prefill",{});
+    message("Filled: "+(result.filled.join(", ")||"none")+
+      (result.skipped.length?". Copy manually: "+result.skipped.join(", "):"")+
+      ". Review and click Generate in Suno.",result.filled.length===0);
+    return;
   }
   if(action==="studio-recipe"){
     const recipe=await api("studio/projects/"+p.id+"/recipe");
