@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { request as httpRequest } from "node:http";
 import { readFile } from "node:fs/promises";
 import { Store } from "../src/storage.mjs";
 import { createAppServer } from "../src/server.mjs";
@@ -13,8 +14,21 @@ test("Public hostname serves only MCP gateway landing and status, not admin page
   server.listen(0,"127.0.0.1");await once(server,"listening");
   t.after(async()=>{await new Promise(done=>server.close(done));store.close();});
   const base="http://127.0.0.1:"+server.address().port;
-  const req=(path,host="blossom.wenneker.dev")=>fetch(base+path,{
-    headers:{"Host":host},redirect:"manual"
+  // Node fetch does not reliably allow overriding the Host header.
+  // Use node:http to exercise the real virtual-host security boundary.
+  const req=(path,host="blossom.wenneker.dev")=>new Promise((resolve,reject)=>{
+    const endpoint=new URL(base);
+    const request=httpRequest({hostname:"127.0.0.1",port:Number(endpoint.port),
+      path,method:"GET",headers:{Host:host}},response=>{
+      const chunks=[];
+      response.on("data",chunk=>chunks.push(chunk));
+      response.on("end",()=>{
+        const body=Buffer.concat(chunks).toString("utf8");
+        resolve({status:response.statusCode,text:async()=>body,json:async()=>JSON.parse(body),
+          headers:{get:name=>response.headers[name.toLowerCase()]}});
+      });
+    });
+    request.on("error",reject);request.end();
   });
   const home=await req("/");
   assert.equal(home.status,200);
