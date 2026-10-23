@@ -236,8 +236,8 @@ async function configureLaunchd(envFile) {
 }
 export async function runSetup({ check = false, noServices = false, emit = () => {},
   root = ROOT, envFile = join(ROOT, ".env") } = {}) {
-  let stages = 0;
-  const step = async (name, fn) => {
+  let stages = 0, optionalWarnings = 0;
+  const step = async (name, fn, { optional = false } = {}) => {
     emit("STEP|" + name + "|RUN|");
     try {
       const info = await fn();
@@ -245,7 +245,14 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
       emit("STEP|" + name + "|OK|" + String(info || "ready").replace(/[\r\n|]/g, " ").slice(0, 300));
       return info;
     } catch (error) {
-      emit("STEP|" + name + "|FAIL|" + String(error.message).replace(/[\r\n|]/g, " ").slice(0, 500));
+      const reason = String(error.message).replace(/[\r\n|]/g, " ").slice(0, 1200);
+      if (optional) {
+        optionalWarnings++;
+        stages++;
+        emit("STEP|" + name + "|WARN|" + reason);
+        return null;
+      }
+      emit("STEP|" + name + "|FAIL|" + reason);
       throw error;
     }
   };
@@ -265,7 +272,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
   await step("Draw Things model", async () => {
     const exact = await verifyDrawModel(config.settings.BLOSSOM_DRAW_MODEL);
     return "Installed model verified: " + exact;
-  });
+  }, { optional: true });
   await step("Private storage", async () => {
     if (check) {
       const stat = await lstat(join(root, ".data"));
@@ -302,7 +309,7 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     }
     throw Error("Blossom server did not respond on localhost:8787");
   });
-  emit("DONE|" + stages + "|Blossom installation checks passed");
+  emit("DONE|" + stages + "|" + (optionalWarnings ? "Blossom setup finished with " + optionalWarnings + " optional warning(s); Draw Things artwork requires attention" : "Blossom installation checks passed"));
   return config;
 }
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
