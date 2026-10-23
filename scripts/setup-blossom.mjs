@@ -291,10 +291,10 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     }));
     if (!foundCli.some(Boolean)) {
       emit("NOTICE|Draw Things CLI not found in PATH. Image generation needs a working CLI. Install/configure the Draw Things command, then rerun setup. The app alone is not proof the CLI is available.");
-      return installedApp ? "Draw Things app found; CLI not available" : "Draw Things CLI not found (optional)";
+      throw Error(installedApp ? "Draw Things app found but CLI unavailable" : "Draw Things CLI unavailable");
     }
     return "Draw Things CLI executable found; image model availability still requires a generation smoke test";
-  });
+  }, { optional: true });
   await step("Syntax validation", async () => { await exec("npm", ["run", "check"], { cwd: root }); return "syntax checks passed"; });
   await step("Automated tests", async () => { await exec("npm", ["test"], { cwd: root }); return "test suite passed"; });
   await step("Audio self-test", async () => {
