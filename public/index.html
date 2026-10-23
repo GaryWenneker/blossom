@@ -42,9 +42,9 @@
   <dialog id="account-login-dialog" aria-labelledby="account-login-title">
     <div class="dialog-header"><strong id="account-login-title">Connect provider</strong><button type="button" data-action="browser-finished" class="icon-button" aria-label="Close login instructions">×</button></div>
     <p id="account-login-instructions" class="hint">Sign in using the provider's official website.</p>
-    <p id="account-login-status" class="browser-login-status" role="status">Opening the local browser...</p>
-    <p class="hint">Your provider login happens in a separate visible Chrome window, not inside this panel. Cookies and website storage remain in that local provider-specific browser profile. Complete any MFA or consent yourself.</p>
-    <div class="actions"><button type="button" class="primary" data-action="browser-reopen">Open / focus Chrome</button><button type="button" class="secondary" data-action="browser-finished">Done</button></div>
+    <p id="account-login-status" class="browser-login-status" role="status">Opening your regular browser...</p>
+    <p class="hint">Your provider opens in your normal browser tab, not a Playwright-controlled window. Your browser manages existing cookies and sessions. Complete any login or verification there.</p>
+    <div class="actions"><button type="button" class="primary" data-action="browser-reopen">Open official website</button><button type="button" class="secondary" data-action="browser-finished">Done</button></div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/app.js"></script>

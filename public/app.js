@@ -123,31 +123,30 @@ function genres(){
 }
 function browserAccountCard({ provider, title, login, usage, hint }) {
  const session = state.data.browserAccounts?.[provider] || {};
- const stateLabel = session.browserOpen ? "Browser open" :
-   session.localProfilePresent ? "Local session saved" : "Not signed in here";
+ const stateLabel = "Browser sign-in";
  return '<section class="panel browser-account-card"><div class="panel-header"><h2>'+e(title)+'</h2>'+
    badge(stateLabel)+'</div>'+
    '<p class="browser-account-identity">'+e(login)+'</p>'+
    '<p class="hint">'+e(usage)+'</p>'+
    '<div class="browser-account-actions"><button type="button" class="primary" data-action="browser-connect" data-provider="'+e(provider)+'">'+
-   (session.browserOpen ? "Focus browser" : session.localProfilePresent ? "Continue session" : "Sign in with browser")+
-   '</button>'+(session.browserOpen?'<button type="button" class="secondary" data-action="browser-close" data-provider="'+e(provider)+'">Close window</button>':"")+'</div>'+
+   "Open in your browser"+
+   '</button></div>'+
    '<p class="small">'+e(hint)+'</p></section>';
 }
 function connections(){
  const c=state.data.connections||{};
  const hasSpotifyApp=!!c.spotifyClientId;
  return '<div class="browser-connections-layout">'+
- header("Connected accounts","Sign in once in Blossom’s local Chrome window. Your provider session may remain available on this Mac.")+
+ header("Account connections","Sign in through your regular browser. Existing cookies and sessions are managed by that browser, not by Playwright.")+
  '<div class="browser-accounts-grid">'+
  browserAccountCard({provider:"suno",title:"Suno · Google",login:"Continue with Google",
-   usage:"Open your regular Suno account and work with your music in a supervised browser.",
-   hint:"Playwright can fill a draft from News to Song. This browser handoff does not grant Blossom API access."})+
+   usage:"Open Suno in your ordinary browser and sign in with Google. Your existing browser session can be reused.",
+   hint:"Copy your Suno blueprint from News to Song. Google sign-in cannot run inside Playwright, and website login does not grant Blossom API access."})+
  browserAccountCard({provider:"spotify",title:"Spotify · Facebook",login:"Continue with Facebook",
    usage:"Use Spotify’s official website and choose Facebook if your account still offers it.",
    hint:"Browser playback/session is separate from the Spotify developer API."})+
  browserAccountCard({provider:"chatgpt",title:"ChatGPT · OpenAI",login:"Sign in to ChatGPT",
-   usage:"Reuse a separate ChatGPT website session in the local browser.",
+   usage:"Open ChatGPT in your regular browser. If already signed in, that browser may reuse your session.",
    hint:"A ChatGPT session is not an OpenAI API key for automatic lyrics generation."})+
  '</div>'+
  '<details class="panel browser-advanced"><summary><strong>Advanced · API integrations and developer credentials</strong><span class="small">Only needed for direct API features</span></summary>'+
@@ -170,14 +169,14 @@ function connections(){
  (c.openai_api_key?.configured?'<button class="danger" type="button" data-action="remove-openai">Remove API key</button>':"")+
  '</section></div>'+
  '</details>'+
- '<p class="browser-security-note">Blossom stores separate browser profiles locally, not your passwords. Cookies stay with each provider inside that Chrome profile. Session presence does not guarantee that the provider still considers you signed in. No browser session is presented as API authorization.</p>'+
+ '<p class="browser-security-note">These links use your ordinary browser, with its existing cookies. Blossom does not copy session tokens, read passwords, bypass Google security checks or claim a website login is API authorization.</p>'+
  '</div>';
 }
 function showBrowserLogin(provider) {
  const details={
-   suno: {title:"Suno",instruction:"Sign in with your Google account in the Chrome window that opens. If already signed in, the session continues automatically."},
-   spotify:{title:"Spotify",instruction:"Use Spotify’s own login page. Choose Continue with Facebook if that option is offered for your account."},
-   chatgpt:{title:"ChatGPT",instruction:"Sign in through ChatGPT’s official site inside the separate Chrome window. This does not grant OpenAI API access."}
+   suno: {title:"Suno",instruction:"Suno opens in your regular browser. Sign in with Google there, or continue your existing session. Google blocks automated Playwright sign-in."},
+   spotify:{title:"Spotify",instruction:"Spotify opens in your regular browser. Choose Continue with Facebook if your Spotify account still offers it."},
+   chatgpt:{title:"ChatGPT",instruction:"ChatGPT opens in your regular browser and can reuse its existing login. Website login is not OpenAI API access."}
  };
  const selected=details[provider];
  if(!selected)throw Error("Unsupported browser provider");
@@ -185,7 +184,7 @@ function showBrowserLogin(provider) {
  dialog.dataset.provider=provider;
  document.querySelector("#account-login-title").textContent="Connect "+selected.title;
  document.querySelector("#account-login-instructions").textContent=selected.instruction;
- document.querySelector("#account-login-status").textContent="Opening the local browser...";
+ document.querySelector("#account-login-status").textContent="Opening your regular browser...";
  dialog.showModal();
 }
 
@@ -203,34 +202,21 @@ async function action(el){
    if(next==="render")render();
    return;
  }
- if(act==="browser-connect"){
-   const provider=el.dataset.provider;
-   showBrowserLogin(provider);
-   try {
-     const result=await api("browser-accounts/"+provider+"/open",{});
-     document.querySelector("#account-login-status").textContent=
-       result.reusedWindow||result.reopened?"Existing Chrome window focused.":"Chrome opened. Complete sign-in there once, then return here.";
-     state.data.browserAccounts=await api("browser-accounts");
-     render();
-   } catch(error) {
-     document.querySelector("#account-login-status").textContent=error.message;
-     throw error;
-   }
+ if(act==="browser-connect"||act==="browser-reopen"){
+   const provider=act==="browser-connect"?el.dataset.provider:
+     document.querySelector("#account-login-dialog").dataset.provider;
+   const url={suno:"https://suno.com/create",spotify:"https://open.spotify.com/",
+     chatgpt:"https://chatgpt.com/"}[provider];
+   if(!url)throw Error("Unknown browser provider");
+   // Runs directly in the real user click. No Playwright/WebDriver or browser cookie access.
+   if(act==="browser-connect")showBrowserLogin(provider);
+   window.open(url,"_blank","noopener,noreferrer");
+   document.querySelector("#account-login-status").textContent=
+     "Opened in your regular browser. Finish any sign-in there and return to Blossom.";
    return;
  }
- if(act==="browser-reopen"){
-   const provider=document.querySelector("#account-login-dialog").dataset.provider;
-   const result=await api("browser-accounts/"+provider+"/open",{});
-   document.querySelector("#account-login-status").textContent=
-     result.reusedWindow||result.reopened?"Existing Chrome window focused.":"Chrome opened. Sign in on the official site.";
-   state.data.browserAccounts=await api("browser-accounts");render();return;
- }
- if(act==="browser-finished"){document.querySelector("#account-login-dialog").close();
-   state.data.browserAccounts=await api("browser-accounts");render();return;}
- if(act==="browser-close"){
-   await api("browser-accounts/"+el.dataset.provider+"/close",{});
-   state.data.browserAccounts=await api("browser-accounts");render();
-   message("Chrome window closed; its local browser profile was preserved.");return;
+ if(act==="browser-finished"){
+   document.querySelector("#account-login-dialog").close();return;
  }
  if(act==="remove-openai"){if(confirm("Delete stored OpenAI API key?")){await api("studio/openai-key/remove",{});await refresh();message("OpenAI key removed");}return;}
  if(act==="verify-spotify"){const p=await api("connections/spotify/profile");message("Spotify connection verified: "+p.displayName);return;}

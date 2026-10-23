@@ -48,8 +48,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const sessions=new Sessions(store.db,{username,password});
   const vault=new Vault(store.db,vaultKey);
   const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
-  const studioApi=new StudioAPI({store,vault,composer,draw,sunoBrowser,assetDir});
-  const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:studioApi.sunoBrowser});
+  const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
+  const studioApi=new StudioAPI({store,vault,composer,draw,
+    sunoBrowser:sunoBrowser||browserAccounts.suno,assetDir});
   const musicDna=new MusicDNA(store);
   const musicDnaApi=new MusicDnaAPI(musicDna);
   const musicDnaMcp=new MusicDnaMCP(musicDna);
