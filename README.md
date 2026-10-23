@@ -194,3 +194,7 @@ In News to Song, **Open Suno in browser** uses the same normal browser. **View /
 ### Google blocks the Playwright login window
 
 If Google says that the browser or app may not be safe, use **Connections → Suno → Open in Safari (Mac)** after updating Blossom. Native macOS Safari is opened via LaunchServices and is never attached to Playwright. An older Playwright-controlled Chrome window must be closed; a new tab inside that same window remains controlled. The current Studio Suno flow also uses Safari or a copyable blueprint instead of attempting an asynchronous popup.
+
+### Connection status when returning from Safari
+
+After opening a provider in Safari, return to Blossom and click **Ik ben ingelogd** (or **Nog niet gelukt**) in the modal or Connections card. Blossom immediately updates and saves that **user-confirmed** status for future sessions. It also refreshes the cards when the Blossom tab regains focus. It cannot know whether a separate Safari window closed or whether Google/Suno actually authenticated you; therefore it never presents the manual confirmation as a verified API connection. No browser cookies are read.

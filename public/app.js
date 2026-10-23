@@ -123,7 +123,10 @@ function genres(){
 }
 function browserAccountCard({ provider, title, login, usage, hint }) {
  const session = state.data.browserAccounts?.[provider] || {};
- const stateLabel = "Browser sign-in";
+ const handoff=session.handoff||{state:"not_started"};
+ const stateLabel=handoff.state==="user_confirmed"?"Door jou bevestigd":
+   handoff.state==="awaiting_confirmation"?"Wacht op bevestiging":
+   handoff.state==="not_confirmed"?"Niet bevestigd":"Niet gekoppeld";
  const nativeSafari = state.data.browserAccounts?.nativeSafariAvailable &&
    ["localhost","127.0.0.1"].includes(location.hostname);
  const webdriver = navigator.webdriver===true;
@@ -136,6 +139,15 @@ function browserAccountCard({ provider, title, login, usage, hint }) {
    (!webdriver?'<button type="button" class="'+(nativeSafari?"secondary":"primary")+'" data-action="browser-connect" data-provider="'+e(provider)+'">Open in this browser ↗</button>':
       '<span class="small browser-blocked">Automated Chrome detected; use Safari or copy the site address into your normal browser.</span>')+
    '</div>'+
+   (handoff.state==="awaiting_confirmation"?
+      '<div class="browser-account-confirm" role="group" aria-label="Aanmelding bevestigen"><p class="small">Terug uit de browser? Geef aan of inloggen gelukt is.</p>'+
+        '<button type="button" class="primary" data-action="browser-confirm" data-provider="'+e(provider)+'">Ik ben ingelogd</button>'+
+        '<button type="button" class="secondary" data-action="browser-not-confirmed" data-provider="'+e(provider)+'">Nog niet gelukt</button></div>':
+    handoff.state==="user_confirmed"?
+      '<div class="browser-account-confirm"><p class="small">Handmatig bevestigd'+
+      (handoff.confirmedAt?" · "+e(niceDate(handoff.confirmedAt)):"")+
+      '. Dit is geen controle bij '+e(title)+'.</p>'+
+      '<button type="button" class="secondary" data-action="browser-not-confirmed" data-provider="'+e(provider)+'">Bevestiging intrekken</button></div>':"")+
    '<p class="small">'+e(hint)+'</p></section>';
 }
 function connections(){
@@ -213,8 +225,10 @@ async function action(el){
    showBrowserLogin(provider);
    try{
      await api("browser-accounts/"+provider+"/open-safari",{});
+     state.data.browserAccounts=await api("browser-accounts");
+     render();
      document.querySelector("#account-login-status").textContent=
-       "Safari opened as a normal macOS application. Sign in there, or continue your existing Safari session.";
+       "Safari is geopend. Na terugkomst: bevestig hieronder of je bent ingelogd.";
    }catch(error){
      document.querySelector("#account-login-status").textContent=error.message;
      throw error;
@@ -234,12 +248,31 @@ async function action(el){
    }
    if(act==="browser-connect")showBrowserLogin(provider);
    window.open(url,"_blank","noopener,noreferrer");
+   // Recording after the click avoids popup blockers. No credentials or cookies.
+   await api("browser-accounts/"+provider+"/open",{});
+   state.data.browserAccounts=await api("browser-accounts");
+   render();
    document.querySelector("#account-login-status").textContent=
-     "Opened in your regular browser. Finish any sign-in there and return to Blossom.";
+     "Browser geopend. Kom na het inloggen terug en bevestig de aanmelding.";
+   return;
+ }
+ if(act==="browser-confirm"||act==="browser-not-confirmed"){
+   const provider=el.dataset.provider||
+     document.querySelector("#account-login-dialog").dataset.provider;
+   const operation=act==="browser-confirm"?"confirm":"not-confirmed";
+   await api("browser-accounts/"+provider+"/"+operation,{});
+   state.data.browserAccounts=await api("browser-accounts");
+   render();
+   const dialog=document.querySelector("#account-login-dialog");
+   if(dialog.open)dialog.close();
+   message(operation==="confirm"?"Aanmelding door jou bevestigd (niet automatisch geverifieerd).":
+     "Aanmelding niet bevestigd. Je kunt opnieuw inloggen.");
    return;
  }
  if(act==="browser-finished"){
-   document.querySelector("#account-login-dialog").close();return;
+   document.querySelector("#account-login-dialog").close();
+   state.data.browserAccounts=await api("browser-accounts");render();
+   return;
  }
  if(act==="remove-openai"){if(confirm("Delete stored OpenAI API key?")){await api("studio/openai-key/remove",{});await refresh();message("OpenAI key removed");}return;}
  if(act==="verify-spotify"){const p=await api("connections/spotify/profile");message("Spotify connection verified: "+p.displayName);return;}
@@ -278,6 +311,30 @@ async function action(el){
    await update("watches/"+id+"/ack",{});message("Review acknowledged");return;
  }
 }
+// Refresh the handoff when the user returns from Safari or another tab.
+// No website session is inspected; explicit user confirmation is still required.
+let browserReturnRefreshing=false;
+async function updateBrowserStatusOnReturn(){
+ if(state.tab!=="connections" || document.visibilityState==="hidden" || browserReturnRefreshing)return;
+ browserReturnRefreshing=true;
+ try{
+   state.data.browserAccounts=await api("browser-accounts");
+   render();
+   const dialog=document.querySelector("#account-login-dialog");
+   if(dialog.open){
+     const provider=dialog.dataset.provider;
+     if(state.data.browserAccounts?.[provider]?.handoff?.state==="awaiting_confirmation"){
+       document.querySelector("#account-login-status").textContent=
+         "Terug uit Safari? Klik op 'Ik ben ingelogd' wanneer het gelukt is. Blossom kan Safari's inlogstatus niet controleren.";
+     }
+   }
+ }catch(error){message("Browserstatus verversen mislukt: "+error.message,true);}
+ finally{browserReturnRefreshing=false;}
+}
+document.addEventListener("visibilitychange",()=>{
+ if(document.visibilityState==="visible")void updateBrowserStatusOnReturn();
+});
+window.addEventListener("focus",()=>{void updateBrowserStatusOnReturn();});
 document.addEventListener("click",async event=>{
  const tab=event.target.closest("[data-tab]");
  if(tab){state.tab=tab.dataset.tab;render();return;}

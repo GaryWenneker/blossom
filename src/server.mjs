@@ -111,18 +111,30 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         res.writeHead(200,{"Content-Type":MIME[extension],"Cache-Control":"no-store"});
         res.end(content);return;
       }
-      // Normal browser sign-in cannot be controlled by Playwright. Never inspect
-      // or export browser sessions; do not claim login/API verification.
+      // Safari cookies are intentionally inaccessible. Persist only the
+      // operator's handoff progress and explicit confirmation, never a login claim.
+      const browserStatus=async()=>{
+        const sessionsByProvider=await browserAccounts.status();
+        return {...Object.fromEntries(["suno","spotify","chatgpt"].map(provider=>
+          [provider,{...sessionsByProvider[provider],
+            handoff:store.browserAccountStatus(provider)}])),
+          nativeSafariAvailable:(nativeBrowserOptions.platform||process.platform)==="darwin"};
+      };
       if(path==="/api/browser-accounts"&&req.method==="GET")
-        return reply(res,200,{...await browserAccounts.status(),
-          nativeSafariAvailable:(nativeBrowserOptions.platform||process.platform)==="darwin"});
+        return reply(res,200,await browserStatus());
+      const browserConfirm=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/(confirm|not-confirmed)$/);
+      if(browserConfirm&&req.method==="POST"){
+        store.setBrowserAccountStatus(browserConfirm[1],
+          browserConfirm[2]==="confirm"?"confirmed":"not_confirmed");
+        return reply(res,200,(await browserStatus())[browserConfirm[1]]);
+      }
       const nativeSafariAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/open-safari$/);
       if(nativeSafariAction&&req.method==="POST"){
         if(!localMacBrowserRequest(req))
           throw new DomainError("Open Safari is available only from Blossom running locally on the same Mac",403);
         const result=await openProviderInSafari(nativeSafariAction[1],nativeBrowserOptions);
-        store.audit("open_native_browser","connection",nativeSafariAction[1],{application:"Safari"});
-        return reply(res,200,result);
+        store.setBrowserAccountStatus(nativeSafariAction[1],"opened");
+        return reply(res,200,{...result,handoff:store.browserAccountStatus(nativeSafariAction[1])});
       }
       const browserAction=path.match(/^\/api\/browser-accounts\/(suno|spotify|chatgpt)\/(open|close)$/);
       if(browserAction&&req.method==="POST"){
@@ -130,8 +142,8 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         const providerName=browserAction[1], action=browserAction[2];
         const result=action==="open"?await browserAccounts.open(providerName):
           await browserAccounts.close(providerName);
-        store.audit("browser_"+action,"connection",providerName,{windowOpen:!!result.browserOpen});
-        return reply(res,200,result);
+        if(action==="open")store.setBrowserAccountStatus(providerName,"opened");
+        return reply(res,200,{...result,handoff:store.browserAccountStatus(providerName)});
       }
       if(!path.startsWith("/api/"))throw new DomainError("Not found",404);
       if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path);return;}

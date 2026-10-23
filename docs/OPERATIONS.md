@@ -94,3 +94,17 @@ On a Mac, Blossom Connections now provides **Open in Safari (Mac)** for Suno, Sp
 Blossom checks `navigator.webdriver` solely to **warn** that its own tab is in an automated browser, not to hide or modify that flag. While in an automated browser, standard in-browser sign-in is blocked in the Blossom UI and the Safari launcher is recommended. Studio's Suno button opens native Safari on localhost macOS; other environments show the copyable Suno blueprint and URL rather than a delayed popup blocked by the browser.
 
 To verify which Blossom UI version is loaded, reload the web app and ensure the Connections panel shows the new **Open in Safari (Mac)** button. If it still shows the older Playwright or Chrome sign-in buttons, restart the launchd Blossom server after `git pull` and refresh the page. The browser that Playwright previously created can simply be closed. Do not modify Google anti-bot settings or copy Chrome profile data.
+
+## Browser sign-in status after returning from Safari
+
+Suno, Spotify and ChatGPT are logged into their own normal Safari/browser profiles; the external websites do not send Blossom a login or browser-window-closed callback. Blossom therefore **cannot safely or accurately detect actual login state or window closure** without an official OAuth integration or access to Safari's private session data.
+
+The Connections screen now records a non-sensitive, local handoff state for each provider in the SQLite table `browser_account_handoffs`:
+- **Not connected**: no handoff recorded
+- **Waiting for confirmation**: browser launched; when returning to Blossom, choose **Ik ben ingelogd** or **Nog niet gelukt**
+- **Confirmed by you**: explicit operator confirmation; this is not an automatically verified provider session or API authorization
+- **Not confirmed**: operator did not complete login, or revoked prior confirmation
+
+These statuses survive Blossom restarts. A new browser launch preserves an earlier manual confirmation until it is explicitly withdrawn. No cookies, passwords, profiles, tabs, tokens or private browser data are read or stored in the new status table.
+
+On focus/visibility return, Blossom requests only its own saved handoff status and updates the cards. The modal remains open with guidance for confirmation. Closing Safari alone **does not and must not** mark the account connected. For Spotify API features, use the separately supported OAuth flow, whose token status can be verified; this manual browser status is only a convenience label. Other provider API features still require supported API access.
