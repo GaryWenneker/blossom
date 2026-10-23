@@ -66,7 +66,7 @@ The installer now configures the screenshot-provided default model:
 
     BLOSSOM_DRAW_MODEL=lustifySDXLNSFWSFW_v20
 
-On rerun it appends this value if missing or repairs an empty assignment in .env without changing other settings or overriding a non-empty alternative. The setup installs the official Draw Things CLI from the Homebrew tap if missing, and checks the local downloaded model inventory:
+On rerun it appends this value if missing or repairs an empty assignment in .env without changing other settings or overriding a non-empty alternative. The setup installs the Draw Things CLI from official Homebrew core (no third-party tap) if missing, and checks the local downloaded model inventory:
 
     draw-things-cli models list --downloaded-only
 
@@ -82,3 +82,8 @@ Check the selected model with:
     grep '^BLOSSOM_DRAW_MODEL=' .env
 
 GitHub cannot remotely edit the private .env on your Mac. The downloaded-model check does not run a GPU generation. If actual generation fails, check draw-things-cli generate --help, GPU memory and the checkpoint's recommended settings. The CLI supports human-readable model names or exact .ckpt IDs. This setup does not download a model without user action.
+
+
+### Homebrew 6 tap trust warnings
+
+Blossom uses the stable official Homebrew Core package `brew install draw-things-cli` instead of adding or trusting `drawthingsai/draw-things`. Homebrew 6 can warn about *other* untrusted third-party taps, for example `libkrun/krun`, when running a brew command. These warnings alone do not mean the Draw Things install failed. **Do not untap, trust, or disable trust checks on unrelated repositories just for Blossom.** If Homebrew reports a real error after the warnings, collect the final lines and run `brew list --versions draw-things-cli` and `draw-things-cli --help` to identify the failing step. Existing trusted taps and other packages are left unchanged.

@@ -79,8 +79,15 @@ if ! node_compatible; then
   exit 1
 fi
 if ! command -v draw-things-cli >/dev/null 2>&1; then
-  # Official Draw Things CLI uses the models downloaded by the app.
-  install_brew_package drawthingsai/draw-things/draw-things-cli
+  # Draw Things CLI is now in official Homebrew core. Do not tap/trust third-party
+  # repositories or modify any other taps on the user's computer.
+  printf '[setup] Installing Draw Things CLI from official Homebrew core.\n'
+  install_brew_package draw-things-cli
+  export PATH="$(brew --prefix)/bin:$PATH"
+  if ! command -v draw-things-cli >/dev/null 2>&1; then
+    printf '[setup] draw-things-cli is still missing from PATH. Check: brew --prefix draw-things-cli\n' >&2
+    exit 1
+  fi
 fi
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
   install_brew_package ffmpeg
