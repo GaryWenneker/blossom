@@ -23,13 +23,22 @@ async function jsonBody(req) {
 }
 
 export class MusicDnaAPI {
-  constructor(dna, { audioDir = process.env.BLOSSOM_REFERENCE_AUDIO_DIR || ".data/reference-audio" } = {}) {
+  constructor(dna, { audioDir = process.env.BLOSSOM_REFERENCE_AUDIO_DIR || ".data/reference-audio",
+    spotifyLiked=null } = {}) {
     this.dna = dna;
     this.audioDir = audioDir;
+    this.spotifyLiked = spotifyLiked;
   }
   async handle(req, res, path, searchParams) {
     const method = req.method;
     if (method === "GET") {
+      if (path === "/api/music-dna/spotify-liked/page") {
+        if (!this.spotifyLiked) throw new DomainError("Spotify library integration unavailable",503);
+        const offset=searchParams.get("offset")||"0",limit=searchParams.get("limit")||"50";
+        if (!/^\d{1,7}$/.test(offset)||!/^\d{1,2}$/.test(limit))
+          throw new DomainError("Invalid Spotify Liked Songs pagination",400);
+        return respond(res,200,await this.spotifyLiked.page({offset:Number(offset),limit:Number(limit)}));
+      }
       if (path === "/api/music-dna/search") {
         const filters = {};
         for (const name of ["q", "genre", "mood", "instrument", "vocal"])
@@ -90,6 +99,13 @@ export class MusicDnaAPI {
       return respond(res, 201, asset);
     }
     const body = await jsonBody(req);
+    if (path === "/api/music-dna/spotify-liked/import") {
+      if (!this.spotifyLiked) throw new DomainError("Spotify library integration unavailable",503);
+      return respond(res,200,await this.spotifyLiked.importPage({
+        offset:body?.offset===undefined?0:body.offset,
+        limit:body?.limit===undefined?50:body.limit
+      }));
+    }
     if (path === "/api/music-dna/profiles") return respond(res, 201, this.dna.create(body));
     if (path === "/api/music-dna/import-batch")
       return respond(res, 201, { items: this.dna.importBatch(body?.items) });
