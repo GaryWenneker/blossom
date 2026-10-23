@@ -38,38 +38,29 @@ test("Safari handoff uses only project ID and never reads ChatGPT output or logi
     launcher:(_b,_a,_o,done)=>done(null,"WAIT","")}),/did not confirm/);
 });
 
-test("Studio Safari ChatGPT handoff requires authenticated local session and confirmed login",async t=>{
+test("Studio legacy ChatGPT-extract now generates headlessly without Safari or MCP sign-in",async t=>{
   const store=new Store(":memory:");
   const launches=[];
-  const server=createAppServer({store,provider:{available:()=>false},password:"long-test-password",
-    nativeBrowserOptions:{platform:"darwin",launcher:(bin,args,options,done)=>{
-      launches.push({bin,args});done(null,"SUBMITTED","");}}});
+  const song={concept:"An original fictional village song",lyrics:"[Verse 1] The countryside",style:"Americana acoustic",exclusions:[],moods:["gentle"],titles:["The Village"],coverPrompt:"Original rural landscape",artistPhotoPrompt:"Original fictional singer",suggestedGenre:"Americana",rationale:"Intimate acoustic sound"};
+  const localComposer={generate:async()=>song,ask:async()=>({answer:"Use guitar"}),status:async()=>({engine:"Ollama",model:"qwen3:8b",available:true})};
+  const server=createAppServer({store,provider:{available:()=>false},password:"long-test-password",localComposer,
+    nativeBrowserOptions:{platform:"darwin",launcher:(bin,args,options,done)=>{launches.push({bin,args});done(null,"SUBMITTED","");}}});
   server.listen(0,"127.0.0.1");await once(server,"listening");
   t.after(async()=>{await new Promise(done=>server.close(done));store.close();});
   const url="http://127.0.0.1:"+server.address().port;
-  const post=(path,body={},cookie="",headers={})=>fetch(url+path,{method:"POST",
-    headers:{"content-type":"application/json","x-blossom-request":"ui",
-      ...(cookie?{cookie}:{}),...headers},body:JSON.stringify(body)});
+  const post=(path,body={},cookie="",headers={})=>fetch(url+path,{method:"POST",headers:{"content-type":"application/json","x-blossom-request":"ui",...(cookie?{cookie}:{}),...headers},body:JSON.stringify(body)});
   const login=await post("/auth/login",{username:"admin",password:"long-test-password"});
   const cookie=login.headers.get("set-cookie").split(";")[0];
-  const newProject=await post("/api/studio/projects",{
-    title:"Test News",sourceUrl:"https://example.org/story",article:""
-  },cookie);
-  assert.equal(newProject.status,201);
-  const project=await newProject.json();
-  const path="/api/studio/projects/"+project.id+"/chatgpt-extract";
-  assert.equal((await post(path)).status,401);
-  assert.equal((await post(path,{},cookie,{Origin:"https://evil.example"})).status,403);
-  assert.equal((await post(path,{},cookie)).status,409);
-  assert.equal(launches.length,0);
-  store.setBrowserAccountStatus("chatgpt","confirmed");
-  const res=await post(path,{},cookie);
+  const newProject=await post("/api/studio/projects",{title:"Test News",article:"A fictional news article about small English villages working together on sustainable farming and conservation projects."},cookie);
+  assert.equal(newProject.status,201);const project=await newProject.json();
+  const route="/api/studio/projects/"+project.id+"/chatgpt-extract";
+  assert.equal((await post(route)).status,401);
+  assert.equal((await post(route,{},cookie,{Origin:"https://evil.example"})).status,403);
+  assert.equal(store.browserAccountStatus("chatgpt").state,"not_started");
+  const res=await post(route,{},cookie);
   assert.equal(res.status,200);
-  assert.equal((await res.json()).submitted,true);
-  assert.equal(launches.length,1);
-  const chromeResponse=await post(path,{},cookie,{"user-agent":"Mozilla/5.0 Chrome/156.0.0.0"});
-  assert.equal(chromeResponse.status,200);
-  assert.equal(launches.length,2);
-  assert.ok(launches[1].args[0].endsWith("/scripts/chatgpt-chrome.applescript"));
+  assert.equal((await res.json()).result.concept,song.concept);
+  assert.equal(launches.length,0,"browser must never be launched");
+  assert.equal(store.browserAccountStatus("chatgpt").state,"not_started");
   assert.equal((await post("/api/studio/projects/"+projectId+"/chatgpt-extract",{},cookie)).status,404);
 });

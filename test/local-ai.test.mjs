@@ -1,0 +1,53 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { LocalComposer, localBaseUrl, contentJSON } from "../src/providers/local.mjs";
+import { DEFAULT_PARAMETERS } from "../src/studio.mjs";
+import { publicArticleUrl, isPublicAddress, extractArticleHTML, importArticle } from "../src/article-import.mjs";
+const song={concept:"A fictional story about two coastal villages",lyrics:"[Verse 1]\\nMorning comes around\\n[Chorus]\\nTake my hand",style:"acoustic americana",exclusions:["heavy echo"],moods:["hopeful"],titles:["Morning Village"],coverPrompt:"Original square photo of rural meadows",artistPhotoPrompt:"Original fictional musician portrait",suggestedGenre:"Country Pop",rationale:"Dry instruments and intimate vocal"};
+const project={title:"Nieuwsbericht",article:"Een regionale krant vertelt hoe twee dorpen samenwerken aan natuurbescherming en natuurherstel in hun omgeving. Het gaat om een fictieve creatieve interpretatie.",parameters:DEFAULT_PARAMETERS,sourceUrl:"https://www.nu.nl/example"};
+test("Local Ollama model generates full original-song structured output without browser or API key",async()=>{
+  const calls=[];
+  const composer=new LocalComposer({model:"qwen3:8b",fetcher:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>({message:{content:JSON.stringify(song)}})};}});
+  assert.deepEqual(await composer.generate(project),song);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,"http://127.0.0.1:11434/api/chat");
+  assert.equal(calls[0].options.method,"POST");
+  const payload=JSON.parse(calls[0].options.body);
+  assert.equal(payload.stream,false);
+  assert.equal(payload.model,"qwen3:8b");
+  assert.equal(payload.format.required.length,10);
+  assert.equal(payload.messages[1].role,"user");
+  assert.equal(JSON.stringify(payload).includes("chatgpt.com"),false);
+  assert.equal(payload.messages[1].content.includes("natuurbescherming"),true);
+});
+test("Loopback-only inference and JSON validations prevent remote AI proxy or made-up results",async()=>{
+ assert.equal(localBaseUrl("http://localhost:11434"),"http://localhost:11434");
+ for(const url of ["https://remote.example","http://192.168.1.2:11434","http://user@localhost:11434","file:///tmp/socket"])assert.throws(()=>localBaseUrl(url),/loopback-only|Invalid local/);
+ assert.throws(()=>contentJSON("not-json"),/invalid structured JSON/);
+ assert.throws(()=>contentJSON(JSON.stringify({concept:"incomplete"})),/required original-song fields/);
+ const offline=new LocalComposer({fetcher:async()=>{throw Error("offline")}});
+ assert.equal((await offline.status()).available,false);
+ await assert.rejects(offline.generate(project),/Local AI is unavailable/);
+});
+test("Local Ollama status and assistant responses are detected in the background",async()=>{
+ const calls=[];
+ const composer=new LocalComposer({fetcher:async(url,options)=>{calls.push(url);
+   if(url.endsWith("/api/tags"))return {ok:true,json:async()=>({models:[{name:"qwen3:8b"}]})};
+   return {ok:true,json:async()=>({message:{content:"Try nylon-string guitar and brushed drums."}})};
+ }});
+ assert.equal((await composer.status()).available,true);
+ assert.equal((await composer.ask("Welke instrumenten?",project)).answer,"Try nylon-string guitar and brushed drums.");
+ assert.deepEqual(calls,["http://127.0.0.1:11434/api/tags","http://127.0.0.1:11434/api/chat"]);
+});
+test("Article URLs import source article, not just attribution",async()=>{
+ for(const addr of ["127.0.0.1","10.0.0.1","192.168.0.2","169.254.169.254"])assert.equal(isPublicAddress(addr),false);
+ assert.equal(isPublicAddress("8.8.8.8"),true);
+ assert.throws(()=>publicArticleUrl("http://localhost/private"),/public/);
+ const p="De imkers in verschillende dorpen zijn druk met het controleren van opvallende bijenzwermen en onderhouden hierover contact met lokale natuurbeheerders en vrijwilligers. ";
+ const html="<html><article><h1>Bijen in de weilanden</h1><p>"+p.repeat(3)+"</p></article></html>";
+ const got=await importArticle("https://www.nu.nl/example",{fetcher:async()=>({status:200,html})});
+ assert.equal(got.title,"Bijen in de weilanden");
+ assert.ok(got.text.includes("De imkers"));
+ assert.equal(got.sourceUrl,"https://www.nu.nl/example");
+ await assert.rejects(importArticle("https://www.nu.nl/example",{fetcher:async()=>({status:302,location:"http://localhost:3000/"})}),/public/);
+});

@@ -5,7 +5,8 @@ import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
 import { VisibleBrowserSession } from "./browser-connections.mjs";
-import { localMacBrowserRequest, submitChatGptStudioInBrowser } from "./native-browser.mjs";
+import { LocalComposer } from "./providers/local.mjs";
+import { importArticle } from "./article-import.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -30,14 +31,24 @@ async function audioBuffer(req){
   return {bytes,mime:type==="audio/mpeg"?"audio/mpeg":"audio/wav",extension:type==="audio/mpeg"?"mp3":"wav"};
 }
 export class StudioAPI{
-  constructor({store,vault,composer,draw,sunoBrowser,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
+  constructor({store,vault,composer,localComposer,articleImporter=importArticle,draw,sunoBrowser,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
     this.store=store;this.vault=vault;this.studio=new StudioStore(store);
     this.nativeChatgptOptions=nativeChatgptOptions;
     this.references=new StudioReferences(store,this.studio,new MusicDNA(store));
     this.composer=composer||new OpenAIComposer();
+    this.localComposer=localComposer||new LocalComposer();
+    this.articleImporter=articleImporter;
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
     this.sunoBrowser=sunoBrowser||new VisibleBrowserSession("suno");
+  }
+  async projectWithArticle(id) {
+    const project=this.studio.require(id);
+    if(project.article?.trim().length>=40)return project;
+    if(!project.sourceUrl)throw new DomainError("Importeer of plak eerst een artikel",400);
+    const imported=await this.articleImporter(project.sourceUrl);
+    // Preserve operator-selected settings, title and metadata.
+    return this.studio.save({...project,article:imported.text});
   }
   async handle(req,res,path) {
     if(req.method==="GET"){
@@ -48,8 +59,9 @@ export class StudioAPI{
       if(referencesGet)return send(res,200,{references:this.references.list(referencesGet[1])});
       if(path==="/api/studio/presets")return send(res,200,LENGTH_PRESETS);
       if(path==="/api/studio/status")return send(res,200,{
-        openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY),
-        drawConfigured:this.draw.enabled(),generationMode:"OpenAI API and local Draw Things CLI",
+        openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY||this.composer.key),
+        localAI:await this.localComposer.status(),
+        drawConfigured:this.draw.enabled(),generationMode:"Automatic local AI or optional OpenAI API; no browser automation",
         sunoGeneration:"manual authorized handoff"});
       if(path==="/api/studio/artists/presets")
         return send(res,200,Object.fromEntries(this.store.artists().map(a=>[a.id,this.studio.preset(a.id)])));
@@ -76,23 +88,20 @@ export class StudioAPI{
       return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime));
     }
     const data=await readJSON(req);
-    const chatGptExtract=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-extract$/);
-    if(chatGptExtract) {
-      if(!localMacBrowserRequest(req))
-        throw new DomainError("ChatGPT Safari submission is available only from Blossom on this Mac",403);
-      const project=this.studio.require(chatGptExtract[1]);
-      if(!project.article.trim() && !project.sourceUrl)
-        throw new DomainError("Paste an article or supply an article URL first",400);
-      if(this.store.browserAccountStatus("chatgpt").state!=="user_confirmed")
-        throw new DomainError("Confirm your ChatGPT Safari sign-in under Connections first",409);
-      // Use the actual desktop browser requesting Blossom, so its existing login is reused.
-      const userAgent=String(req.headers["user-agent"]||"");
-      const selectedBrowser=/Chrome\//.test(userAgent) && !/Edg\//.test(userAgent)?"chrome":"safari";
-      const sent=await submitChatGptStudioInBrowser(project.id,{
-        ...this.nativeChatgptOptions,browser:this.nativeChatgptOptions.browser||selectedBrowser
+    if(path==="/api/studio/articles/import"){
+      const imported=await this.articleImporter(data?.url);
+      return send(res,200,imported);
+    }
+    // Compatibility: old Studio buttons call chatgpt-extract. Do NOT launch
+    // browser automation or claim that a ChatGPT Safari login is API access.
+    const localExtract=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-extract$/);
+    if(localExtract){
+      const project=await this.projectWithArticle(localExtract[1]);
+      const composed=await this.localComposer.generate({
+        ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
+        referenceDna:this.references.generationContext(project.id)
       });
-      this.store.audit("chatgpt_submitted","studio_project",project.id,{mode:"safari-ui"});
-      return send(res,200,sent);
+      return send(res,200,this.studio.setResult(project.id,composed));
     }
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
     const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|close)$/);
@@ -124,8 +133,18 @@ export class StudioAPI{
     const p=this.studio.require(match[1]),operation=match[2];
     if(operation==="create-track")return send(res,201,this.studio.makeTrack(p.id));
     const key=this.vault.list().openai_api_key?.configured?this.vault.read("openai_api_key"):null;
-    if(operation==="extract")return send(res,200,this.studio.setResult(p.id,await this.composer.generate({...p,artistDna:this.store.artist(p.artistId)?.dna||"",referenceDna:this.references.generationContext(p.id)},key)));
-    if(operation==="ask")return send(res,200,await this.composer.ask(data?.question,p,key));
+    const hasAPIKey=!!(key||this.composer.key);
+    if(operation==="extract"){
+      const articleProject=await this.projectWithArticle(p.id);
+      const context={...articleProject,artistDna:this.store.artist(articleProject.artistId)?.dna||"",
+        referenceDna:this.references.generationContext(p.id)};
+      const result=hasAPIKey?await this.composer.generate(context,key):
+        await this.localComposer.generate(context);
+      return send(res,200,this.studio.setResult(p.id,result));
+    }
+    if(operation==="ask")return send(res,200,hasAPIKey?
+      await this.composer.ask(data?.question,p,key):
+      await this.localComposer.ask(data?.question,p));
     if(operation==="generate-art"){
       const kind=data?.kind,defaultPrompt=kind==="cover"?p.result?.coverPrompt:p.result?.artistPhotoPrompt;
       const generated=await this.draw.generate({kind,prompt:data?.prompt||defaultPrompt,steps:data?.steps,seed:data?.seed});

@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: bash -n setup.sh
+      - run: bash -n setup.sh scripts/setup-local-ai.sh
       - run: npm install --no-audit --no-fund
       - run: npm run check
       - run: npm test
