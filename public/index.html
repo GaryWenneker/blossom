@@ -39,6 +39,15 @@
     </div>
   </div>
   <dialog id="recipe-dialog"><div class="dialog-header"><strong>Production blueprint</strong><button data-action="close-dialog" class="icon-button" aria-label="Close">×</button></div><p class="hint">Copy these reviewed parameters into your authorized Suno session. No live Suno API call occurs.</p><textarea id="recipe-text" readonly rows="17"></textarea><div class="actions"><button data-action="copy-recipe" class="primary">Copy blueprint</button><button data-action="close-dialog" class="secondary">Close</button></div></dialog>
+  <dialog id="chatgpt-handoff-dialog" aria-labelledby="chatgpt-handoff-title">
+    <div class="dialog-header"><strong id="chatgpt-handoff-title">Muziekbrief via ChatGPT</strong><button type="button" data-action="studio-chatgpt-close" class="icon-button" aria-label="Sluiten">×</button></div>
+    <p id="chatgpt-handoff-help" class="hint">Gebruik je al ingelogde ChatGPT-account.</p>
+    <label class="studio-field"><span>Opdracht voor ChatGPT</span><textarea id="chatgpt-handoff-prompt" rows="7" readonly></textarea></label>
+    <div class="actions"><button type="button" class="primary" data-action="studio-chatgpt-copy">1. Kopieer opdracht</button><button type="button" class="secondary" data-action="studio-chatgpt-open">2. Open ChatGPT in Safari</button></div>
+    <label class="studio-field"><span>Antwoord van ChatGPT</span><textarea id="chatgpt-handoff-reply" rows="5" placeholder="Plak hier het JSON-resultaat of, bij een vraag, het antwoord van ChatGPT."></textarea></label>
+    <div class="actions"><button type="button" class="primary" data-action="studio-chatgpt-import">3. Verwerk in Blossom</button><button type="button" class="secondary" data-action="studio-chatgpt-close">Sluiten</button></div>
+    <p class="hint">Safari bewaart je ChatGPT-login. Blossom leest geen cookies of ChatGPT-gesprekken en gebruikt geen verborgen API.</p>
+  </dialog>
   <dialog id="account-login-dialog" aria-labelledby="account-login-title">
     <div class="dialog-header"><strong id="account-login-title">Connect provider</strong><button type="button" data-action="browser-finished" class="icon-button" aria-label="Close login instructions">×</button></div>
     <p id="account-login-instructions" class="hint">Sign in using the provider's official website.</p>
