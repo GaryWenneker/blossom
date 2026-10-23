@@ -81,3 +81,11 @@ All items marked complete were implemented in source; external services still re
 - [x] Repair a blank BLOSSOM_DRAW_MODEL while preserving non-empty choices.
 - [x] Install/check official Draw Things CLI and verify the selected local model.
 - [ ] Run a genuine image-generation test on the user's Mac and tune model-specific inference settings.
+
+## Persistent browser connection UI
+- [x] Isolated Playwright profiles for Suno, Spotify and ChatGPT browser access.
+- [x] One-click Connections controls with guided modal login and browser session reuse.
+- [x] Developer credentials placed in collapsed Advanced section.
+- [x] Never treat local cookies as API tokens or a confirmed live provider login.
+- [ ] Verify real third-party login flow and cookie expiry behavior locally on the user's Mac.
+- [ ] Add supported provider API integrations for fully automated workflows when authorized.
