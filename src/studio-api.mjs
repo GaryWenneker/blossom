@@ -5,6 +5,7 @@ import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { DomainError } from "./domain.mjs";
 import { VisibleBrowserSession } from "./browser-connections.mjs";
+import { localMacBrowserRequest, submitChatGptStudioInBrowser } from "./native-browser.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -29,8 +30,9 @@ async function audioBuffer(req){
   return {bytes,mime:type==="audio/mpeg"?"audio/mpeg":"audio/wav",extension:type==="audio/mpeg"?"mp3":"wav"};
 }
 export class StudioAPI{
-  constructor({store,vault,composer,draw,sunoBrowser,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
+  constructor({store,vault,composer,draw,sunoBrowser,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
     this.store=store;this.vault=vault;this.studio=new StudioStore(store);
+    this.nativeChatgptOptions=nativeChatgptOptions;
     this.references=new StudioReferences(store,this.studio,new MusicDNA(store));
     this.composer=composer||new OpenAIComposer();
     this.draw=draw||new DrawThings({directory:assetDir});
@@ -74,6 +76,24 @@ export class StudioAPI{
       return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime));
     }
     const data=await readJSON(req);
+    const chatGptExtract=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-extract$/);
+    if(chatGptExtract) {
+      if(!localMacBrowserRequest(req))
+        throw new DomainError("ChatGPT Safari submission is available only from Blossom on this Mac",403);
+      const project=this.studio.require(chatGptExtract[1]);
+      if(!project.article.trim() && !project.sourceUrl)
+        throw new DomainError("Paste an article or supply an article URL first",400);
+      if(this.store.browserAccountStatus("chatgpt").state!=="user_confirmed")
+        throw new DomainError("Confirm your ChatGPT Safari sign-in under Connections first",409);
+      // Use the actual desktop browser requesting Blossom, so its existing login is reused.
+      const userAgent=String(req.headers["user-agent"]||"");
+      const selectedBrowser=/Chrome\//.test(userAgent) && !/Edg\//.test(userAgent)?"chrome":"safari";
+      const sent=await submitChatGptStudioInBrowser(project.id,{
+        ...this.nativeChatgptOptions,browser:this.nativeChatgptOptions.browser||selectedBrowser
+      });
+      this.store.audit("chatgpt_submitted","studio_project",project.id,{mode:"safari-ui"});
+      return send(res,200,sent);
+    }
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
     const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|close)$/);
     if(sunoBrowserAction){

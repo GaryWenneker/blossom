@@ -3,7 +3,7 @@ const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambien
 const defaults={sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks"};
+const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",chatgptPoll:null};
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
 const stateOf=state=>{if(work.creatingNew)return null;const list=state.data.studioProjects||[];
@@ -52,9 +52,9 @@ const panels=(p,assets,state)=>{
  '<div class="studio-tabstrip"><span class="active">Paste article</span><span>URL attribution</span><span>Original concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
  field("Article link (optional, attribution only)",'<input id="studio-source" type="url" placeholder="https://example.org/article" value="'+esc(p?.sourceUrl||"")+'">')+
- '<div class="studio-panel-bottom"><small>ChatGPT via MCP does not require an OpenAI API key. The API extraction button requires a separately configured API provider.</small><button data-action="studio-chatgpt" class="primary">✦ Prepare with ChatGPT</button><button data-action="studio-extract" class="secondary">Extract via API</button></div></section>'+
- '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">Regenerate</button></div>'+
- '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Paste an article and select Extract with AI to create an original concept.")+'</div>'+
+ '<div class="studio-panel-bottom"><small>Uses your confirmed Safari ChatGPT session; saving back requires the connected Blossom MCP app. No copy/paste or API key.</small><button data-action="studio-chatgpt" class="primary">✦ Extract with ChatGPT</button></div></section>'+
+ '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-chatgpt">Regenerate</button></div>'+
+ '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Add an article or article URL and select Extract with ChatGPT to create an original concept.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
  '<div class="studio-label">Suggested titles</div><div class="studio-ideas">'+(result.titles?.length?result.titles.map((title,i)=>'<div><span>'+(i+1)+'. '+esc(title)+'</span><button class="secondary mini" data-action="studio-use-title" data-title="'+esc(title)+'">Use</button></div>').join(""):'<div class="studio-muted">Title suggestions appear here</div>')+'</div>'+
  '<div class="studio-label">Generated lyrics <button class="secondary mini" data-action="studio-save-lyrics">Save edits</button></div>'+
@@ -115,7 +115,7 @@ export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● OpenAI: '+(status.openaiConfigured?"configured":"not configured")+'</span>'+
+ '<div class="studio-statusline"><span>● ChatGPT browser: '+(state.data.browserAccounts?.chatgpt?.handoff?.state==="user_confirmed"?"sign-in confirmed":"sign-in not confirmed")+' · Blossom MCP app required</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
@@ -126,6 +126,30 @@ function collect(state){
  sourceUrl:document.querySelector("#studio-source").value,parameters:paramsFromDOM()};
 }
 async function save(state,api){const p=await api("studio/projects",collect(state));work.activeId=p.id;work.creatingNew=false;return p;}
+function watchChatGptResult(projectId, previousResult, api, refresh, message) {
+  if(work.chatgptPoll)clearInterval(work.chatgptPoll);
+  let attempts=0,checking=false;
+  work.chatgptPoll=setInterval(async()=>{
+    if(checking)return;
+    checking=true;
+    try {
+      const projects=await api("studio/projects");
+      const current=projects.find(p=>p.id===projectId);
+      if(current && current.result?.concept && JSON.stringify(current.result)!==JSON.stringify(previousResult)) {
+        clearInterval(work.chatgptPoll);work.chatgptPoll=null;
+        await refresh();
+        message("ChatGPT result saved in Blossom. Lyrics and production settings updated.");
+        return;
+      }
+      if(++attempts>=90){
+        clearInterval(work.chatgptPoll);work.chatgptPoll=null;
+        message("No Blossom MCP result yet. Check the ChatGPT conversation and whether the Blossom app is connected.",true);
+      }
+    } catch(error) {
+      if(++attempts>=90){clearInterval(work.chatgptPoll);work.chatgptPoll=null;message(error.message,true);}
+    } finally {checking=false;}
+  },3000);
+}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
  if(work.busy){message("Current studio operation is still running",true);return;}
@@ -172,9 +196,11 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message("Music DNA references updated");return;
   }
   if(action==="studio-chatgpt"){
-    const instruction="Use the connected Blossom MCP tools: read Studio project "+p.id+" with studio_project_get, create completely original Dutch song lyrics and a full creative brief from its article or source URL (fetch the article only if accessible), then write the structured result with studio_project_save_result. Do not invent article facts. Required result fields: concept, lyrics, style, exclusions, moods, titles, coverPrompt, artistPhotoPrompt, suggestedGenre, rationale. Confirm when saved.";
-    try { await navigator.clipboard.writeText(instruction); message("ChatGPT instruction copied. Paste it into ChatGPT after connecting the Blossom MCP server, then refresh this project."); }
-    catch { message("Open ChatGPT and ask it to process Blossom Studio project "+p.id+" via the Blossom MCP server.",true); }
+    message("Submitting through the ChatGPT session in your regular browser...");
+    const submitted=await api("studio/projects/"+p.id+"/chatgpt-extract",{});
+    if(!submitted.submitted)throw Error("Safari did not submit the ChatGPT request");
+    watchChatGptResult(p.id,p.result,api,refresh,message);
+    message("Sent via your browser. Waiting for ChatGPT to save the result through Blossom MCP.");
     return;
   }
   if(action==="studio-extract"){
