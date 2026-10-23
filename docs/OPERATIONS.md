@@ -75,16 +75,12 @@ Suno explicitly restricts robots and scraping in its current terms, effective Se
 
 Reference: https://suno.com/terms-of-service
 
-## One-click provider browser accounts (Playwright)
+## Browser sign-in using Google-supported browsers
 
-Blossom Connections offers three separate visible Chrome sessions: Suno (https://suno.com/create), Spotify (https://open.spotify.com/) and ChatGPT (https://chatgpt.com/).
+Blossom Connections opens Suno, Spotify and ChatGPT using an ordinary tab in the user's own default web browser, not a Playwright/WebDriver-controlled Chrome context. This fixes Google's "This browser or app may not be secure" sign-in failure. Use Google or Facebook on the service's official website as usual. Existing cookies are managed by the *same browser and browser profile*, so a valid login can be reused. Blossom never accesses, copies, imports or exports those cookies. The browser does not share any session with Blossom's backend. A separate developer API integration is still required for automated features.
 
-Select Sign in with browser. Blossom shows a small modal guide and opens a separate Chrome window. Sign in manually, including provider Google/Facebook login and MFA. When using Continue session later, the same provider-specific Chrome profile is reused. Closing Chrome does not remove the session.
+**Suno Studio:** Open Suno in browser opens https://suno.com/create. View / copy Suno blueprint shows the saved parameters and lyrics; copy/paste them into Suno, review, and click Generate manually. The older WebDriver prefill route is not used by the normal application because Google blocks automation-controlled authentication. Avoid stealth flags or account bypasses.
 
-Data stays in ignored local directories: .data/suno-playwright-profile for Suno, and .data/browser-accounts/spotify or .data/browser-accounts/chatgpt for other services. Protect these folders with macOS disk encryption and do not share, synchronize or commit them. No cookies or localStorage are read, copied from regular Chrome, returned over Blossom HTTP, or transferred between providers.
+**Connections:** The modal only explains how to sign in; it does not embed or validate Google's login. The local server's /api/browser-accounts/open endpoint returns only an allowlisted URL and does not launch Chrome or imply login. The login link opens from a real click in the web UI, including when accessing Blossom remotely through an approved gateway. The Close action does not close or clear the user's personal browser, and Blossom does not claim to know when browser sessions expire.
 
-The modal does not embed the provider login, because third-party SSO providers commonly block embedding. Login occurs in a separate visible Chrome window. A saved profile is not proof you are currently signed in. If the provider expires or revokes a session, sign in again using the same Chrome profile.
-
-Spotify Web API requires an official developer Client ID and OAuth authorization even when browser Facebook sign-in works. OpenAI API requires a separate API key even if ChatGPT website login works. Consumer Suno login never grants Suno Platform developer access. Technical credentials remain in the Advanced area rather than interrupting browser use. Browser access is for supervised website interactions, not undocumented APIs, automatic bulk song generation, scraping or bypassing provider safeguards.
-
-Chrome must be installed and a user GUI session available on the Mac. On a first run, bash setup.sh prepares the local Playwright dependency. No existing personal Chrome profile is read or imported.
+Spotify Web API requires a developer app and official OAuth PKCE even if Facebook browser login works. ChatGPT website login does not grant an OpenAI API key. Consumer Suno Google login does not grant access to platform.suno.com. Google documents supported browser login requirements at https://support.google.com/accounts/answer/7675428
