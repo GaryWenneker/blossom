@@ -61,7 +61,7 @@ export function listDownloadedDrawModels({ command = DRAW_CLI_COMMAND, runner = 
     });
     child.stderr.on("data", chunk => { errors = (errors + String(chunk)).slice(-1000); });
     child.once("error", error => finish(new DomainError(
-      "Draw Things CLI unavailable. Install it with: brew install drawthingsai/draw-things/draw-things-cli. " + error.message, 503)));
+      "Draw Things CLI unavailable. Install it from Homebrew core with: brew install draw-things-cli. " + error.message, 503)));
     child.once("close", code => {
       if (code !== 0) return finish(new DomainError(
         "Could not list locally downloaded Draw Things models: " + (errors || code).toString().slice(0,350), 503));
