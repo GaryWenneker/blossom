@@ -3,7 +3,7 @@ const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambien
 const defaults={sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks"};
+const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",handoffMode:"song",handoffProjectId:null};
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
 const stateOf=state=>{if(work.creatingNew)return null;const list=state.data.studioProjects||[];
@@ -37,6 +37,7 @@ const panels=(p,assets,state)=>{
  const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
  const projectReferences=state.data.studioReferences||[];
  const image=assets.find(a=>a.kind==="cover"),photo=assets.find(a=>a.kind==="artist-photo");
+ const hasOpenAI=!!state.data.studioStatus?.openaiConfigured;
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
  return '<div class="studio-toolbar">'+
@@ -51,10 +52,10 @@ const panels=(p,assets,state)=>{
  field("Artist",'<select id="studio-artist"><option value="">Choose an artist</option>'+artists.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===p?.artistId?"selected":"")+'>'+esc(a.name)+" · "+esc(a.genre)+'</option>').join("")+'</select>')+
  '<div class="studio-tabstrip"><span class="active">Paste article</span><span>URL attribution</span><span>Original concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
- field("Article link (optional, attribution only)",'<input id="studio-source" type="url" placeholder="https://example.org/article" value="'+esc(p?.sourceUrl||"")+'">')+
- '<div class="studio-panel-bottom"><small>Creates entirely original lyrics, not copied text</small><button data-action="studio-extract" class="primary">✦ Extract with AI</button></div></section>'+
- '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">Regenerate</button></div>'+
- '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Paste an article and select Extract with AI to create an original concept.")+'</div>'+
+ field("Article URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'"><button type="button" class="secondary studio-import-button" data-action="studio-import-article">Importeer artikel</button>')+
+ '<div class="studio-panel-bottom"><small>Gebruik ChatGPT in Safari, ook zonder API-key.</small><button data-action="studio-extract" class="primary">'+(hasOpenAI?"✦ Genereer met OpenAI API":"✦ Maak met ChatGPT zonder API-key")+'</button></div></section>'+
+ '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-extract">'+(hasOpenAI?"Regenerate":"Open ChatGPT")+'</button></div>'+
+ '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Importeer een nieuwsartikel en maak er een originele muziekbrief van via ChatGPT.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
  '<div class="studio-label">Suggested titles</div><div class="studio-ideas">'+(result.titles?.length?result.titles.map((title,i)=>'<div><span>'+(i+1)+'. '+esc(title)+'</span><button class="secondary mini" data-action="studio-use-title" data-title="'+esc(title)+'">Use</button></div>').join(""):'<div class="studio-muted">Title suggestions appear here</div>')+'</div>'+
  '<div class="studio-label">Generated lyrics <button class="secondary mini" data-action="studio-save-lyrics">Save edits</button></div>'+
@@ -105,17 +106,17 @@ const panels=(p,assets,state)=>{
  (a.kind==="audio"?'<audio controls preload="none" src="'+esc(a.url)+'"></audio>':'<a class="secondary mini" href="'+esc(a.url)+'" target="_blank">Open</a>')+'</div>').join("")+'</div>'+
  '<div class="studio-file-actions"><button class="primary" data-action="studio-create-track">Create linked track</button>'+
  '<label class="secondary studio-upload">Import Suno audio<input id="studio-audio-file" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" hidden></label></div></section>'+
- '<section id="studio-pane-assistant" role="tabpanel" aria-label="AI assistant" class="studio-panel studio-assistant studio-bottom-pane" '+(work.bottomTab==="assistant"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>AI assistant</h2><span class="studio-mini-tag">OPENAI API</span></div>'+
+ '<section id="studio-pane-assistant" role="tabpanel" aria-label="AI assistant" class="studio-panel studio-assistant studio-bottom-pane" '+(work.bottomTab==="assistant"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>AI assistant</h2><span class="studio-mini-tag">'+(hasOpenAI?"OPENAI API":"CHATGPT WEBSITE")+'</span></div>'+
  '<p class="studio-hint">Ask about the arrangement, lyrics, instrumentation or release preparation, without leaving Blossom.</p>'+
  '<textarea id="studio-question" placeholder="Make these lyrics sound more like 1960s country, with less reverb..." rows="3"></textarea>'+
- '<button class="secondary wide" data-action="studio-ask">Ask AI assistant</button>'+
- '<div class="studio-answer">'+esc(work.assistantAnswer||"AI responses appear here. Requires your own OpenAI API key.")+'</div></section></div>';
+ '<button class="secondary wide" data-action="studio-ask">'+(hasOpenAI?"Ask AI assistant":"Vraag via ChatGPT")+'</button>'+
+ '<div class="studio-answer">'+esc(work.assistantAnswer||"Antwoorden verschijnen hier, ook zonder API-key.")+'</div></section></div>';
 };
 export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● OpenAI: '+(status.openaiConfigured?"configured":"not configured")+'</span>'+
+ '<div class="studio-statusline"><span>● Schrijven: '+(status.openaiConfigured?"OpenAI API actief":"ChatGPT overdracht, geen key nodig")+'</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
