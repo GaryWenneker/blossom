@@ -127,11 +127,47 @@ function collect(state){
  sourceUrl:document.querySelector("#studio-source").value,parameters:paramsFromDOM()};
 }
 async function save(state,api){const p=await api("studio/projects",collect(state));work.activeId=p.id;work.creatingNew=false;return p;}
+async function showChatGPTHandoff(p,api,mode="song",question=""){
+ const handoff=await api("studio/projects/"+p.id+"/chatgpt-prompt",{mode,question});
+ work.handoffMode=mode;work.handoffProjectId=p.id;
+ document.querySelector("#chatgpt-handoff-prompt").value=handoff.prompt;
+ document.querySelector("#chatgpt-handoff-reply").value="";
+ document.querySelector("#chatgpt-handoff-title").textContent=mode==="song"?"Muziekbrief via ChatGPT":"Vraag aan ChatGPT";
+ document.querySelector("#chatgpt-handoff-help").textContent=mode==="song"?
+  "Kopieer de opdracht naar ChatGPT in Safari. Plak daarna het volledige JSON-antwoord terug in Blossom.":
+  "Kopieer je vraag naar ChatGPT in Safari en plak daarna het antwoord hier.";
+ document.querySelector("#chatgpt-handoff-dialog").showModal();
+}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
  if(work.busy){message("Current studio operation is still running",true);return;}
  work.busy=true;el.disabled=true;
  try{
+  if(action==="studio-chatgpt-close"){
+    document.querySelector("#chatgpt-handoff-dialog").close();return;
+  }
+  if(action==="studio-chatgpt-copy"){
+    const field=document.querySelector("#chatgpt-handoff-prompt");
+    try{await navigator.clipboard.writeText(field.value);message("ChatGPT-opdracht gekopieerd.");}
+    catch{field.focus();field.select();message("Kopieer met Cmd+C.");}
+    return;
+  }
+  if(action==="studio-chatgpt-open"){
+    const safari=state.data.browserAccounts?.nativeSafariAvailable &&
+      ["localhost","127.0.0.1"].includes(location.hostname);
+    if(safari)await api("browser-accounts/chatgpt/open-safari",{});
+    else window.open("https://chatgpt.com/","_blank","noopener,noreferrer");
+    message("ChatGPT geopend. Plak daar de gekopieerde opdracht.");return;
+  }
+  if(action==="studio-chatgpt-import"){
+    const answer=document.querySelector("#chatgpt-handoff-reply").value;
+    if(!answer.trim()){message("Plak eerst het antwoord van ChatGPT.",true);return;}
+    const result=await api("studio/projects/"+work.handoffProjectId+"/chatgpt-import",
+      {mode:work.handoffMode,answer});
+    if(work.handoffMode==="assistant")work.assistantAnswer=result.answer;
+    document.querySelector("#chatgpt-handoff-dialog").close();
+    await refresh();message("ChatGPT-resultaat verwerkt in Blossom.");return;
+  }
   if(action==="studio-bottom-tab"){
     work.bottomTab=el.dataset.tab==="assistant"?"assistant":"tracks";
     for(const tab of document.querySelectorAll(".studio-output-tab")){
@@ -156,6 +192,17 @@ export async function studioAction(el,state,api,refresh,message){
     const artistId=document.querySelector("#studio-artist").value;
     if(!artistId){message("Choose an artist first",true);return;}
     await api("studio/artists/"+artistId+"/preset",paramsFromDOM());message("Artist defaults saved");return;
+  }
+  if(action==="studio-import-article"){
+    const url=document.querySelector("#studio-source").value.trim();
+    if(!url){message("Vul eerst de nieuwsartikel-URL in.",true);return;}
+    const result=await api("studio/articles/import",{url});
+    document.querySelector("#studio-article").value=result.text;
+    const title=document.querySelector("#studio-title");
+    if(!title.value.trim()||title.value==="Untitled project")title.value=result.title||"Nieuwsartikel";
+    document.querySelector("#studio-source").value=result.sourceUrl;
+    await save(state,api);await refresh();
+    message("Artikel opgehaald: "+result.text.length+" tekens. Klaar voor ChatGPT.");return;
   }
   const p=await save(state,api);
   if(action==="studio-add-dna"||action==="studio-remove-dna"){
