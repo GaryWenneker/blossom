@@ -3,6 +3,7 @@ import { mkdir, readFile, stat, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DomainError } from "./domain.mjs";
+import { listDownloadedDrawModels, modelFromDownloadedList, summarizedModelIds } from "./draw-models.mjs";
 
 const PNG=Buffer.from([137,80,78,71,13,10,26,10]);
 export function validateDrawRequest(input){
@@ -29,7 +30,20 @@ export class DrawThings {
     this.running=true;
     const filename=randomUUID()+".png",output=join(this.directory,filename);
     await mkdir(this.directory,{recursive:true,mode:0o700});
-    const args=["generate",...(this.model?["--model",this.model]:[]),"--prompt",p.prompt,
+    let resolvedModel = this.model;
+    if (resolvedModel) {
+      const inventory = await listDownloadedDrawModels({command:this.command,runner:this.runner});
+      const exact = modelFromDownloadedList(inventory,resolvedModel);
+      if (exact) resolvedModel = exact;
+      else {
+        const available = summarizedModelIds(inventory);
+        // Only fall back to known text-to-image checkpoints, never a video or edit model.
+        const usable = available.filter(id => /^(?:z_image|flux|qwen_image_(?!edit)|sdxl|stable_diffusion)/i.test(id));
+        if (!usable.length) throw new DomainError("Configured Draw Things model "+resolvedModel+" is not downloaded or resolvable. Download an image model in Draw Things or via draw-things-cli models ensure --model <id>. Available: "+(available.join(", ")||"none"),503);
+        resolvedModel = usable[0];
+      }
+    }
+    const args=["generate",...(resolvedModel?["--model",resolvedModel]:[]),"--prompt",p.prompt,
       "--width",String(p.width),"--height",String(p.height),"--steps",String(p.steps),
       "--seed",String(p.seed),"--output",output];
     try {
