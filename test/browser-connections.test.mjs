@@ -80,7 +80,8 @@ test("Connections sign-in and Suno Studio actions use the real browser, never Pl
   assert.match(section,/Continue with Facebook/);
   assert.match(section,/details class="panel browser-advanced"/);
   assert.match(ui,/window.open\(url,"_blank","noopener,noreferrer"\)/);
-  assert.match(studio,/window.open\("https:\/\/suno.com\/create","_blank","noopener,noreferrer"\)/);
+  assert.match(studio,/browser-accounts\/suno\/open-safari/);
+  assert.doesNotMatch(studio,/window\.open\("https:\/\/suno.com\/create"/);
   assert.match(studio,/View \/ copy Suno blueprint/);
   assert.doesNotMatch(studio,/Open Suno \(Playwright\)/);
   assert.match(server,/new ConnectedBrowsers/);
