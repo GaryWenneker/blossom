@@ -58,5 +58,5 @@ export function tokenExchangeBody({ code, clientId, verifier, redirectUri }) {
 }
 
 export function hasPlanPermission(scopes) {
-  return (Array.isArray(scopes) ? scopes : String(scopes || "").split(/\\s+/)).includes("chatgpt.tokens.use.direct");
+  return (Array.isArray(scopes) ? scopes : String(scopes || "").split(/\s+/)).includes("chatgpt.tokens.use.direct");
 }
