@@ -90,6 +90,30 @@ test("Draw Things CLI argument array cannot become shell injection; PNG output i
    assert.ok((await readFile(join(dir,file.filename))).subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])));
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test("Draw Things selects installed ERNIE Image Turbo instead of unavailable preferred model or video checkpoint",async()=>{
+ const dir=await mkdtemp(join(tmpdir(),"blossom-ernie-"));
+ let generatedArgs;
+ const runner=(command,args,options)=>{
+   const child=new EventEmitter();
+   child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+   setImmediate(async()=>{
+     if(args[0]==="models") {
+       child.stdout.end("MODEL NAME SOURCE DOWNLOADED\\nernie_image_turbo_i8x.ckpt ERNIE Image Turbo official yes\\nwan_v2.2_a14b_hne_t2v_q8p.ckpt Wan T2V official yes\\n");
+     } else {
+       generatedArgs=args;
+       await writeFile(args[args.indexOf("--output")+1],Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(140)]));
+     }
+     child.emit("close",0,null);
+   });
+   return child;
+ };
+ try {
+   const draw=new DrawThings({model:"lustifySDXLNSFWSFW_v20",directory:dir,runner});
+   const image=await draw.generate({kind:"artist-photo",prompt:"Photorealistic portrait of a fictional musician in daylight"});
+   assert.equal(image.mime,"image/png");
+   assert.equal(generatedArgs[generatedArgs.indexOf("--model")+1],"ernie_image_turbo_i8x.ckpt");
+ } finally {await rm(dir,{recursive:true,force:true});}
+});
 test("Studio API requires session, stores project, generates AI and links track",async t=>{
  const db=new Store(":memory:");
  const api=new OpenAIComposer({key:"testing",fetcher:async()=>({ok:true,json:async()=>({output:[{content:[{type:"output_text",text:JSON.stringify(result)}]}]})})});

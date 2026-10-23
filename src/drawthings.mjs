@@ -30,6 +30,7 @@ export class DrawThings {
     this.running=true;
     const filename=randomUUID()+".png",output=join(this.directory,filename);
     await mkdir(this.directory,{recursive:true,mode:0o700});
+    try {
     let resolvedModel = this.model;
     if (resolvedModel) {
       const inventory = await listDownloadedDrawModels({command:this.command,runner:this.runner});
@@ -38,7 +39,7 @@ export class DrawThings {
       else {
         const available = summarizedModelIds(inventory);
         // Only fall back to known text-to-image checkpoints, never a video or edit model.
-        const usable = available.filter(id => /^(?:z_image|flux|qwen_image_(?!edit)|sdxl|stable_diffusion)/i.test(id));
+        const usable = available.filter(id => /^(?:ernie_image|z_image|flux|qwen_image_(?!edit)|sdxl|stable_diffusion)/i.test(id));
         if (!usable.length) throw new DomainError("Configured Draw Things model "+resolvedModel+" is not downloaded or resolvable. Download an image model in Draw Things or via draw-things-cli models ensure --model <id>. Available: "+(available.join(", ")||"none"),503);
         resolvedModel = usable[0];
       }
@@ -63,5 +64,6 @@ export class DrawThings {
       return {filename,mime:"image/png",kind:p.kind,width:p.width,height:p.height};
     }catch(err){await rm(output,{force:true}).catch(()=>{});throw err}
     finally{this.running=false}
+    } catch (error) { this.running=false; throw error; }
   }
 }
