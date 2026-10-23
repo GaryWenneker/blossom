@@ -64,3 +64,13 @@ References:
 - Suno SSO: https://help.suno.com/en/articles/2553409
 - Spotify Facebook login: https://support.spotify.com/nl/article/facebook-login-help/
 - Spotify PKCE: https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow
+
+## Supervised consumer Suno browser (Playwright Core)
+
+Blossom's separate Suno Platform API is **not** available just because a user is signed into \`suno.com\` via Google. Use **News to Song → Open Suno (Playwright)** to start a visible Chrome browser controlled by local Playwright Core; complete your own Google SSO. Use **Fill Suno draft** only after logging in and navigating to \`https://suno.com/create\`. Blossom fills unique visible fields it recognizes (lyrics, styles, exclusions, title) and **never clicks Generate**. Review the entire blueprint in Blossom, set any model/sliders/mode fields manually, then submit the generation manually. The ordinary browser is still the authority for credit use, rules and results.
+
+To prepare: run \`bash setup.sh\` to install \`playwright-core\` and Google Chrome on your Mac; the setup does not automatically sign in. The browser session is stored under the ignored local directory \`.data/suno-playwright-profile\`, which can contain personal browser session data; do not copy this directory into source control or share it. Only authenticated Studio UI actions can control the browser. This is an **assisted local browser workflow**, not a Suno API connection, continuous listener, music downloader or bulk-automation bridge.
+
+Suno explicitly restricts robots and scraping in its current terms, effective September 2026. Use the assistant only when authorized by the service, and do not automate blocked operations. If Google refuses login from Playwright Chrome or Suno's UI changes, open \`suno.com\` normally and copy the fields from Blossom's blueprint; do not add stealth plugins or circumvent controls.
+
+Reference: https://suno.com/terms-of-service
