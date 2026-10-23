@@ -34,6 +34,8 @@ function paramsFromDOM(){
 const panels=(p,assets,state)=>{
  const result=p?.result||{},params=p?.parameters||defaults;
  const artists=state.data.artists||[],genres=Object.values(state.data.genres||{}).flat();
+ const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
+ const projectReferences=state.data.studioReferences||[];
  const image=assets.find(a=>a.kind==="cover"),photo=assets.find(a=>a.kind==="artist-photo");
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
@@ -62,6 +64,13 @@ const panels=(p,assets,state)=>{
  field("Suno model",choose("studio-model",[["v6","v6"],["v6-wild","v6 Wild"],["v6-mini","v6 Mini"],["custom","Custom model"]],params.sunoModel||"v6"))+
  field("Primary genre",'<input id="studio-genre" list="studio-genres" value="'+esc(params.genre)+'"><datalist id="studio-genres">'+genres.map(g=>'<option value="'+esc(g)+'"></option>').join("")+'</datalist>')+
  field("Additional styles (comma separated)",'<input id="studio-styles" value="'+safeList(params.additionalStyles||[])+'" placeholder="Americana, Acoustic, Country Folk">')+
+ '<div class="studio-dna-picker"><strong>Music DNA inspiration</strong><p class="studio-hint">Use analyzed recordings as references for an original arrangement. No source lyrics or melodies are copied.</p>'+
+ '<div class="studio-dna-choice">'+
+ field("DNA reference",'<select id="studio-dna-select"><option value="">Choose an analyzed recording</option>'+referenceOptions.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.artist+" · "+r.title)+'</option>').join("")+'</select>')+
+ field("Influence",'<input id="studio-dna-weight" type="number" min="1" max="100" value="50">')+
+ '<button class="secondary mini" data-action="studio-add-dna" '+(referenceOptions.length?'':'disabled')+'>Add reference</button></div>'+
+ (projectReferences.length ? '<div class="studio-dna-linked">'+projectReferences.map(r=>'<div><span>'+esc(r.profile.artist+" · "+r.profile.title)+' ('+r.weight+'%)</span><button class="secondary mini" data-action="studio-remove-dna" data-profile-id="'+esc(r.profileId)+'" aria-label="Remove reference">Remove</button></div>').join("")+'</div>' : '<p class="studio-hint">No DNA references linked yet. Analyze a recording in the Music DNA library first.</p>')+
+ '</div>'+
  field("Exclude styles / instruments",'<input id="studio-excludes" value="'+safeList(params.excludeStyles||[])+'">')+
  '<div class="studio-control-grid">'+
  field("Vocal gender",choose("studio-gender",[["male","Male"],["female","Female"],["auto","Auto"]],params.vocalGender))+
@@ -131,6 +140,20 @@ export async function studioAction(el,state,api,refresh,message){
     await api("studio/artists/"+artistId+"/preset",paramsFromDOM());message("Artist defaults saved");return;
   }
   const p=await save(state,api);
+  if(action==="studio-add-dna"||action==="studio-remove-dna"){
+    const previous=(state.data.studioReferences||[]).map(x=>({profileId:x.profileId,weight:x.weight}));
+    let updated;
+    if(action==="studio-remove-dna")updated=previous.filter(x=>x.profileId!==el.dataset.profileId);
+    else {
+      const profileId=document.querySelector("#studio-dna-select").value;
+      const weight=Number(document.querySelector("#studio-dna-weight").value);
+      if(!profileId){message("Choose an analyzed reference first",true);return;}
+      if(previous.some(x=>x.profileId===profileId)){message("Reference is already linked",true);return;}
+      updated=[...previous,{profileId,weight}];
+    }
+    await api("studio/projects/"+p.id+"/references",{references:updated});
+    await refresh();message("Music DNA references updated");return;
+  }
   if(action==="studio-extract"){
     await api("studio/projects/"+p.id+"/extract",{});await refresh();message("Original lyrics and styles generated");return;
   }
