@@ -124,3 +124,64 @@ test("REST auth, MCP read/write token scopes and JSON-RPC tools are enforced", a
     name: "music_dna_add_reference", arguments: reference })).json();
   assert.equal(JSON.parse(wrote.result.content[0].text).id, saved.id);
 });
+
+
+test("Bar-resolved Music DNA preserves per-instrument techniques, vocal layers, and production events", () => {
+  const store=new Store(":memory:"),dna=new MusicDNA(store);
+  try {
+    const profile=dna.create({artist:"Bar Test",title:"Four Measure Groove",sourceKind:"metadata"});
+    const detailed={...analysis,barBlocks:[
+      {startBar:1,endBar:4,startMs:0,endMs:10909,status:"audio_observed",
+        section:"Intro",instruments:[
+          {name:"Electric bass",activity:"Pickup into a descending repeated riff",
+            technique:"Fingerstyle",rhythm:"Syncopated sixteenth pickup",
+            articulation:"Short muted notes",effects:["Compression"],evidence:"audio",confidence:0.86},
+          {name:"Electric guitar",activity:"Bright offbeat clipped chords",
+            technique:"Palm muting",evidence:"audio",confidence:0.77}],
+        vocals:[],rhythm:{kick:"Downbeats 1 and 3",snare:"Backbeat 2 and 4",
+          hiHat:"Closed eighths",groove:"Straight eighths"},
+        harmony:{chords:["Cm","Gm"],movement:"Two-chord rotation"},
+        production:{dynamics:"Soft intro",spatial:"Wide guitar right",transitions:"Short pickup"},
+        notes:"Bass leads the motif",confidence:0.91},
+      {startBar:5,endBar:8,startMs:10909,endMs:21818,status:"audio_observed",
+        section:"Verse",instruments:[{name:"Electric bass",activity:"Repeated ostinato",
+          evidence:"audio"}],vocals:[
+          {singer:"Lead vocalist",layer:"lead",activity:"Verse phrase",
+            delivery:"Legato mid-register",phrasing:"Slightly behind the beat",
+            harmonies:"None",evidence:"human_verified",confidence:0.95}],
+        rhythm:{groove:"Straight backbeat"},production:{dynamics:"Build toward hook"},
+        confidence:0.90}
+    ]};
+    const saved=dna.saveAnalysis(profile.id,detailed);
+    assert.equal(saved.analysis.schemaVersion,2);
+    assert.equal(saved.analysis.barBlocks.length,2);
+    assert.equal(saved.analysis.barBlocks[0].instruments[0].technique,"Fingerstyle");
+    assert.equal(saved.analysis.barBlocks[1].vocals[0].phrasing,"Slightly behind the beat");
+    assert.equal(dna.search({q:"Palm muting"}).length,1);
+    assert.equal(dna.search({q:"behind the beat"}).length,1);
+    assert.equal(dna.versions(profile.id).length,1);
+    const metadataOnly=dna.create({artist:"Bar Test",title:"Awaiting Audio"});
+    const pending=dna.saveAnalysis(metadataOnly.id,{...analysis,
+      analysisMethod:"Published credits, not decoded audio",
+      barBlocks:[{startBar:1,endBar:4,status:"not_analyzed",
+        section:"Arrangement pending"}]});
+    assert.equal(pending.analysis.barBlocks[0].instruments.length,0);
+    assert.equal(pending.analysis.barBlocks[0].vocals.length,0);
+    assert.equal(pending.analysis.barBlocks[0].startMs,null);
+    assert.equal(pending.analysis.schemaVersion,2);
+    assert.throws(()=>dna.saveAnalysis(metadataOnly.id,{...analysis,barBlocks:[
+      {startBar:1,endBar:4,status:"not_analyzed",
+       instruments:[{name:"Guitar",activity:"Riff",evidence:"audio"}]}
+    ]}),/not_analyzed/);
+    assert.throws(()=>dna.saveAnalysis(metadataOnly.id,{...analysis,barBlocks:[
+      {startBar:1,endBar:4},{startBar:4,endBar:8}
+    ]}),/non-overlapping/);
+    assert.throws(()=>dna.saveAnalysis(metadataOnly.id,{...analysis,barBlocks:[
+      {startBar:1,endBar:4,startMs:9000,endMs:8000}
+    ]}),/boundaries/);
+    assert.throws(()=>dna.saveAnalysis(metadataOnly.id,{...analysis,barBlocks:[
+      {startBar:1,endBar:4,status:"audio_observed",
+       vocals:[{singer:"Lead",evidence:"unsupported"}]}
+    ]}),/evidence/);
+  }finally{store.close();}
+});

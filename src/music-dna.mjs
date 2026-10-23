@@ -40,6 +40,112 @@ function checkShape(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new DomainError("Invalid " + label);
   return value;
 }
+// Bar-level observations can be absent until actual audio is decoded. Keeping
+// these slots explicit prevents a source-only analysis from claiming it heard
+// instruments or vocal details at exact positions in the recording.
+const BAR_STATUS = new Set(["not_analyzed", "source_inferred", "audio_observed"]);
+const BAR_EVIDENCE = new Set(["none", "editorial", "audio", "human_verified"]);
+function barText(value, label, max = 250) {
+  return text(value, label, max);
+}
+function barEvidence(value) {
+  if(value == null)return "none";
+  if(typeof value!=="string"||!BAR_EVIDENCE.has(value))
+    throw new DomainError("Invalid bar observation evidence");
+  return value;
+}
+function barInstrument(input) {
+  checkShape(input,"bar instrument");
+  return { name:text(input.name,"Bar instrument",100,true),
+    activity:barText(input.activity,"Instrument activity",380),
+    role:barText(input.role,"Instrument role",150),
+    technique:barText(input.technique,"Instrument technique",250),
+    rhythm:barText(input.rhythm,"Instrument rhythm",250),
+    articulation:barText(input.articulation,"Instrument articulation",200),
+    pitchRegister:barText(input.pitchRegister,"Instrument register",120),
+    timbre:barText(input.timbre,"Instrument timbre",200),
+    stereo:barText(input.stereo,"Instrument stereo",120),
+    effects:list(input.effects,"Instrument effects",12),
+    evidence:barEvidence(input.evidence),
+    confidence:optionalNumber(input.confidence,"instrument bar confidence",0,1) };
+}
+function barVocal(input) {
+  checkShape(input,"bar vocal event");
+  return { singer:barText(input.singer,"Vocal singer",100),
+    layer:barText(input.layer,"Vocal layer",100),
+    activity:barText(input.activity,"Vocal activity",380),
+    delivery:barText(input.delivery,"Vocal delivery",250),
+    phrasing:barText(input.phrasing,"Vocal phrasing",250),
+    articulation:barText(input.articulation,"Vocal articulation",200),
+    register:barText(input.register,"Vocal register",120),
+    dynamics:barText(input.dynamics,"Vocal dynamics",200),
+    harmonies:barText(input.harmonies,"Vocal harmony",200),
+    effects:list(input.effects,"Vocal effects",12),
+    evidence:barEvidence(input.evidence),
+    confidence:optionalNumber(input.confidence,"vocal bar confidence",0,1) };
+}
+function barBlocksInput(value, durationMs) {
+  if(value==null)return [];
+  if(!Array.isArray(value)||value.length>512)throw new DomainError("Invalid barBlocks (max 512)");
+  let lastEnd=0,lastTime=-1;
+  return value.map(block=>{
+    checkShape(block,"bar block");
+    const startBar=block.startBar,endBar=block.endBar;
+    if(!Number.isInteger(startBar)||!Number.isInteger(endBar)||
+       startBar<1||endBar<startBar||endBar-startBar>=64||startBar<=lastEnd||endBar>8192)
+      throw new DomainError("Bar blocks must be ordered, non-overlapping and cover at most 64 bars each");
+    lastEnd=endBar;
+    const startMs=optionalNumber(block.startMs,"bar block start",0,86_400_000);
+    const endMs=optionalNumber(block.endMs,"bar block end",1,86_400_000);
+    if((startMs==null)!==(endMs==null)||(startMs!=null&&
+       (endMs<=startMs||startMs<lastTime||(durationMs!=null&&endMs>durationMs))))
+      throw new DomainError("Invalid bar block audio boundaries");
+    if(endMs!=null)lastTime=endMs;
+    const status=block.status||"not_analyzed";
+    if(!BAR_STATUS.has(status))throw new DomainError("Invalid bar block status");
+    const instruments=block.instruments==null?[]:block.instruments;
+    const vocals=block.vocals==null?[]:block.vocals;
+    if(!Array.isArray(instruments)||instruments.length>24||!Array.isArray(vocals)||vocals.length>12)
+      throw new DomainError("Too many bar-level instrument or vocal events");
+    const rhythm=block.rhythm==null?{}:checkShape(block.rhythm,"bar rhythm");
+    const harmony=block.harmony==null?{}:checkShape(block.harmony,"bar harmony");
+    const production=block.production==null?{}:checkShape(block.production,"bar production");
+    const normalized={
+      startBar,endBar,startMs,endMs,status,
+      section:barText(block.section,"Bar section",100),
+      instruments:instruments.map(barInstrument),
+      vocals:vocals.map(barVocal),
+      rhythm: {
+        kick:barText(rhythm.kick,"Kick pattern",200),
+        snare:barText(rhythm.snare,"Snare pattern",200),
+        hiHat:barText(rhythm.hiHat,"Hi-hat pattern",200),
+        percussion:barText(rhythm.percussion,"Percussion",200),
+        groove:barText(rhythm.groove,"Groove",250),
+        syncopation:barText(rhythm.syncopation,"Syncopation",200),
+        fill:barText(rhythm.fill,"Drum fill",200)
+      },
+      harmony:{
+        chords:list(harmony.chords,"Bar chords",16),
+        movement:barText(harmony.movement,"Harmonic movement",250)
+      },
+      production:{
+        dynamics:barText(production.dynamics,"Bar dynamics",250),
+        spatial:barText(production.spatial,"Bar spatial production",250),
+        transitions:barText(production.transitions,"Bar transitions",250),
+        processing:list(production.processing,"Bar processing",16)
+      },
+      notes:barText(block.notes,"Bar notes",1000),
+      confidence:optionalNumber(block.confidence,"bar confidence",0,1)
+    };
+    // No performance claims may be saved in a deliberately unanalyzed block.
+    if(status==="not_analyzed"&&(instruments.length||vocals.length||
+       Object.values(normalized.rhythm).some(Boolean)||normalized.harmony.chords.length||
+       normalized.harmony.movement||Object.values(normalized.production).some(v=>
+         Array.isArray(v)?v.length:Boolean(v))))
+      throw new DomainError("A not_analyzed bar block cannot contain performance observations");
+    return normalized;
+  });
+}
 function analysisInput(incoming) {
   const data = checkShape(incoming, "DNA analysis");
   const genres = list(data.genres, "genres");
@@ -75,8 +181,9 @@ function analysisInput(incoming) {
   const durationMs = optionalNumber(data.durationMs, "duration", 1000, 86_400_000);
   if (durationMs != null && normalizedSections.some(s => s.endMs > durationMs))
     throw new DomainError("Section extends beyond recording duration");
+  const barBlocks=barBlocksInput(data.barBlocks,durationMs);
   const normalized = {
-    schemaVersion: 1, bpm: optionalNumber(data.bpm, "BPM", 20, 350),
+    schemaVersion: barBlocks.length ? 2 : 1, bpm: optionalNumber(data.bpm, "BPM", 20, 350),
     musicalKey: text(data.musicalKey, "Musical key", 32),
     timeSignature: text(data.timeSignature, "Time signature", 20),
     durationMs, genres, moods, instruments: normalizedInstruments,
@@ -95,6 +202,7 @@ function analysisInput(incoming) {
       effects: list(production.effects, "effects")
     },
     sections: normalizedSections,
+    barBlocks,
     summary: text(data.summary, "Summary", 3000),
     analysisMethod: text(data.analysisMethod, "Analysis method", 100, true),
     analyzer: text(data.analyzer, "Analyzer", 160, true),
@@ -122,7 +230,11 @@ function searchable(profile, analysis) {
     ...analysis.instruments.flatMap(i => [i.name, i.technique, i.timbre, i.role]),
     ...Object.values(analysis.vocals), analysis.production.era, analysis.production.texture,
     analysis.production.stereo, analysis.production.dynamics, ...analysis.production.effects,
-    ...analysis.sections.flatMap(s => [s.label, s.notes, ...s.instruments, ...s.techniques])]
+    ...analysis.sections.flatMap(s => [s.label, s.notes, ...s.instruments, ...s.techniques]),
+    ...(analysis.barBlocks||[]).flatMap(b => [b.section,b.notes,b.harmony.movement,...b.harmony.chords,
+      ...Object.values(b.rhythm), ...Object.values(b.production).flat(),
+      ...b.instruments.flatMap(i=>[i.name,i.activity,i.role,i.technique,i.rhythm,i.articulation,i.timbre]),
+      ...b.vocals.flatMap(v=>[v.singer,v.layer,v.activity,v.delivery,v.phrasing,v.harmonies])])]
     .filter(Boolean).join(" ");
 }
 function fullTextTerms(value) {

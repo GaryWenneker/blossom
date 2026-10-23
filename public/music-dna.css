@@ -24,3 +24,16 @@
 .studio-dna-linked span{min-width:0;overflow-wrap:anywhere}
 @media(max-width:850px){.music-dna-grid{grid-template-columns:1fr}.music-dna-result{align-items:flex-start;flex-direction:column}.studio-dna-choice{grid-template-columns:1fr}}
 @media(max-width:520px){.music-dna-search{flex-wrap:wrap}.music-dna-search input{flex-basis:100%}.music-dna-actions{width:100%}}
+
+.dna-bar-blocks{display:grid;gap:.35rem;margin:1rem 0}
+.dna-bar-blocks h4{margin:.4rem 0;font-size:1rem}
+.dna-bar-blocks>p{font-size:.8rem;color:var(--muted,#9baaa2)}
+.dna-bar-block{border:1px solid #365046;border-radius:.6rem;background:rgba(34,58,47,.12)}
+.dna-bar-block summary{display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:.5rem;cursor:pointer;padding:.65rem;font-size:.84rem}
+.dna-bar-block summary span:first-child{font-weight:700;color:#a2f574}
+.dna-bar-block summary small{font-size:.73rem;opacity:.75}
+.dna-bar-block>div{padding:.75rem;border-top:1px solid #365046}
+.dna-bar-block p{font-size:.8rem;opacity:.8;margin:0}
+.dna-bar-field{font-size:.82rem;line-height:1.5;margin:.3rem 0}
+.dna-bar-field strong{display:inline-block;min-width:95px;margin-right:.4rem;color:#b0e58d}
+@media(max-width:650px){.dna-bar-block summary{grid-template-columns:1fr 1fr}.dna-bar-block summary small{grid-column:1/-1}}
