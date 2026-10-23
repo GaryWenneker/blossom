@@ -70,9 +70,22 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     const path=parsedUrl.pathname;
     const oauthPath=path.startsWith("/oauth/")||path.startsWith("/.well-known/oauth-");
     const publicHost=mcpOAuth.enabled()?new URL(mcpOAuth.origin).hostname:"";
-    // On the public Cloudflare hostname expose MCP and OAuth ONLY, not local admin UI.
-    if(publicHost&&String(req.headers.host||"").split(":")[0].toLowerCase()===publicHost &&
-        path!=="/mcp"&&!oauthPath)return reply(res,404,{error:"Not found"});
+    // Public Cloudflare host: a minimal landing/health page and authenticated
+    // MCP/OAuth ONLY. Studio and administrator APIs must remain on loopback.
+    const gatewayHost=!!publicHost&&
+      String(req.headers.host||"").split(":")[0].toLowerCase()===publicHost;
+    if(gatewayHost){
+      if(req.method==="GET"&&(path==="/"||path==="/gateway.css")){
+        const file=path==="/gateway.css"?"gateway.css":"gateway.html";
+        const content=await readFile(new URL("../public/"+file,import.meta.url));
+        res.writeHead(200,{"Content-Type":path==="/gateway.css"?"text/css; charset=utf-8":
+          "text/html; charset=utf-8","Cache-Control":"no-store"});
+        res.end(content);return;
+      }
+      if(req.method==="GET"&&path==="/healthz")
+        return reply(res,200,{status:"ok",service:"blossom-mcp"});
+      if(path!=="/mcp"&&!oauthPath)return reply(res,404,{error:"Not found"});
+    }
     if(oauthPath) {
       try {return await mcpOAuth.handle(req,res,path,parsedUrl);}
       catch(error){console.error("Blossom OAuth error:",error.message);
