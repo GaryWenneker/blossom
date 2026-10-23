@@ -85,13 +85,13 @@ test("Spotify Safari handoff is confirmed and can be retried, without changing S
 test("Spotify Connections UI distinguishes login from player, and has no mandatory Client ID",async()=>{
   const ui=await readFile(new URL("../public/app.js",import.meta.url),"utf8");
   const section=ui.slice(ui.indexOf("function browserAccountCard("),ui.indexOf("function render(){"));
-  assert.match(section,/Inloggen via Spotify \\/ Facebook/);
-  assert.match(section,/Opnieuw aanmelden via Facebook/);
-  assert.match(section,/browser-spotify-login/);
-  assert.match(section,/accounts\\.spotify\\.com\\/nl\\/login/);
-  assert.match(section,/Verdergaan met Facebook/);
-  assert.match(section,/details class="panel browser-advanced"/);
-  assert.match(section,/Geen Client ID nodig voor websitegebruik/);
-  assert.match(ui,/login-safari/);
-  assert.match(section,/handoff\\.state==="user_confirmed"/);
+  assert.ok(section.includes("Inloggen via Spotify / Facebook"));
+  assert.ok(section.includes("Opnieuw aanmelden via Facebook"));
+  assert.ok(section.includes("browser-spotify-login"));
+  assert.ok(ui.includes("accounts.spotify.com/nl/login"));
+  assert.ok(section.includes("Verdergaan met Facebook"));
+  assert.ok(section.includes('details class="panel browser-advanced"'));
+  assert.ok(section.includes("Geen Client ID nodig voor websitegebruik"));
+  assert.ok(ui.includes("login-safari"));
+  assert.ok(section.includes('handoff.state==="user_confirmed"'));
 });
