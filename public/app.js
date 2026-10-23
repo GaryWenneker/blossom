@@ -123,7 +123,7 @@ function connections(){
  '<form id="spotify-connection-form" class="stack"><div class="field"><label for="spotify-client-id">Spotify developer Client ID</label><input id="spotify-client-id" type="text" name="clientId" spellcheck="false" autocomplete="off" value="'+e(c.spotifyClientId||"")+'" placeholder="32-character developer Client ID" maxlength="32"></div>'+
  '<button type="submit" class="secondary">Save Client ID</button></form>'+
  '<div class="actions" style="margin-top:14px"><a class="primary" style="text-decoration:none" href="/auth/spotify/start">Connect with Spotify ↗</a>'+(c.spotify_refresh_token?.configured?'<button data-action="remove-spotify" class="danger">Disconnect Spotify</button>':"")+'</div>'+
- (c.spotify_refresh_token?.configured?'<p class="small">Authorized account: '+e(c.spotify_refresh_token.label)+'</p>':"")+
+ (c.spotify_refresh_token?.configured?'<p class="small">Authorized account: '+e(c.spotify_refresh_token.label)+'</p><button data-action="verify-spotify" class="secondary" type="button">Verify Spotify connection</button><p class="hint">Spotify requires reauthorization after six months.</p>':"")+
  '<p class="small">Set the Spotify developer redirect URL exactly to <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section></div>'+
  '<div class="panel"><h2>Connection security</h2><p class="muted">Secrets are encrypted at rest. Blossom never returns a saved API key or OAuth refresh token to the browser. Your credentials remain tied to this local server and its separately stored encryption key. Back up both safely; losing the key makes the secrets unrecoverable.</p></div>';
 }
@@ -135,6 +135,7 @@ function render(){
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
+ if(act==="verify-spotify"){const p=await api("connections/spotify/profile");message("Spotify connection verified: "+p.displayName);return;}
  if(act==="logout"){await fetch("/auth/logout",{method:"POST",headers:{"Content-Type":"application/json","X-Blossom-Request":"ui"},body:"{}"});window.location.assign("/login");return;}
  if(act==="remove-suno"||act==="remove-spotify"){if(confirm("Remove stored authorization for this service?")){await update("connections/"+(act==="remove-suno"?"suno":"spotify")+"/remove",{});message("Saved authorization removed");}return;}
  if(act==="close-dialog"){document.querySelector("#recipe-dialog").close();return}

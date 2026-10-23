@@ -46,8 +46,37 @@ export class SpotifyOAuth {
     if(!profileResponse.ok)throw new DomainError("Spotify profile verification failed",502);
     const profile=await profileResponse.json();
     if(typeof profile?.id!=="string")throw new DomainError("Spotify profile has no account ID",502);
-    const label=String(profile.display_name||profile.id).slice(0,180);
+    const label=String(profile.display_name||profile.id||"Spotify").slice(0,180);
     this.vault.save("spotify_refresh_token",label,token.refresh_token);
-    return {id:profile.id,label};
+    return {id:profile.account_id||profile.id,label};
   }
+  async profile() {
+    const refreshToken=this.vault.read("spotify_refresh_token");
+    if(!refreshToken)throw new DomainError("Spotify is not connected. Authorize again.",409);
+    const response=await this.fetcher("https://accounts.spotify.com/api/token",{
+      method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refreshToken,client_id:this.vault.getSetting("spotify_client_id")}),
+      signal:AbortSignal.timeout(15000)
+    });
+    if(!response.ok) {
+      const failure=await response.json().catch(()=>({}));
+      if(response.status===400&&failure?.error==="invalid_grant"){
+        this.vault.delete("spotify_refresh_token");
+        throw new DomainError("Spotify authorization expired. Please reconnect.",409);
+      }
+      throw new DomainError("Spotify token refresh failed ("+response.status+")",502);
+    }
+    const token=await response.json();
+    if(typeof token?.access_token!=="string")throw new DomainError("Spotify did not provide an access token",502);
+    if(typeof token?.refresh_token==="string")
+      this.vault.save("spotify_refresh_token",this.vault.list().spotify_refresh_token.label,token.refresh_token);
+    const result=await this.fetcher("https://api.spotify.com/v1/me",{
+      headers:{Authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(15000)
+    });
+    if(!result.ok)throw new DomainError("Spotify profile verification failed ("+result.status+")",502);
+    const p=await result.json();
+    if(!p||typeof p.account_id!=="string")throw new DomainError("Spotify did not provide a stable account ID",502);
+    return {accountId:p.account_id,displayName:String(p.display_name||"Spotify").slice(0,160)};
+  }
+
 }

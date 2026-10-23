@@ -70,3 +70,24 @@ test("Genre taxonomy covers full country family and diverse vocal/instrumental m
  assert.ok(ALL_GENRES.includes(name),name);
  assert.ok(Object.keys(GENRES).length>=10);assert.ok(ALL_GENRES.length>=100);
 });
+
+test("Spotify refresh validates account and clears expired grants",async()=>{
+ const db=new Store(":memory:"),vault=new Vault(db.db,key),sessions=new Sessions(db.db,{password:"very-long-password"});
+ vault.setSetting("spotify_client_id","b".repeat(32));
+ vault.save("spotify_refresh_token","Listener","old-refresh");
+ let expire=false;
+ const spotify=new SpotifyOAuth({vault,sessions,fetcher:async(url,options)=>{
+   if(url.includes("api/token")){
+     if(expire)return {ok:false,status:400,json:async()=>({error:"invalid_grant"})};
+     assert.equal(options.body.get("grant_type"),"refresh_token");
+     return {ok:true,json:async()=>({access_token:"short-lived",refresh_token:"new-refresh"})};
+   }
+   return {ok:true,json:async()=>({account_id:"stable",display_name:"Listener"})};
+ }});
+ assert.deepEqual(await spotify.profile(),{accountId:"stable",displayName:"Listener"});
+ assert.equal(vault.read("spotify_refresh_token"),"new-refresh");
+ expire=true;
+ await assert.rejects(()=>spotify.profile(),/authorization expired/);
+ assert.equal(vault.read("spotify_refresh_token"),null);
+ db.close();
+});

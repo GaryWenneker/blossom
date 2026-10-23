@@ -108,6 +108,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         if(path==="/api/integrations")return reply(res,200,{suno:"manual blueprint only",labelgrid:provider.available()?"token configured":"not configured",liveDistributionEnabled:allowLive,monitorEnabled:!!timer});
         if(path==="/api/genres")return reply(res,200,GENRES);
         if(path==="/api/connections")return reply(res,200,vault.list());
+        if(path==="/api/connections/spotify/profile")return reply(res,200,await spotify.profile());
         let match=path.match(/^\/api\/tracks\/([a-z0-9-]+)\/blueprint$/i);
         if(match) {
           const t=required(store,match[1],"track");
@@ -127,12 +128,14 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       if(path==="/api/tracks")return reply(res,201,store.addTrack(incoming));
       if(path==="/api/releases")return reply(res,201,store.addRelease(incoming));
       if(path==="/api/connections/suno"){
+        if(incoming && Object.hasOwn(incoming,"password"))throw new DomainError("Use an official Suno API key, not a website password");
         if(incoming?.email!==undefined)vault.setSetting("suno_email",incoming.email);
         if(incoming?.apiKey)vault.save("suno_api_key",vault.getSetting("suno_email"),incoming.apiKey);
         store.audit("connection_updated","integration","suno",{hasKey:!!incoming?.apiKey});
         return reply(res,200,vault.list());
       }
       if(path==="/api/connections/spotify"){
+        if(incoming && Object.hasOwn(incoming,"password"))throw new DomainError("Use Spotify OAuth, not a website password");
         vault.setSetting("spotify_client_id",incoming?.clientId);
         store.audit("connection_updated","integration","spotify",{oauthApp:true});
         return reply(res,200,vault.list());

@@ -50,7 +50,8 @@ test("Provider keys can be saved and removed, never read through HTTP",async t=>
 test("Spotify password is never accepted; requires developer client ID",async t=>{
  const {post,get,store}=await start(t);
  assert.equal((await post("/api/connections/spotify",{clientId:"bad",password:"should-not-save"})).status,400);
- assert.equal((await post("/api/connections/spotify",{clientId:"f".repeat(32),password:"ignored-and-never-stored"})).status,200);
+ assert.equal((await post("/api/connections/spotify",{clientId:"f".repeat(32),password:"not-allowed"})).status,400);
+ assert.equal((await post("/api/connections/spotify",{clientId:"f".repeat(32)})).status,200);
  assert.equal(store.db.prepare("SELECT * FROM credentials WHERE name='spotify_refresh_token'").get(),undefined);
  const res=await get("/auth/spotify/start",{redirect:"manual"});
  assert.equal(res.status,303);
