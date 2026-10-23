@@ -230,8 +230,10 @@ async function configureLaunchd(envFile) {
       await import("node:fs/promises").then(fs => fs.rename(temp, target));
     }
     if (!await isLoaded()) await exec("launchctl", ["bootstrap", gui, target], { timeout: 15000 });
-    if (!await isLoaded()) throw Error("launchd bootstrap returned successfully but service " + label + " is not registered in " + gui + ". Check macOS launchd session and .data/logs/" + (worker ? "worker.log" : "server.log"));
-    outcome.push({ label, state: "registered" });
+    // A successful bootstrap does not guarantee that launchd has actually started the job.
+    await exec("launchctl", ["kickstart", "-k", gui + "/" + label], { timeout: 15000 });
+    if (!await isLoaded()) throw Error("launchd service " + label + " disappeared after kickstart in " + gui + ". Inspect .data/logs/" + (worker ? "worker.log" : "server.log"));
+    outcome.push({ label, state: "started" });
   }
   return outcome;
 }
