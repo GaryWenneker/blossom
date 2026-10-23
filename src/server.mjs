@@ -134,6 +134,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         sessions.logout(req);return reply(res,200,{authenticated:false},{"Set-Cookie":expireCookie(secureCookie)});
       }
       if(path==="/auth/session"&&req.method==="GET")return reply(res,200,{authenticated:true,username});
+      // Authenticated local admin only. Public MCP Host never exposes this URL.
+      if(path==="/api/oauth/diagnostics"&&req.method==="GET")
+        return reply(res,200,mcpOAuth.diagnostics(),{"Cache-Control":"no-store"});
       if(path==="/auth/spotify/start"&&req.method==="GET"){
         // Account selection remains on Spotify's own login page, where an existing
         // Facebook login method can be chosen. Never request Facebook credentials.

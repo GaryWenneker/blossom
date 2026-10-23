@@ -171,6 +171,10 @@ function connections(){
    usage:"Open ChatGPT in your regular browser. If already signed in, that browser may reuse your session.",
    hint:"A ChatGPT session is not an OpenAI API key for automatic lyrics generation."})+
  '</div>'+
+ '<details class="panel browser-advanced"><summary><strong>Blossom MCP-koppeling met ChatGPT controleren</strong><span class="small">OAuth-diagnose</span></summary>'+
+ '<div><p class="small">Een goedgekeurde OAuth-aanvraag betekent nog niet dat de plugin in ChatGPT is aangemaakt. Rond daar de toolscan en Create as a plugin af.</p>'+
+ '<button type="button" class="secondary" data-action="oauth-diagnose">Controleer laatste verbindingsstap</button>'+
+ '<p class="small" id="oauth-diagnostic-result" role="status">Geen diagnose uitgevoerd.</p></div></details>'+
  '<details class="panel browser-advanced"><summary><strong>Advanced · API integrations and developer credentials</strong><span class="small">Only needed for direct API features</span></summary>'+
  '<div class="browser-advanced-grid">'+
  '<section><h3>Suno developer API (optional)</h3><p class="hint">Open Suno · Continue with Google at <a href="https://suno.com/" target="_blank" rel="noopener noreferrer">suno.com</a>. The Suno Platform is separate; no platform account is required for browser use.</p>'+
@@ -275,6 +279,33 @@ async function action(el){
    if(dialog.open)dialog.close();
    message(operation==="confirm"?"Aanmelding door jou bevestigd (niet automatisch geverifieerd).":
      "Aanmelding niet bevestigd. Je kunt opnieuw inloggen.");
+   return;
+ }
+ if(act==="oauth-diagnose"){
+   const result=await api("oauth/diagnostics");
+   const names={none:"Geen OAuth-koppeling gezien",
+     client_registered:"ChatGPT heeft een OAuth-client geregistreerd",
+     consent_shown:"Toestemmingspagina is geopend",
+     consent_login_failed:"Blossom-aanmelding is mislukt",
+     consent_redirected:"Blossom heeft teruggestuurd naar ChatGPT, maar tokenuitwisseling is nog niet bevestigd",
+     consent_denied:"Toestemming geweigerd",
+     consent_repeated:"Toestemming was al verwerkt",
+     token_rejected:"Tokenuitwisseling is mislukt",
+     token_issued:"ChatGPT heeft een OAuth-token opgehaald",
+     mcp_connected:"ChatGPT heeft de MCP-server bereikt",
+     tools_listed:"ChatGPT heeft de MCP-tools opgehaald"};
+   const details=result.events||[];
+   const successful=details.find(x=>x.stage==="token_issued");
+   const scanned=details.find(x=>x.stage==="tools_listed");
+   const scope=successful?.scope||"";
+   const interpretation=scanned?
+     "Tools opgehaald. Ga terug naar ChatGPT en voltooi Create as a plugin.":
+     successful?"Token opgehaald, maar nog geen geslaagde toolscan geregistreerd.":
+     "Nog geen tokenuitwisseling bevestigd. Controleer het OAuth-venster en voltooi de koppeling vanuit ChatGPT.";
+   const permission=successful&&!scope.includes("blossom:write")?
+     " De huidige toestemming is alleen lezen. Voor songresultaten opslaan is schrijfautorisatie nodig.":"";
+   const el=document.querySelector("#oauth-diagnostic-result");
+   if(el)el.textContent=(names[result.latestStage]||result.latestStage)+". "+interpretation+permission;
    return;
  }
  if(act==="browser-finished"){

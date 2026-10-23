@@ -63,6 +63,8 @@ export class BlossomMcpOAuth {
     this.resource=this.origin ? this.origin+"/mcp":null;
     this.authenticate=authenticate;
     this.registrationAttempts=new Map();
+    db.exec("CREATE TABLE IF NOT EXISTS mcp_oauth_events ("+
+      "id INTEGER PRIMARY KEY AUTOINCREMENT, stage TEXT NOT NULL, scope TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL);");
     db.exec("CREATE TABLE IF NOT EXISTS mcp_oauth_clients ("+
       "id TEXT PRIMARY KEY, redirects TEXT NOT NULL, created_at INTEGER NOT NULL);"+
       "CREATE TABLE IF NOT EXISTS mcp_oauth_pending ("+
@@ -82,6 +84,28 @@ export class BlossomMcpOAuth {
       "hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);");
   }
   enabled() {return !!this.origin;}
+  // Local-only operational markers. Never record access tokens, PKCE values,
+  // OAuth codes, redirect URIs, state, client IDs, usernames or passwords.
+  record(stage,scope="") {
+    const allowed=["client_registered","consent_shown","consent_login_failed",
+      "consent_redirected","consent_denied","consent_repeated","token_rejected",
+      "token_issued","mcp_connected","tools_listed"];
+    if(!allowed.includes(stage))return;
+    this.db.prepare("INSERT INTO mcp_oauth_events(stage,scope,at) VALUES(?,?,?)")
+      .run(stage,typeof scope==="string"?scope.split(" ").filter(v=>SCOPES.includes(v)).join(" "):"",Date.now());
+    this.db.prepare("DELETE FROM mcp_oauth_events WHERE at < ?")
+      .run(Date.now()-7*24*60*60*1000);
+  }
+  diagnostics() {
+    const events=this.db.prepare(
+      "SELECT stage,scope,at FROM mcp_oauth_events ORDER BY id DESC LIMIT 25").all();
+    const activeTokens=this.db.prepare(
+      "SELECT COUNT(*) AS count FROM mcp_oauth_tokens WHERE expires_at>?").get(Date.now()).count;
+    return {enabled:this.enabled(),publicUrl:this.origin,activeTokenCount:activeTokens,
+      latestStage:events[0]?.stage||"none",events:events.map(({stage,scope,at})=>
+        ({stage,scope,at:new Date(at).toISOString()})),
+      interpretation:"Consent redirect does not install a ChatGPT plugin. A token_issued event confirms a client exchanged a code; tools_listed confirms an MCP tool scan. Finish Create as a plugin in ChatGPT after its scan."};
+  }
   protectedResourceMetadata() {
     return { resource:this.resource, authorization_servers:[this.origin],
       scopes_supported:SCOPES,bearer_methods_supported:["header"] };
@@ -99,8 +123,10 @@ export class BlossomMcpOAuth {
       scopes_supported:SCOPES };
   }
   challengeHeaders() {
+    // Request both read and write explicitly for the News-to-Song save use
+    // case. ChatGPT still chooses scopes and the user must approve them.
     return {"WWW-Authenticate":'Bearer resource_metadata="'+this.origin+
-      '/.well-known/oauth-protected-resource", scope="blossom:read"'};
+      '/.well-known/oauth-protected-resource", scope="blossom:read blossom:write offline_access"'};
   }
   resolveResource(value) {
     // Accept both the public origin and the canonical endpoint as requested by MCP hosts.
@@ -165,6 +191,7 @@ export class BlossomMcpOAuth {
     const clientId="blossom_"+random();
     this.db.prepare("INSERT INTO mcp_oauth_clients VALUES (?,?,?)")
       .run(clientId,JSON.stringify([...new Set(redirects)]),now);
+    this.record("client_registered");
     return json(res,201,{client_id:clientId,client_id_issued_at:Math.floor(now/1000),
       redirect_uris:redirects,client_name:"ChatGPT · Blossom",
       grant_types:["authorization_code","refresh_token"],response_types:["code"],
@@ -188,6 +215,7 @@ export class BlossomMcpOAuth {
     const nonce=random();
     this.db.prepare("INSERT INTO mcp_oauth_pending VALUES (?,?,?,?,?,?,?,?)")
       .run(hash(nonce),q.clientId,q.redirect,q.challenge,q.state,q.scope,q.resource,Date.now()+CONSENT_MS);
+    this.record("consent_shown",q.scope);
     return html(res,200,'<!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'+
       '<title>Blossom koppelen aan ChatGPT</title><body style="max-width:520px;margin:6vh auto;padding:24px;font:16px system-ui;background:#101315;color:#fff">'+
       '<h1 style="color:#9aff63">Blossom × ChatGPT</h1><p>Je geeft ChatGPT toegang tot de Blossom Music DNA-database en Studio-projecten.</p>'+
@@ -212,8 +240,17 @@ export class BlossomMcpOAuth {
       // create a second grant or strand users on an opaque JSON error.
       const completed=this.db.prepare("SELECT expires_at FROM mcp_oauth_completed WHERE hash=?")
         .get(hash(f.request));
-      if(completed?.expires_at>Date.now())
-        return html(res,200,"<h1>Toestemming al verwerkt</h1><p>Ga terug naar ChatGPT om de verbinding te controleren. Begin daar een nieuwe koppeling als die niet verbonden is.</p>");
+      if(completed?.expires_at>Date.now()) {
+        this.record("consent_repeated");
+        return html(res,200,'<!doctype html><html lang="nl"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'+
+          '<body style="margin:8vh auto;padding:24px;max-width:580px;background:#101315;color:#fff;font:16px system-ui">'+
+          '<h1 style="color:#9aff63">Toestemming al verwerkt</h1>'+
+          '<p>De eerste klik heeft de OAuth-terugverwijzing al verzonden. Opnieuw klikken maakt geen nieuwe verbinding.</p>'+
+          '<p>Ga terug naar ChatGPT. Voltooi daar <strong>Scan Tools</strong> en <strong>Create as a plugin</strong>. '+
+          'Als Blossom niet verschijnt, start een nieuwe koppeling vanuit ChatGPT.</p>'+
+          '<p style="color:#aaa;font-size:13px">De toestemming alleen installeert nog geen plugin. '+
+          'De beheerder kan de stappen controleren bij Blossom → API → OAuth-diagnose.</p></body></html>');
+      }
       return html(res,410,"<h1>Toestemming verlopen</h1><p>Start een nieuwe koppeling vanuit ChatGPT. Gebruik deze oude pagina niet opnieuw.</p>");
     }
     if(!this.client(pending.client_id,pending.redirect_uri))
@@ -222,7 +259,7 @@ export class BlossomMcpOAuth {
       return oauthError(res,400,"invalid_request","Invalid decision");
     if(f.decision==="approve"){
       try {this.authenticate(f.username,f.password,req.socket.remoteAddress||"unknown");}
-      catch {return html(res,401,"<h1>Blossom-aanmelding mislukt</h1><p>Controleer je gegevens en start de verbinding opnieuw vanuit ChatGPT.</p>");}
+      catch {this.record("consent_login_failed");return html(res,401,"<h1>Blossom-aanmelding mislukt</h1><p>Controleer je gegevens en start de verbinding opnieuw vanuit ChatGPT.</p>");}
     }
     // Atomically claim the one-time approval; parallel POST requests cannot
     // mint multiple authorization codes.
@@ -243,6 +280,7 @@ export class BlossomMcpOAuth {
           pending.scope,pending.resource,Date.now()+CODE_MS);
       dest.searchParams.set("code",code);
     }
+    this.record(f.decision==="approve"?"consent_redirected":"consent_denied",pending.scope);
     res.writeHead(303,{...formHeaders,Location:dest.toString()});res.end();
   }
   issueTokens(clientId,scope,resource) {
@@ -267,8 +305,10 @@ export class BlossomMcpOAuth {
       if(!row||row.expires_at<=Date.now()||row.client_id!==f.client_id||
          row.redirect_uri!==f.redirect_uri||row.resource!==this.resolveResource(f.resource)||
          !safe(createHash("sha256").update(f.code_verifier).digest("base64url"),row.challenge))
-        return oauthError(res,400,"invalid_grant","Invalid authorization grant");
-      return json(res,200,this.issueTokens(row.client_id,row.scope,row.resource));
+        {this.record("token_rejected");return oauthError(res,400,"invalid_grant","Invalid authorization grant");}
+      const issued=this.issueTokens(row.client_id,row.scope,row.resource);
+      this.record("token_issued",row.scope);
+      return json(res,200,issued);
     }
     if(f.grant_type==="refresh_token"){
       if(!/^[A-Za-z0-9_-]{32,128}$/.test(f.refresh_token||""))
@@ -277,7 +317,9 @@ export class BlossomMcpOAuth {
       if(!row||row.expires_at<=Date.now()||row.client_id!==f.client_id||
          row.resource!==this.resolveResource(f.resource))
         return oauthError(res,400,"invalid_grant","Invalid refresh grant");
-      return json(res,200,this.issueTokens(row.client_id,row.scope,row.resource));
+      const issued=this.issueTokens(row.client_id,row.scope,row.resource);
+      this.record("token_issued",row.scope);
+      return json(res,200,issued);
     }
     return oauthError(res,400,"unsupported_grant_type","Use authorization_code or refresh_token");
   }
