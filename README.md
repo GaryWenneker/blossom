@@ -184,3 +184,7 @@ To enable local cover art, update the repository and run bash setup.sh. The inst
 Draw Things CLI is now installed from **official Homebrew core**, not its older external tap, to avoid Homebrew 6 third-party trust problems. See [setup troubleshooting](docs/SETUP.md#homebrew-6-tap-trust-warnings).
 
 If setup reports your Draw Things checkpoint is missing, use `draw-things-cli models list --downloaded-only` to find the exact model ID. The setup now reports the configured model folder and warns instead of stopping the rest of Blossom. You may set `DRAWTHINGS_MODELS_DIR` in the private `.env` if the Draw Things GUI uses a custom model location. Artwork remains unavailable until an installed model is verified.
+
+## Browser sign-in with Playwright
+
+Under Connections, Suno, Spotify and ChatGPT have a one-click local browser option. Sign in via the provider's own official login screen (Google or Facebook where supported). Reuse the same isolated provider-specific Chrome session on subsequent launches. A modal provides guidance, while API credential fields now stay hidden under Advanced until needed. A browser session does not grant API access or enable unapproved automation. See docs/OPERATIONS.md for security details.
