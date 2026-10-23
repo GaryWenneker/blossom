@@ -144,7 +144,7 @@ control. Do not broadly expose the administrator UI or add a public bypass for i
 Run the real HTTPS path test, which needs no administrator password:
 
 ```bash
-node scripts/test-mcp-remote.mjs https://blossom.wenneker.dev
+node scripts/mcp-remote-smoke.mjs https://blossom.wenneker.dev
 ```
 
 It validates OAuth discovery, MCP authentication challenge, ChatGPT client
