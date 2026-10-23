@@ -220,6 +220,9 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message("Music DNA references updated");return;
   }
   if(action==="studio-extract"){
+    if(!state.data.studioStatus?.openaiConfigured){
+      await showChatGPTHandoff(p,api,"song");message("ChatGPT-opdracht is klaar, geen API-key nodig.");return;
+    }
     await api("studio/projects/"+p.id+"/extract",{});await refresh();message("Original lyrics and styles generated");return;
   }
   if(action==="studio-save-lyrics"){
@@ -268,6 +271,9 @@ export async function studioAction(el,state,api,refresh,message){
   }
   if(action==="studio-ask"){
     const q=document.querySelector("#studio-question").value;
+    if(!state.data.studioStatus?.openaiConfigured){
+      await showChatGPTHandoff(p,api,"assistant",q);return;
+    }
     const answer=await api("studio/projects/"+p.id+"/ask",{question:q});
     work.assistantAnswer=answer.answer;await refresh();message("AI assistant responded");return;
   }
@@ -278,6 +284,10 @@ export async function studioAction(el,state,api,refresh,message){
     await refresh();message(kind==="cover"?"Album artwork linked":"Artist photo linked");return;
   }
   if(action==="studio-generate-all"){
+    if(!state.data.studioStatus?.openaiConfigured){
+      await showChatGPTHandoff(p,api,"song");
+      message("Maak eerst de muziekbrief via ChatGPT. Daarna kun je artwork genereren en tracks koppelen.");return;
+    }
     if(!confirm("Prepare this project with AI, create a linked track and generate album art locally if configured? This uses API credits and may take several minutes. Suno music itself still requires an authorized workflow."))return;
     const result=await api("studio/projects/"+p.id+"/extract",{});
     if(!result.trackId&&result.artistId)await api("studio/projects/"+p.id+"/create-track",{});
