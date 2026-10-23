@@ -103,7 +103,8 @@ test("Authenticated account-selection route performs real Spotify OAuth redirect
 test("Suno button uses provider-owned Google sign-in and never claims API OAuth", async () => {
   const ui=await readFile(new URL("../public/app.js",import.meta.url),"utf8");
   const view=ui.slice(ui.indexOf("function connections(){"),ui.indexOf("function render(){"));
-  assert.match(view,/https:\/\/suno\.com\//);
+  assert.match(ui,/https:\/\/suno\.com\/create/);
+  assert.match(ui,/window.open\(url,"_blank","noopener,noreferrer"\)/);
   assert.match(view,/Continue with Google/);
   assert.match(view,/does not grant Blossom API access/i);
   assert.match(view,/\/auth\/spotify\/start\?choose=1/);
