@@ -40,8 +40,10 @@ export class SunoBrowserHandoff {
     this.busy = true;
     try {
       if (this.context && this.page && !this.page.isClosed()) {
-        await this.page.bringToFront();
-        return { ...this.status(), reopened: true };
+        try {
+          await this.page.bringToFront();
+          return { ...this.status(), reopened: true };
+        } catch { this.context = null; this.page = null; }
       }
       await mkdir(this.profileDir, { recursive: true, mode: 0o700 });
       const stat = await lstat(this.profileDir);
@@ -60,6 +62,9 @@ export class SunoBrowserHandoff {
           acceptDownloads: false, serviceWorkers: "block"
         });
       } catch (error) {
+        const details = String(error.message || "");
+        const profileConflict = /SingletonLock|ProcessSingleton|profile.*in use|user data directory is already in use|Target page, context or browser has been closed/i.test(details);
+        if (profileConflict) throw new DomainError("Blossom Chrome profile is already in use or Chrome closed during startup. Close the other Blossom Chrome window, then retry. Do not delete profile files while Chrome is running. " + details.slice(0, 160), 409);
         throw new DomainError("Cannot launch Google Chrome with Playwright. Install Chrome, then retry. " +
           String(error.message || "").slice(0, 180), 503);
       }
