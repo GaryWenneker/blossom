@@ -374,6 +374,13 @@ export async function studioAction(el,state,api,refresh,message){
       watchSunoProject(project.id,api,refresh,message);
       return;
     }
+    // Use the visible, signed-in Suno browser instead of an unverified API.
+    if(!window.confirm("Create this song in your signed-in Suno browser? This can spend Suno credits."))return;
+    await api("studio/projects/"+project.id+"/suno-browser/open",{});
+    const submitted=await api("studio/projects/"+project.id+"/suno-browser/submit",{});
+    await refresh();
+    message(submitted.note||"Creation submitted on Suno. When the song finishes, select it in Suno and download the MP3 through Blossom.");
+    return;
     const recipe=await api("studio/projects/"+project.id+"/recipe");
     const dialog=document.querySelector("#recipe-dialog");
     document.querySelector("#recipe-text").value=JSON.stringify(recipe,null,2);
@@ -397,6 +404,14 @@ export async function studioAction(el,state,api,refresh,message){
       if(["submitted","queued","streaming"].includes(status.status))
         watchSunoProject(project.id,api,refresh,message);
     }
+    return;
+  }
+  if(action==="studio-suno-browser-download"){
+    const project=stateOf(state);
+    if(!project)return;
+    const downloaded=await api("studio/projects/"+project.id+"/suno-browser/download",{});
+    await refresh();
+    message("MP3 imported into Blossom: "+downloaded.asset.id);
     return;
   }
   if(action==="studio-suno-import"){
