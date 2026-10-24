@@ -5,7 +5,7 @@ import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { ChatGptImages } from "./chatgpt-images.mjs";
 import { DomainError } from "./domain.mjs";
-import { VisibleBrowserSession } from "./browser-connections.mjs";
+import { SunoBrowserHandoff } from "./suno-playwright.mjs";
 import { LocalComposer } from "./providers/local.mjs";
 import { ChatGptLyricsBrowser } from "./chatgpt-playwright.mjs";
 import { importArticle } from "./article-import.mjs";
@@ -43,7 +43,7 @@ export class StudioAPI{
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
     this.chatgptImages=chatgptImages||new ChatGptImages({directory:assetDir});
-    this.sunoBrowser=sunoBrowser||new VisibleBrowserSession("suno");
+    this.sunoBrowser=sunoBrowser||new SunoBrowserHandoff();
     this.chatgptLyrics=chatgptLyrics||new ChatGptLyricsBrowser({
       transport:process.platform==="darwin"?"system":"playwright"
     });
