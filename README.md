@@ -250,3 +250,7 @@ The official API currently sends only its documented title, lyrics, style and in
 Core: `src/providers/suno-platform.mjs`, `src/studio-api.mjs`, `src/studio.mjs`, `public/studio.js`, `test/studio-suno-platform.test.mjs`.
 
 The new Studio Artist field offers **Create / link artist**, preserving fictional artist identity selected by ChatGPT via `artistName` or `artistId`. The recorded artist relation is authoritative, not lettering baked into album art.
+
+### Playwright Suno browser workflow
+
+The Studio Release action can launch the dedicated visible Chrome Suno browser, fill unambiguous song fields and click Create after explicit confirmation. Sign in to Suno yourself. When generation finishes, open the specific newly created song and its MP3 download menu, then click **Import selected Suno MP3** in Blossom. The import uses Playwright's browser download event, validates the MP3 signature, and links the file to the Studio project. This browser workflow is distinct from Suno Platform API generation and does not yet automatically detect when a specific generated song finishes. It never uses internal endpoints or extracts browser cookies.
