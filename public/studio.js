@@ -1,6 +1,6 @@
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambient:"Ambient",custom:"Custom"};
-const defaults={sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
+const defaults={sunoModel:"v6",lyricLanguage:"auto",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
 const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",chatgptPoll:null};
@@ -18,7 +18,7 @@ const safeList=value=>value.map(v=>esc(v)).join(", ");
 function paramsFromDOM(){
  const textList=id=>(document.getElementById(id)?.value||"").split(",").map(x=>x.trim()).filter(Boolean).slice(0,16);
  return {sunoModel:document.querySelector("#studio-model").value,genre:document.querySelector("#studio-genre").value.trim(),additionalStyles:textList("studio-styles"),
-   excludeStyles:textList("studio-excludes"),vocalGender:document.querySelector("#studio-gender").value,
+   lyricLanguage:document.querySelector("#studio-language")?.value||"auto",excludeStyles:textList("studio-excludes"),vocalGender:document.querySelector("#studio-gender").value,
    instrumental:document.querySelector("#studio-instrumental").checked,
    maxMode:document.querySelector("#studio-max-mode").checked,
    personalize:document.querySelector("#studio-personalize").checked,
@@ -63,7 +63,7 @@ const panels=(p,assets,state)=>{
  '<textarea id="studio-lyrics" rows="11" placeholder="Original [Verse], [Chorus], [Bridge] sections appear here">'+esc(result.lyrics||"")+'</textarea>'+
  '<div class="studio-label">AI production notes</div><p class="studio-hint">'+esc(result.rationale||"Choose your artist and genre for tailored arrangements.")+'</p></section>'+
  '<section class="studio-panel studio-controls"><div class="studio-panel-head"><h2>03 <span>Generation parameters</span></h2><button class="secondary mini" data-action="studio-use-preset">Artist default</button></div>'+
- field("Suno model",choose("studio-model",[["v6","v6"],["v6-wild","v6 Wild"],["v6-mini","v6 Mini"],["custom","Custom model"]],params.sunoModel||"v6"))+
+ field("Suno model",'<input id="studio-model" maxlength="50" value="'+esc(params.sunoModel||"v6")+'" aria-label="Model selected in Suno">')+
  field("Primary genre",'<input id="studio-genre" list="studio-genres" value="'+esc(params.genre)+'"><datalist id="studio-genres">'+genres.map(g=>'<option value="'+esc(g)+'"></option>').join("")+'</datalist>')+
  field("Additional styles (comma separated)",'<input id="studio-styles" value="'+safeList(params.additionalStyles||[])+'" placeholder="Americana, Acoustic, Country Folk">')+
  '<div class="studio-dna-picker"><strong>Music DNA inspiration</strong><p class="studio-hint">Use analyzed recordings as references for an original arrangement. No source lyrics or melodies are copied.</p>'+
@@ -75,6 +75,7 @@ const panels=(p,assets,state)=>{
  '</div>'+
  field("Exclude styles / instruments",'<input id="studio-excludes" value="'+safeList(params.excludeStyles||[])+'">')+
  '<div class="studio-control-grid">'+
+ field("Lyrics language",choose("studio-language",[["auto","Artist / article language"],["en","English"],["nl","Dutch"],["es","Spanish"],["fr","French"],["de","German"]],params.lyricLanguage||"auto"))+
  field("Vocal gender",choose("studio-gender",[["male","Male"],["female","Female"],["auto","Auto"]],params.vocalGender))+
  field("Playlist intent / length",choose("studio-duration-preset",Object.keys(presetNames).map(k=>[k,presetNames[k]]),params.durationPreset))+'</div>'+
  '<div class="studio-duration"><div><label for="studio-duration">Target duration</label><output id="studio-duration-value">'+formatTime(params.targetSeconds)+'</output></div><input id="studio-duration" type="range" min="35" max="900" step="5" value="'+params.targetSeconds+'"><div class="studio-duration-note">30 seconds is Spotify’s counted-play threshold, not an editorial playlist qualification. Suno duration is a target, never guaranteed.</div></div>'+
@@ -88,14 +89,14 @@ const panels=(p,assets,state)=>{
  '<div class="studio-suno-handoff"><button type="button" class="secondary" data-action="studio-suno-open">Open Suno in Safari / browser ↗</button>'+
  '<button type="button" class="primary" data-action="studio-suno-prefill">View / copy Suno blueprint</button>'+
  '<p class="studio-hint">Use your regular browser for Google login. Copy the blueprint into Suno and click Generate yourself.</p></div></section>'+
- '<section class="studio-panel studio-art"><div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">DRAW THINGS</span></div>'+
- '<div class="studio-assetpreview">'+(image?'<img src="'+esc(image.url)+'" alt="Generated album artwork" loading="lazy">':'<div class="studio-empty-art"><div>♫</div><strong>ALBUM ART</strong><small>Local Draw Things output</small></div>')+'</div>'+
+ '<section class="studio-panel studio-art"><div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">CHATGPT</span></div>'+
+ '<div class="studio-assetpreview">'+(image?'<img src="'+esc(image.url)+'" alt="Generated album artwork" loading="lazy">':'<div class="studio-empty-art"><div>♫</div><strong>ALBUM ART</strong><small>Generated with ChatGPT</small></div>')+'</div>'+
  '<div class="studio-arttabs"><span>Album cover</span><span>Artist portrait</span></div>'+
  field("Album artwork prompt",'<textarea id="studio-cover-prompt" rows="3" placeholder="Original cinematic artwork, square format...">'+esc(artPrompt)+'</textarea>')+
  '<button class="primary wide" data-action="studio-cover">Generate album art</button>'+
  field("Spotify artist photo prompt",'<textarea id="studio-photo-prompt" rows="2" placeholder="Photorealistic portrait of a fictional musician...">'+esc(photoPrompt)+'</textarea>')+
  '<button class="secondary wide" data-action="studio-photo">Generate artist photo</button>'+
- (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">All assets are generated on your Mac, stored privately and linked to this project.</p>')+
+ (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">ChatGPT generates both images in signed-in Safari. Finished images are saved and linked to this project.</p>')+
  '</section></div>'+
  '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="tracks" aria-controls="studio-pane-tracks" aria-selected="'+(work.bottomTab==="tracks"?"true":"false")+'">Generated tracks &amp; assets</button>'+
@@ -282,17 +283,18 @@ export async function studioAction(el,state,api,refresh,message){
   if(action==="studio-cover"||action==="studio-photo"){
     const kind=action==="studio-cover"?"cover":"artist-photo";
     const prompt=document.querySelector(kind==="cover"?"#studio-cover-prompt":"#studio-photo-prompt").value;
-    await api("studio/projects/"+p.id+"/generate-art",{kind,prompt,steps:8,seed:0});
+    message("ChatGPT is generating the image in Safari…");
+    await api("studio/projects/"+p.id+"/generate-art",{kind,prompt});
     await refresh();message(kind==="cover"?"Album artwork linked":"Artist photo linked");return;
   }
   if(action==="studio-generate-all"){
-    if(!confirm("Maak de muziekbrief automatisch en genereer beschikbare assets? Een lokaal AI-model draait zonder API-kosten; een eventueel geconfigureerde OpenAI API kan wel kosten maken."))return;
-    const result=await api("studio/projects/"+p.id+"/extract",{});
+    message("ChatGPT is preparing the song brief and both images…");
+    const result=await api("studio/projects/"+p.id+"/chatgpt-lyrics",{});
+    await refresh();
     if(!result.trackId&&result.artistId)await api("studio/projects/"+p.id+"/create-track",{});
-    const status=state.data.studioStatus;
-    if(status?.drawConfigured) {
-      const prompt=result.parameters.imagePrompt||result.result.coverPrompt;
-      if(prompt)await api("studio/projects/"+p.id+"/generate-art",{kind:"cover",prompt,steps:8,seed:0});
+    for(const [kind,prompt] of [["cover",result.result.coverPrompt],["artist-photo",result.result.artistPhotoPrompt]]) {
+      if(prompt)await api("studio/projects/"+p.id+"/generate-art",{kind,prompt});
+      await refresh();
     }
     await refresh();message("Project brief and available assets prepared. Suno handoff remains manual.");return;
   }

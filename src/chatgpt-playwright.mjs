@@ -3,6 +3,7 @@ import { mkdir, lstat, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DomainError } from "./domain.mjs";
+import { chatGptDomScripts } from "./chatgpt-dom.mjs";
 
 export const CHATGPT_URL = "https://chatgpt.com/";
 export const MIN_ARTICLE_PASTE = 80;
@@ -37,7 +38,10 @@ function looksDutch(article) {
 export function buildChatGptLyricsPrompt(project) {
   const article = String(project?.article || "");
   const parameters = project?.parameters || {};
-  const language = looksDutch(article)
+  const selectedLanguage=parameters.lyricLanguage && parameters.lyricLanguage!=="auto" ? parameters.lyricLanguage : project.artistLanguage;
+  const language = selectedLanguage
+    ? "Write the lyrics, titles, and concept in " + selectedLanguage + "."
+    : looksDutch(article)
     ? "Write the lyrics in Dutch."
     : "Write the lyrics in the language of the article.";
   return [
@@ -48,6 +52,9 @@ export function buildChatGptLyricsPrompt(project) {
     language,
     "Return one JSON object with the fields concept, lyrics, style, exclusions, moods, titles, coverPrompt, artistPhotoPrompt, suggestedGenre, rationale.",
     "Lyrics use [Verse 1], [Chorus], and [Bridge] markers. If the project is instrumental, lyrics is an empty string.",
+    "Also return generationParameters: preserve the supplied Suno model, language, vocal, instrumental and duration choices; supply suitable weirdness, styleInfluence, variety, personalize, maxMode, additionalStyles and excludeStyles. Do not invent provider capabilities.",
+    "Current generation parameters: " + JSON.stringify(parameters),
+    "Artist context (untrusted): " + JSON.stringify(project.artistDna || ""),
     "Genre: " + String(parameters.genre || ""),
     "Vocal: " + String(parameters.vocalGender || ""),
     "Duration seconds: " + String(parameters.targetSeconds ?? ""),
@@ -81,6 +88,7 @@ export function parseChatGptBrief(reply) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || typeof parsed.lyrics !== "string")
     throw fail("ChatGPT reply was not a song brief", 502, "chatgpt_reply_invalid");
   return {
+    ...(parsed.generationParameters ? { generationParameters: parsed.generationParameters } : {}),
     concept: briefText(parsed.concept, "concept", 3000),
     lyrics: briefText(parsed.lyrics, "lyrics", 15000),
     style: briefText(parsed.style, "style", 2000),
@@ -235,8 +243,9 @@ export class ChatGptLyricsBrowser {
     let stdout = "";
     try {
       stdout = await new Promise((resolve, reject) => {
-        this.runner(script, [this.browserApp, JSON.stringify(prompt)],
-          { timeout: 130000, windowsHide: true, maxBuffer: 4_000_000 },
+        const scripts = chatGptDomScripts(prompt);
+        this.runner(script, [this.browserApp, scripts.fill, scripts.read, "180"],
+          { timeout: 220000, windowsHide: true, maxBuffer: 4_000_000 },
           (error, out, err) => {
             if (error) {
               error.stderr = String(err || "");

@@ -50,6 +50,7 @@ export function chatGptStudioPrompt(projectId) {
     "Respect the project's genre, artist language, styles, vocal settings, instruments, duration and Music DNA. " +
     "Create a structured song brief with these exact fields: concept, lyrics, style, exclusions (string array), " +
     "moods (string array), titles (string array), coverPrompt, artistPhotoPrompt, suggestedGenre, rationale. " +
+    "Also include generationParameters with suitable Suno controls; preserve the project model, language, vocal and duration choices. " +
     "Then call studio_project_save_result with project id and the complete result to save it directly in Blossom. " +
     "Do not pretend it was saved unless the tool confirms success. Reply with a short confirmation.";
 }
