@@ -136,14 +136,14 @@ on runImage(argv)
   if maxAttempts < 1 or maxAttempts > 600 then error "Invalid timeout"
   tell application "Safari"
     activate
-    set chatDocument to make new document with properties {URL:"https://chatgpt.com/"}
+    set imageDocument to make new document with properties {URL:"https://chatgpt.com/"}
   end tell
   set imageSubmitted to false
   repeat with attempt from 1 to 30
     delay 1
     tell application "Safari"
-      if (URL of chatDocument) does not start with "https://chatgpt.com/" then return "LOGIN"
-      set actionStatus to do JavaScript providedFill in chatDocument
+      if (URL of imageDocument) does not start with "https://chatgpt.com/" then return "LOGIN"
+      set actionStatus to do JavaScript providedFill in imageDocument
     end tell
     if actionStatus is "SUBMITTED" then
       set imageSubmitted to true
@@ -154,8 +154,8 @@ on runImage(argv)
   repeat with attempt from 1 to maxAttempts
     delay 1
     tell application "Safari"
-      if (URL of chatDocument) does not start with "https://chatgpt.com/" then return "LOGIN"
-      set replyText to do JavaScript providedRead in chatDocument
+      if (URL of imageDocument) does not start with "https://chatgpt.com/" then return "LOGIN"
+      set replyText to do JavaScript providedRead in imageDocument
     end tell
     if replyText is not "WAIT" and replyText is not missing value and replyText is not "" then return "REPLY" & linefeed & replyText
   end repeat
