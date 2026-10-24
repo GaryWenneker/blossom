@@ -233,13 +233,26 @@ export class StudioAPI{
       return send(res,200,saved);
     }
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
-    const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|close)$/);
+    const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|submit|download|close)$/);
     if(sunoBrowserAction){
       const p=this.studio.require(sunoBrowserAction[1]),op=sunoBrowserAction[2];
       if(op==="open")return send(res,200,await this.sunoBrowser.open());
       if(op==="close")return send(res,200,await this.sunoBrowser.close());
+      if(op==="download"){
+        await mkdir(this.assetDir,{recursive:true,mode:0o700});
+        const filename=randomUUID()+".mp3",location=join(this.assetDir,filename);
+        await this.sunoBrowser.downloadSelected(location);
+        const bytes=await readFile(location);
+        if(bytes.length<128 || !(bytes.subarray(0,3).toString()==="ID3" || bytes[0]===255&&(bytes[1]&224)===224))
+          throw new DomainError("Downloaded file is not valid MP3 audio",400);
+        const asset=this.studio.registerAsset(p.id,"audio",filename,"audio/mpeg",
+          {provider:"suno",briefFingerprint:studioBriefFingerprint(p)});
+        this.studio.selectAsset(p.id,asset.id,"audio");
+        if(!p.trackId && p.artistId && p.result?.concept)this.studio.makeTrack(p.id);
+        return send(res,201,{asset});
+      }
       const recipe=sunoRecipe(p,this.references.recipeStyle(p.id));
-      const result=await this.sunoBrowser.prefill(recipe);
+      const result=op==="submit"?await this.sunoBrowser.submit(recipe):await this.sunoBrowser.prefill(recipe);
       this.store.audit("supervised_browser_prefill","studio_project",p.id,{filled:result.filled,skipped:result.skipped});
       return send(res,200,result);
     }
