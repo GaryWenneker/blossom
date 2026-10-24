@@ -110,7 +110,7 @@ test('Studio generates and saves lyrics, Suno controls and both ChatGPT images w
   assert.equal(p.result.lyrics,brief.lyrics);assert.equal(p.parameters.weirdness,17);
   for(const kind of ['cover','artist-photo']){
     const response=await post('/api/studio/projects/'+p.id+'/generate-art',{kind});
-    assert.equal(response.status,201);assert.equal((await response.json()).kind,kind);
+    assert.equal(response.status,201);const imported=await response.json();assert.equal(imported.kind,kind);assert.equal(imported.selected,true);
   }
   assert.deepEqual(imageCalls.map(x=>x.prompt),[brief.coverPrompt,brief.artistPhotoPrompt]);
   const recipe=await (await fetch(base+'/api/studio/projects/'+p.id+'/recipe',{headers:{cookie}})).json();

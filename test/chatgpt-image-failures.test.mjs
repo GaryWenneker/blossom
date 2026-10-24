@@ -57,3 +57,18 @@ test('tainted canvas falls back to transferring the rendered image and polls unt
   assert.equal(window.__blossomGeneration.imageExport.data,'data:image/png;base64,saved');
   assert.equal(downloads,1);
 });
+
+test('image-only ChatGPT reply imports without any assistant text node and ignores preexisting images',()=>{
+  const old={complete:true,naturalWidth:1024,naturalHeight:1024,src:'blob:old'};
+  const fresh={complete:true,naturalWidth:1024,naturalHeight:1024,src:'blob:new'};
+  let images=[old];
+  const window={__blossomGeneration:{count:0,last:'',stable:0,imageSources:[old.src]}};
+  const document={querySelectorAll:selector=>selector==='main img'?images:[],querySelector:()=>null,
+    createElement:()=>({getContext:()=>({drawImage(img){assert.equal(img,fresh);}}),toDataURL:()=> 'data:image/png;base64,new'})};
+  const context=vm.createContext({window,document});
+  const read=chatGptDomScripts('Cover',{image:true}).read;
+  assert.equal(vm.runInContext(read,context),'WAIT');
+  images=[old,fresh];
+  for(let i=0;i<3;i++)assert.equal(vm.runInContext(read,context),'WAIT');
+  assert.equal(vm.runInContext(read,context),'data:image/png;base64,new');
+});
