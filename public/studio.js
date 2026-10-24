@@ -103,9 +103,9 @@ const panels=(p,assets,state)=>{
  '<button class="secondary wide" data-action="studio-photo">Generate artist photo with ChatGPT</button>'+
  (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">ChatGPT generates both images in signed-in Safari. Finished images are saved and linked to this project.</p>')+
  '</section></div>'+
- '<section class="studio-panel studio-release" id="studio-release"><div class="studio-panel-head"><h2>05 <span>Release to Suno</span></h2></div>'+
- '<button type="button" class="primary" data-action="studio-suno-generate" '+(!!p?.artistId&&!!result.concept&&(params.instrumental||!!result.lyrics)&&!!params.genre&&!!params.sunoModel&&(!!p.article||!!p.sourceUrl)?'':'disabled')+'>Generate in Suno ↗</button>'+
- '<p class="studio-hint">Blossom opens Suno and fills recognized controls. Review settings and press Generate on Suno, then import the MP3/WAV below.</p></section>'+
+ '<section class="studio-panel studio-release" id="studio-release"><div class="studio-release-copy"><h2>05 <span>Release to Suno</span></h2>'+
+ '<p class="studio-hint">'+(!p?.artistId?'Select an artist in Article to enable Suno.':!complete[0]?'Add an article or source URL first.':!complete[1]?'Generate the AI brief and lyrics first.':!complete[2]?'Complete the Suno model and genre first.':'Ready for Suno. Review the settings in the opened browser before generating.')+'</p></div>'+
+ '<button type="button" class="primary" data-action="studio-suno-generate" '+(complete[0]&&complete[1]&&complete[2]?'':'disabled')+'>Generate in Suno ↗</button></section>'+
  '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="tracks" aria-controls="studio-pane-tracks" aria-selected="'+(work.bottomTab==="tracks"?"true":"false")+'">Generated tracks &amp; assets</button>'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="assistant" aria-controls="studio-pane-assistant" aria-selected="'+(work.bottomTab==="assistant"?"true":"false")+'">AI assistant</button></div>'+
