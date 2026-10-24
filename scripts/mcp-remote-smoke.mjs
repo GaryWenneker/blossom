@@ -3,6 +3,7 @@
 // No administrator credentials, bearer secrets, or writable grants are used.
 import { createHash, randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
+import { musicDnaMcpToolFingerprint, musicDnaMcpToolNames } from "../src/music-dna-mcp.mjs";
 
 const base = (process.argv[2] || process.env.BLOSSOM_MCP_PUBLIC_URL || "").replace(/\/$/, "");
 if (!/^https:\/\/[a-z0-9.-]+(?::443)?$/i.test(base)) {
@@ -68,6 +69,21 @@ try {
     if (path === "/" && page.response.status !== 200)
       console.warn("WARN: Public homepage is not available. The gateway route may not be deployed or published by Cloudflare.");
   }
+  step = "live MCP tool-version discovery";
+  const health=await call("/healthz");
+  expectStatus(health,200);
+  const status=json(health);
+  const expectedFingerprint=musicDnaMcpToolFingerprint;
+  if(status.mcp?.toolFingerprint!==expectedFingerprint ||
+      status.mcp?.toolCount!==musicDnaMcpToolNames().length){
+    console.warn("WARN: Public Cloudflare serves a DIFFERENT/STALE MCP process. "+
+      "Public fingerprint="+(status.mcp?.toolFingerprint||"missing")+
+      ", expected="+expectedFingerprint+
+      "; public count="+String(status.mcp?.toolCount??"unknown")+
+      ", expected="+musicDnaMcpToolNames().length+
+      ". Run npm run mcp:diagnose on the Mac to distinguish launchd from tunnel routing.");
+  }else console.log("PASS Public MCP tool contract: "+status.mcp.toolCount+
+    " tools, Spotify Liked Songs supported, fingerprint="+expectedFingerprint);
   step = "authorization discovery";
   const discovery = await call("/.well-known/oauth-authorization-server");
   expectStatus(discovery, 200);

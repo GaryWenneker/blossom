@@ -6,6 +6,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "../src/storage.mjs";
 import { MusicDNA } from "../src/music-dna.mjs";
+import { musicDnaMcpToolFingerprint, musicDnaMcpToolNames } from "../src/music-dna-mcp.mjs";
 import { MusicDnaWorker } from "../src/music-dna-worker.mjs";
 import { PREFERRED_DRAW_MODEL } from "../src/draw-models.mjs";
 
@@ -230,11 +231,62 @@ export function launchPlist({ label, nodePath, root = ROOT, envPath, logPath, wo
     "</dict></plist>"
   ].join("\n");
 }
-async function checkHealth() {
+export async function probeMcpHealth({ baseUrl="http://127.0.0.1:8787", fetcher=fetch }={}) {
   try {
-    const r = await fetch("http://127.0.0.1:8787/healthz", { signal: AbortSignal.timeout(2000) });
-    return r.ok && (await r.json()).status === "ok";
-  } catch { return false; }
+    const response=await fetcher(baseUrl+"/healthz",{
+      signal:AbortSignal.timeout(3000)
+    });
+    const health=response.ok?await response.json().catch(()=>null):null;
+    return { reachable:true, compatible:response.ok && health?.status==="ok" &&
+      health?.mcp?.toolFingerprint===musicDnaMcpToolFingerprint &&
+      health?.mcp?.toolCount===musicDnaMcpToolNames().length,
+      toolFingerprint:health?.mcp?.toolFingerprint||null,
+      toolCount:health?.mcp?.toolCount??null,
+      httpStatus:response.status };
+  } catch { return {reachable:false,compatible:false,toolFingerprint:null,toolCount:null}; }
+}
+async function checkHealth() {
+  return (await probeMcpHealth()).compatible;
+}
+async function portIsOccupied() {
+  return (await probeMcpHealth()).reachable;
+}
+/**
+ * Verify the actual running server's authenticated tools/list. A 200 /healthz
+ * alone is never proof that ChatGPT can use the Spotify MCP tools.
+ * Never include the bearer token in thrown errors or diagnostic output.
+ */
+export async function verifyLiveMcpTools({ baseUrl="http://127.0.0.1:8787",
+  writeToken, fetcher=fetch }={}) {
+  const health=await probeMcpHealth({baseUrl,fetcher});
+  if(!health.reachable)throw Error("No Blossom process reachable on "+baseUrl);
+  if(!health.compatible)throw Error("An older/other Blossom process responds on "+
+    baseUrl+" (MCP fingerprint "+(health.toolFingerprint||"missing")+
+    ", expected "+musicDnaMcpToolFingerprint+
+    "; advertised "+String(health.toolCount??"unknown")+
+    " tools, expected "+musicDnaMcpToolNames().length+"). "+
+    "Setup cannot call this healthy; check the process owning port 8787.");
+  if(typeof writeToken!=="string"||writeToken.length<32)
+    throw Error("Missing configured Blossom MCP write credential");
+  const reply=await fetcher(baseUrl+"/mcp",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+writeToken},
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}}),
+    signal:AbortSignal.timeout(4000)
+  }).catch(()=>{throw Error("Local MCP tools/list is unreachable");});
+  if(!reply.ok)throw Error("Local MCP tools/list returned HTTP "+reply.status+
+    "; check the live server's loaded .env and launchd service");
+  const data=await reply.json().catch(()=>null);
+  const names=data?.result?.tools?.map(tool=>tool.name);
+  const expected=musicDnaMcpToolNames();
+  if(!Array.isArray(names) || names.length!==expected.length ||
+    names.some((name,i)=>name!==expected[i]))throw Error(
+    "Local MCP tools/list does not match current source; advertised "+
+    (Array.isArray(names)?names.join(", "):"invalid response")+
+    "; expected "+expected.join(", "));
+  return {toolCount:names.length,toolFingerprint:health.toolFingerprint,
+    spotifyLiked: names.includes("spotify_liked_tracks") &&
+      names.includes("spotify_liked_import_page")};
 }
 export async function launchdStatus(label, { launch = exec, uid = process.getuid() } = {}) {
   const service = "gui/" + uid + "/" + label;
@@ -274,6 +326,7 @@ export function plistOnlyPathChanged(existing, expected) {
 export async function configureLaunchd(envFile, {
   launch = exec,
   health = checkHealth,
+  occupied = portIsOccupied,
   uid = process.getuid(),
   agentDir = join(process.env.HOME, "Library", "LaunchAgents"),
   logsDir = join(ROOT, ".data", "logs"),
@@ -314,9 +367,11 @@ export async function configureLaunchd(envFile, {
       }
     };
     let current = await status();
-    if (!worker && !existing && await health()) {
-      outcome.push({ label, state: "existing local server detected; not replaced" });
-      continue;
+    if (!worker && !existing && await occupied()) {
+      throw Error("Another process already occupies localhost:8787 but no managed Blossom "+
+        "LaunchAgent exists. Setup will NOT silently keep an old server. "+
+        "Identify the owner with: lsof -nP -iTCP:8787 -sTCP:LISTEN. "+
+        "Stop the old process through its own terminal/service manager, then rerun setup.");
     }
     const plistChanged = existing !== expected && !plistOnlyPathChanged(existing, expected);
     let operation;
@@ -474,11 +529,18 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
     const result = await configureLaunchd(envFile);
     return result.map(r => r.label + ": " + r.state).join("; ");
   });
-  await step("Server health", async () => {
+  await step("Server health + authenticated MCP tool contract", async () => {
     if (noServices) return "not started (--no-services)";
-    let recovery = "";
+    let recovery = "",lastToolError="";
     for (let attempt = 0; attempt < (check ? 1 : 60); attempt++) {
-      if (await checkHealth()) return "http://127.0.0.1:8787/login";
+      try {
+        const verified=await verifyLiveMcpTools({
+          writeToken:config.settings.BLOSSOM_MCP_WRITE_TOKEN
+        });
+        return "localhost:8787 has "+verified.toolCount+
+          " authenticated MCP tools, including Spotify Liked Songs; fingerprint "+
+          verified.toolFingerprint;
+      } catch (error) { lastToolError=String(error.message).slice(0,600); }
       if (!check && process.platform === "darwin" && attempt === 6)
         recovery = await recoverLaunchdServer(envFile);
       if (!check) await new Promise(resolve => setTimeout(resolve, 500));
@@ -499,7 +561,8 @@ export async function runSetup({ check = false, noServices = false, emit = () =>
         agentState = String(state.output || "").split(/\\r?\\n/).filter(line => /state =|pid =|last exit code =|runs =/.test(line)).join(" ").slice(0, 300);
       } catch (error) { agentState = "launchctl status unavailable: " + String(error.message || error); }
     }
-    throw Error("Blossom server did not respond on localhost:8787. " +
+    throw Error("Blossom server could not prove that it serves CURRENT authenticated MCP tools. "+
+      (lastToolError?"MCP diagnosis: "+lastToolError+". ":"") +
       (recovery ? "Recovery: " + recovery + ". " : "") +
       "Check .data/logs/server.log. " + (agentState ? "launchd: " + agentState + ". " : "") +
       "Recent server log: " + (diagnostic || "(empty)"));

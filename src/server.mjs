@@ -8,7 +8,7 @@ import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
-import { MusicDnaMCP } from "./music-dna-mcp.mjs";
+import { MusicDnaMCP, musicDnaMcpToolFingerprint, musicDnaMcpToolNames } from "./music-dna-mcp.mjs";
 import { CloudflareAccess } from "./cloudflare-access.mjs";
 import { BlossomMcpOAuth } from "./mcp-oauth.mjs";
 import { readFile } from "node:fs/promises";
@@ -64,6 +64,13 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
   const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked});
   const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth,spotifyLiked});
+  // Nonsecret live-process tool contract. /healthz must reveal which code is
+  // ACTUALLY handling requests, not merely whether an old process is alive.
+  const mcpHealth = { status:"ok", service:"blossom-mcp",
+    mcp:{toolCount:musicDnaMcpToolNames().length,
+      toolFingerprint:musicDnaMcpToolFingerprint,
+      spotifyLikedSupported:musicDnaMcpToolNames().includes("spotify_liked_tracks") &&
+        musicDnaMcpToolNames().includes("spotify_liked_import_page")} };
   const secure=publicUrl.startsWith("https:");
   const permittedOrigin=new URL(publicUrl).origin;
   const timer=enableMonitor(store,{enabled:monitor});
@@ -94,7 +101,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         res.end(content);return;
       }
       if(req.method==="GET"&&path==="/healthz")
-        return reply(res,200,{status:"ok",service:"blossom-mcp"});
+        return reply(res,200,mcpHealth);
       if(path!=="/mcp"&&!oauthPath)return reply(res,404,{error:"Not found"});
     }
     if(oauthPath) {
@@ -102,7 +109,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       catch(error){console.error("Blossom OAuth error:",error.message);
         return reply(res,500,{error:"OAuth request failed"});}
     }
-    if(path==="/healthz" && req.method==="GET")return reply(res,200,{status:"ok"});
+    if(path==="/healthz" && req.method==="GET")return reply(res,200,mcpHealth);
     const sessionHash=sessions.session(req);
     const secureCookie=secure||(gatewayHost&&publicUiEnabled);
     const allowedOrigin=req.headers.origin===permittedOrigin ||

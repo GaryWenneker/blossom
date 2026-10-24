@@ -5,6 +5,7 @@ import { request as httpRequest } from "node:http";
 import { readFile } from "node:fs/promises";
 import { Store } from "../src/storage.mjs";
 import { createAppServer } from "../src/server.mjs";
+import { musicDnaMcpToolFingerprint, musicDnaMcpToolNames } from "../src/music-dna-mcp.mjs";
 import { diagnose,runChecks } from "../scripts/check-public-tunnel.mjs";
 
 test("Public hostname serves only MCP gateway landing and status, not admin pages",async t=>{
@@ -40,7 +41,11 @@ test("Public hostname serves only MCP gateway landing and status, not admin page
   assert.equal(css.status,200);
   assert.match(css.headers.get("content-type"),/text\/css/);
   const health=await req("/healthz");
-  assert.deepEqual(await health.json(),{status:"ok",service:"blossom-mcp"});
+  assert.deepEqual(await health.json(),{
+    status:"ok",service:"blossom-mcp",
+    mcp:{toolCount:musicDnaMcpToolNames().length,
+      toolFingerprint:musicDnaMcpToolFingerprint,spotifyLikedSupported:true}
+  });
   assert.equal((await req("/login")).status,404);
   assert.equal((await req("/api/summary")).status,404);
   assert.equal((await req("/app.js")).status,404);
