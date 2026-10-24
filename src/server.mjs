@@ -265,7 +265,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         if(path==="/api/watches")return reply(res,200,{sources:WATCH_URLS,records:store.watches()});
         if(path==="/api/integrations")return reply(res,200,{suno:"manual blueprint only",labelgrid:provider.available()?"token configured":"not configured",liveDistributionEnabled:allowLive,monitorEnabled:!!timer});
         if(path==="/api/genres")return reply(res,200,GENRES);
-        if(path==="/api/connections")return reply(res,200,vault.list());
+        if(path==="/api/connections")return reply(res,200,{...vault.list(),spotifyRedirectUri:spotify.redirectUri});
         if(path==="/api/connections/spotify/profile")return reply(res,200,await spotify.profile());
         let match=path.match(/^\/api\/tracks\/([a-z0-9-]+)\/blueprint$/i);
         if(match) {
