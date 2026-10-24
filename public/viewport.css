@@ -232,3 +232,169 @@ body[data-view="connections"] .content{overflow:hidden;display:flex;min-height:0
 
 /* Compact URL import button for the fixed-height News to Song workspace. */
 .studio-import-button{width:100%;min-height:29px;margin:5px 0;font-size:11px}
+
+/* Artist identity banners: full available width, not cropped into avatar squares.
+ * Spotify-like composition, with Blossom's own identity and no false badges.
+ */
+body[data-view="artists"] .artist-banner-grid{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(14px,2vw,28px);
+  width:100%;min-width:0;margin-bottom:20px
+}
+body[data-view="artists"] .artist-banner-card{
+  width:100%;min-width:0;overflow:hidden;padding:0;
+  border-radius:13px;background:#14191b;border:1px solid #343b37
+}
+.artist-hero{
+  isolation:isolate;position:relative;overflow:hidden;
+  width:100%;height:clamp(250px,43vw,560px);background:#1f2b29
+}
+.artist-hero-image,.artist-hero-placeholder{
+  display:block;position:absolute;inset:0;width:100%;height:100%
+}
+.artist-hero-image{object-fit:cover;object-position:center 35%}
+.artist-hero-placeholder{
+  display:grid;place-items:center;
+  background:radial-gradient(ellipse at 65% 30%,#304338,#13221d 60%,#0b1714);
+  color:#86a88d;font-weight:800;font-size:clamp(80px,16vw,200px)
+}
+.artist-hero-shade{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(0deg,rgba(3,7,7,.91) 0%,rgba(3,7,7,.53) 24%,rgba(3,7,7,.03) 75%),
+    linear-gradient(90deg,rgba(3,7,7,.28) 0%,transparent 75%)
+}
+.artist-hero-content{
+  position:absolute;left:clamp(20px,3.5vw,62px);right:16px;
+  bottom:clamp(17px,3vw,45px);z-index:2;color:#fff
+}
+.artist-hero-eyebrow{
+  display:block;font-weight:800;font-size:clamp(10px,.95vw,14px);
+  letter-spacing:.12em;color:#eff7ed;text-transform:uppercase;
+  text-shadow:0 2px 14px #000b
+}
+body[data-view="artists"] .artist-hero-content h3{
+  color:#fff;font-size:clamp(44px,7.2vw,112px);line-height:.97;letter-spacing:-.055em;
+  font-weight:850;margin:9px 0 13px;
+  max-width:100%;overflow-wrap:anywhere;text-wrap:balance;
+  text-shadow:0 3px 23px #0008
+}
+.artist-hero-genre{
+  display:inline-block;color:#f1f8f0;font-size:clamp(12px,1.15vw,17px);
+  text-shadow:0 2px 12px #0009
+}
+.artist-banner-details{padding:clamp(14px,2vw,22px) clamp(18px,3vw,36px)}
+.artist-banner-details p{min-height:0;max-width:80ch;font-size:12px;line-height:1.55}
+.artist-banner-hint{color:#bcd49d;font-size:11px}
+@media(max-width:700px){
+  .artist-hero{height:clamp(225px,68vw,330px)}
+  body[data-view="artists"] .artist-hero-content h3{
+    font-size:clamp(38px,10vw,64px);letter-spacing:-.045em;margin:6px 0
+  }
+  .artist-hero-content{left:17px;right:17px;bottom:19px}
+  .artist-banner-details{padding:14px 17px}
+}
+
+/* Studio's linked artist photo is also previewed in landscape ratio. */
+.studio-photo-thumb{
+  flex-direction:column;align-items:stretch;gap:6px;width:100%;
+}
+.studio-photo-thumb .studio-photo-banner{
+  isolation:isolate;position:relative;width:100%;aspect-ratio:16/9;
+  height:auto;max-height:155px;border:1px solid #3b453e;
+  border-radius:8px;overflow:hidden;background:#17231d
+}
+.studio-photo-banner img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 35%}
+.studio-photo-banner:after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(0deg,#000c,transparent 67%);pointer-events:none
+}
+.studio-photo-banner strong{
+  position:absolute;bottom:12px;left:13px;right:9px;z-index:1;
+  font-size:clamp(17px,2vw,29px);font-weight:850;letter-spacing:-.04em;
+  line-height:1.05;color:white;text-shadow:0 2px 10px #0009
+}
+.studio-photo-thumb .studio-photo-caption{font-size:10px;color:#b5c8b6}
+
+/* Persisted artist photo gallery: select an image without returning to Studio. */
+.artist-media-library{border-top:1px solid #374138;margin-top:15px;padding-top:15px}
+.artist-media-heading{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:11px}
+.artist-media-heading strong{font-size:14px;color:#ebf5e8}
+.artist-media-heading span{font-size:11px;color:#9dab9f}
+.artist-media-list{display:flex;gap:12px;overflow-x:auto;padding:3px 2px 12px;scrollbar-width:thin}
+.artist-media-option{
+  display:flex;flex-direction:column;text-align:left;flex:0 0 clamp(128px,18vw,235px);
+  background:#19231d;border:2px solid #3e493f;border-radius:9px;
+  color:#e7f1e9;padding:4px;cursor:pointer;overflow:hidden;
+}
+.artist-media-option img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:5px}
+.artist-media-option span{padding:8px 5px 5px;font-size:11px;font-weight:700}
+.artist-media-option:hover,.artist-media-option:focus-visible{border-color:#b5ff81;outline:0}
+.artist-media-option.is-active{
+  border-color:#a5f878;background:#213126;color:#ceffc0;
+}
+.artist-media-option:disabled{cursor:default;opacity:1}
+@media(max-width:700px){
+  .artist-media-option{flex-basis:clamp(118px,40vw,170px)}
+}
+
+.artist-photo-generate{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-top:18px}
+.artist-photo-generate>.primary{flex:0 0 auto;min-height:38px}
+.artist-photo-generate>details{flex:1 1 220px;min-width:0;border:1px solid #33463b;border-radius:8px;padding:10px}
+.artist-photo-generate summary{font-size:11px;color:#c5d3c6;cursor:pointer}
+.artist-photo-generate textarea{margin-top:8px;min-height:60px;max-width:100%;width:100%;resize:vertical}
+.artist-image-option-wrap{
+  display:flex;flex-direction:column;gap:6px;flex:0 0 clamp(128px,18vw,235px);
+  min-width:0
+}
+.artist-image-option-wrap .artist-media-option{flex:0 0 auto;width:100%}
+.artist-image-option-wrap .artist-image-remove{align-self:flex-end;font-size:11px}
+@media(max-width:700px){
+  .artist-image-option-wrap{flex-basis:clamp(118px,40vw,170px)}
+  .artist-photo-generate>.primary{width:100%}
+}
+
+/* Studio step navigation remains keyboard-accessible and wraps at narrow widths. */
+.studio-stepper{display:flex;align-items:center;justify-content:center;gap:clamp(5px,.9vw,12px);flex-wrap:wrap}
+.studio-stepper .studio-step{
+  display:inline-flex;align-items:center;gap:7px;color:#adb8ad;
+  background:transparent;border:1px solid transparent;border-radius:9px;
+  padding:5px 7px;font-size:11px;cursor:pointer;white-space:nowrap;
+}
+.studio-stepper .studio-step:hover,.studio-stepper .studio-step:focus-visible{
+  border-color:#94d277;outline:0;color:#e8f6e4;
+}
+.studio-stepper .studio-step b{
+  display:grid;place-items:center;width:22px;height:22px;border-radius:50%;
+  background:#303a35;color:#e0eae1;font-size:10px;
+}
+.studio-stepper .studio-step.active{color:#f7fff4;font-weight:750}
+.studio-stepper .studio-step.active b{background:#a6fb63;color:#0f1710}
+.studio-stepper .studio-step.completed:not(.active) b{background:#375b35;color:#c9ffbd}
+.studio-stepper i{flex:0 0 clamp(8px,2vw,26px)}
+.studio-panel:focus{outline:2px solid #9de477;outline-offset:2px}
+.studio-release{
+  padding:13px 16px;margin-top:11px;scroll-margin-top:16px;
+  border-color:#37543b;background:linear-gradient(105deg,#15221a,#151719);
+}
+.studio-release .studio-panel-head{margin-bottom:9px}
+.studio-release-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,1fr);
+  gap:14px;align-items:center}
+.studio-release-body strong{font-size:12px}
+.studio-release-body p{margin:6px 0;font-size:11px}
+.studio-ready{color:#acfb89}
+.studio-release-controls{display:flex;flex-wrap:wrap;gap:8px}
+.studio-release-controls button{min-height:34px;flex:1 1 132px}
+.studio-release-controls button:disabled{opacity:.42;cursor:not-allowed}
+.studio-release-status{grid-column:1/-1;font-size:11px;color:#b9d5be}
+@media(max-width:800px){
+  .studio-release-body{grid-template-columns:minmax(0,1fr)}
+  .studio-release-status{grid-column:auto}
+}
+@media(max-width:560px){
+  .studio-stepper{gap:4px;justify-content:flex-start}
+  .studio-stepper i{display:none}
+  .studio-stepper .studio-step{padding:4px}
+  .studio-release-controls{display:grid;grid-template-columns:1fr}
+}
+
+/* Override the older compact release bar for the full Studio Release workflow. */
+.studio-workspace .studio-release{display:block;max-height:none;height:auto;min-height:0}

@@ -4,9 +4,44 @@ const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambien
 const defaults={sunoModel:"v6",lyricLanguage:"auto",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",chatgptPoll:null};
+const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",chatgptPoll:null,activeStep:1,sunoTimer:null};
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
+export function studioSunoReadiness(project){
+ const missing=[];
+ if(!project?.artistId)missing.push("Choose an artist");
+ const title=project?.title&&project.title!=="Untitled project"?project.title:project?.result?.titles?.[0];
+ if(!title||title==="Untitled")missing.push("Choose a song title");
+ if(!project?.result?.concept?.trim())missing.push("Generate the AI brief");
+ if(!project?.parameters?.genre?.trim())missing.push("Choose a genre");
+ if(!project?.parameters?.instrumental&&!project?.result?.lyrics?.trim())missing.push("Generate or write lyrics");
+ return {ready:missing.length===0,missing};
+}
+export function studioStepState(project,assets=[]){
+ const ready=studioSunoReadiness(project),p=project||{},result=p.result||{};
+ return [
+  {label:"Article",done:!!p.article?.trim()||!!p.sourceUrl?.trim()},
+  {label:"AI Brief",done:!!result.concept?.trim()&&
+    (p.parameters?.instrumental||!!result.lyrics?.trim())},
+  {label:"Configure",done:!!p.parameters?.genre&&!!p.artistId},
+  {label:"Artwork",done:assets.some(a=>a.kind==="cover"&&a.selected)},
+  {label:"Release",done:!!p.sunoJob?.importedAssetId,ready:ready.ready}
+ ];
+}
+function studioStepper(p,assets){
+ const stages=studioStepState(p,assets);
+ return '<nav class="studio-stepper" aria-label="Studio production steps">'+
+ stages.map((step,index)=>{
+   const number=index+1;
+   return (index?'<i aria-hidden="true"></i>':'')+
+   '<button type="button" data-action="studio-step" data-step="'+number+'"'+
+   ' class="studio-step'+(number===work.activeStep?' active':'')+
+   (step.done?' completed':'')+'"'+
+   (number===work.activeStep?' aria-current="step"':'')+'>'+
+   '<b>'+(step.done?'✓':number)+'</b><span>'+step.label+'</span></button>';
+ }).join("")+'</nav>';
+}
+
 const stateOf=state=>{if(work.creatingNew)return null;const list=state.data.studioProjects||[];
  return (work.activeId?list.find(p=>p.id===work.activeId):null)||list[0]||null;};
 const tags=values=>(values||[]).map(v=>'<span class="studio-chip">'+esc(v)+'</span>').join("");
@@ -37,9 +72,9 @@ const panels=(p,assets,state)=>{
  const artists=state.data.artists||[],genres=Object.values(state.data.genres||{}).flat();
  const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
  const projectReferences=state.data.studioReferences||[];
- const image=assets.find(a=>a.kind==="cover"&&a.selected),photo=assets.find(a=>a.kind==="artist-photo"&&a.selected);
+ const image=assets.find(a=>a.kind==="cover"&&a.selected),photo=assets.find(a=>a.kind==="artist-photo"&&a.selected)||state.data.artistBanners?.[p?.artistId];
+ const artistName=(state.data.artists||[]).find(a=>a.id===p?.artistId)?.name||"Artist";
  const automaticLabel="✦ Generate with ChatGPT";
- const complete=[Boolean(p?.article?.trim()||p?.sourceUrl?.trim()),Boolean(result.concept&&(params.instrumental||result.lyrics)),Boolean(p?.artistId&&params.genre&&params.sunoModel),Boolean(image),Boolean(assets.some(a=>a.kind==="audio"&&a.selected))];
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
  const updateNotice=state.data.studioStatus?.studioVersion!==STUDIO_ASSET_VERSION?'<div class="studio-update-notice" role="status">Update required: restart Blossom and reload this page to use ChatGPT images and asset selection.</div>':'';
@@ -48,26 +83,27 @@ const panels=(p,assets,state)=>{
  '<div class="studio-toolbar-actions"><select id="studio-project-picker" aria-label="Select project"><option value="new">+ New project</option>'+projectOptions+'</select>'+
  '<button class="secondary" data-action="studio-save">Save project</button>'+
  '<button class="primary studio-run" data-action="studio-generate-all">✦ Prepare all</button></div></div>'+
- '<nav class="studio-stepper" aria-label="Production stages">'+["Article","AI Brief","Configure","Artwork","Release"].map((name,i)=>'<button type="button" class="'+(complete[i]?'complete':'pending')+'" aria-label="'+esc(name)+(complete[i]?', complete':', incomplete')+'" data-action="studio-jump" data-target="'+["studio-article","studio-lyrics","studio-model","studio-cover-prompt","studio-release"][i]+'"><b>'+(i+1)+'</b> '+name+(complete[i]?' ✓':'')+'</button>').join('<i aria-hidden="true"></i>')+'</nav>'+
+ studioStepper(p,assets)+
  '<div class="studio-columns">'+
- '<section class="studio-panel studio-article"><div class="studio-panel-head"><h2>01 <span>News article</span></h2><span class="studio-mini-tag">SOURCE</span></div>'+
+ '<section id="studio-step-1" class="studio-panel studio-article" tabindex="-1"><div class="studio-panel-head"><h2>01 <span>News article</span></h2><span class="studio-mini-tag">SOURCE</span></div>'+
  field("Project title",'<input id="studio-title" maxlength="140" placeholder="Still by Hand" value="'+esc(p?.title||"")+'">')+
  field("Artist",'<select id="studio-artist"><option value="">Choose an artist</option>'+artists.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===p?.artistId?"selected":"")+'>'+esc(a.name)+" · "+esc(a.genre)+'</option>').join("")+'</select>')+
- '<div class="studio-artist-identity"><span>Assigned artist: <strong>'+esc(artists.find(a=>a.id===p?.artistId)?.name||result.artistName||"Not assigned")+'</strong></span>'+
+ '<div class="studio-artist-identity"><span>Assigned artist: <strong>'+
+ esc(artists.find(a=>a.id===p?.artistId)?.name||result.artistName||"Not assigned")+'</strong></span>'+
  '<button class="secondary mini" type="button" data-action="studio-create-artist">Create / link artist</button></div>'+
  '<div class="studio-tabstrip"><span class="active">Artikeltekst / bron-URL</span><span>Music DNA</span><span>Origineel concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
  field("Artikel-URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'">')+
  '<button type="button" class="secondary studio-import-button" data-action="studio-import-article">Haal artikel op</button>'+
  '<div class="studio-panel-bottom"><small>Uses the ChatGPT account already signed in to Safari.</small><button data-action="studio-chatgpt" class="primary">'+automaticLabel+'</button></div></section>'+
- '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-chatgpt">Generate again</button></div>'+
+ '<section id="studio-step-2" class="studio-panel studio-results" tabindex="-1"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-chatgpt">Generate again</button></div>'+
  '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Importeer een artikel of vul een URL in en laat Blossom automatisch originele lyrics maken.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
  '<div class="studio-label">Suggested titles</div><div class="studio-ideas">'+(result.titles?.length?result.titles.map((title,i)=>'<div><span>'+(i+1)+'. '+esc(title)+'</span><button class="secondary mini" data-action="studio-use-title" data-title="'+esc(title)+'">Use</button></div>').join(""):'<div class="studio-muted">Title suggestions appear here</div>')+'</div>'+
  '<div class="studio-label">Generated lyrics <button class="secondary mini" data-action="studio-save-lyrics">Save edits</button></div>'+
  '<textarea id="studio-lyrics" rows="11" placeholder="Original [Verse], [Chorus], [Bridge] sections appear here">'+esc(result.lyrics||"")+'</textarea>'+
  '<div class="studio-label">AI production notes</div><p class="studio-hint">'+esc(result.rationale||"Choose your artist and genre for tailored arrangements.")+'</p></section>'+
- '<section class="studio-panel studio-controls"><div class="studio-panel-head"><h2>03 <span>Generation parameters</span></h2><button class="secondary mini" data-action="studio-use-preset">Artist default</button></div>'+
+ '<section id="studio-step-3" class="studio-panel studio-controls" tabindex="-1"><div class="studio-panel-head"><h2>03 <span>Generation parameters</span></h2><button class="secondary mini" data-action="studio-use-preset">Artist default</button></div>'+
  field("Suno model",'<input id="studio-model" maxlength="50" value="'+esc(params.sunoModel||"v6")+'" aria-label="Model selected in Suno">')+
  field("Primary genre",'<input id="studio-genre" list="studio-genres" value="'+esc(params.genre)+'"><datalist id="studio-genres">'+genres.map(g=>'<option value="'+esc(g)+'"></option>').join("")+'</datalist>')+
  field("Additional styles (comma separated)",'<input id="studio-styles" value="'+safeList(params.additionalStyles||[])+'" placeholder="Americana, Acoustic, Country Folk">')+
@@ -94,20 +130,39 @@ const panels=(p,assets,state)=>{
  '<div class="studio-suno-handoff"><button type="button" class="secondary" data-action="studio-suno-open">Open Suno in Safari / browser ↗</button>'+
  '<button type="button" class="primary" data-action="studio-suno-prefill">View / copy Suno blueprint</button>'+
  '<p class="studio-hint">Use your regular browser for Google login. Copy the blueprint into Suno and click Generate yourself.</p></div></section>'+
- '<section class="studio-panel studio-art">'+updateNotice+'<div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">CHATGPT</span></div>'+
+ '<section id="studio-step-4" class="studio-panel studio-art" tabindex="-1">'+updateNotice+'<div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">CHATGPT</span></div>'+
  '<div class="studio-assetpreview">'+(image?'<img src="'+esc(image.url)+'" alt="Generated album artwork" loading="lazy">':'<div class="studio-empty-art"><div>♫</div><strong>ALBUM ART</strong><small>Generate with ChatGPT, then select a cover below</small></div>')+'</div>'+
  '<div class="studio-arttabs"><span>Album cover</span><span>Artist portrait</span></div>'+
  field("Album artwork prompt",'<textarea id="studio-cover-prompt" rows="3" placeholder="Original cinematic artwork, square format...">'+esc(artPrompt)+'</textarea>')+
  '<button class="secondary mini" data-action="studio-brief-cover-prompt">Use song brief prompt</button>'+
  '<button class="primary wide" data-action="studio-cover">Generate album art with ChatGPT</button>'+
- field("Spotify artist photo prompt",'<textarea id="studio-photo-prompt" rows="2" placeholder="Photorealistic portrait of a fictional musician...">'+esc(photoPrompt)+'</textarea>')+
+ field("Wide artist banner prompt (16:9)",'<textarea id="studio-photo-prompt" rows="2" placeholder="Photorealistic cinematic 16:9 wide artist or band banner, room for name overlay...">'+esc(photoPrompt)+'</textarea>')+
  '<button class="secondary mini" data-action="studio-brief-photo-prompt">Use song brief prompt</button>'+
- '<button class="secondary wide" data-action="studio-photo">Generate artist photo with ChatGPT</button>'+
- (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">ChatGPT generates both images in signed-in Safari. Finished images are saved and linked to this project.</p>')+
+ '<button class="secondary wide" data-action="studio-photo">Generate wide artist cover with ChatGPT</button>'+
+ (photo?'<div class="studio-photo-thumb"><div class="studio-photo-banner"><img src="'+esc(photo.url)+'" alt="Wide artist cover for '+esc(artistName)+'" loading="lazy"><strong>'+esc(artistName)+'</strong></div><span class="studio-photo-caption">Wide artist banner · selected</span><button type="button" class="secondary mini" data-tab="artists">View full-width in Artists →</button></div>':'<p class="studio-hint">Artist photos generate as wide landscape banners. Choose an artist and link the selected photo to display it on the Artists page.</p>')+
  '</section></div>'+
- '<section class="studio-panel studio-release" id="studio-release"><div class="studio-release-copy"><h2>05 <span>Release to Suno</span></h2>'+
- '<p class="studio-hint">'+(!p?.artistId?'Select an artist in Article to enable Suno.':!complete[0]?'Add an article or source URL first.':!complete[1]?'Generate the AI brief and lyrics first.':!complete[2]?'Complete the Suno model and genre first.':'Ready for Suno. Review the settings in the opened browser before generating.')+'</p></div>'+
- '<button type="button" class="primary" data-action="studio-suno-generate" '+(complete[0]&&complete[1]&&complete[2]?'':'disabled')+'>Generate in Suno ↗</button></section>'+
+ '<section id="studio-step-5" class="studio-panel studio-release" tabindex="-1" aria-label="Release in Suno">'+
+ '<div class="studio-panel-head"><h2>05 <span>Release · Generate in Suno</span></h2><span class="studio-mini-tag">'+
+ (state.data.studioStatus?.sunoApiConfigured?"SUNO PLATFORM API":"SUNO BROWSER")+'</span></div>'+
+ '<div class="studio-release-body">'+
+ '<div><strong>Production readiness</strong>'+
+ (studioSunoReadiness(p).ready?'<p class="studio-ready">✓ Artist, title, brief, style and lyrics are ready.</p>':
+  '<p class="studio-hint">Complete: '+esc(studioSunoReadiness(p).missing.join(" · "))+'</p>')+
+ '<p class="studio-hint">Album artwork is optional for Suno generation. Your selected artist banner remains linked to the artist.</p></div>'+
+ '<div class="studio-release-controls"><button type="button" class="primary" data-action="studio-suno-generate" '+
+ (studioSunoReadiness(p).ready?'':'disabled')+'>'+
+ (state.data.studioStatus?.sunoApiConfigured?'♫ Generate music in Suno':'♫ Prepare song in Suno ↗')+'</button>'+
+ '<button type="button" class="secondary" data-action="studio-suno-status"'+(p?.sunoJob?'':' disabled')+'>Check generation status</button>'+
+ '<button type="button" class="secondary" data-action="studio-suno-import"'+
+ (p?.sunoJob?.status==="complete"&&!p?.sunoJob?.importedAssetId?'':' disabled')+
+ '>Import finished Suno audio</button></div>'+
+ '<div class="studio-release-status" role="status">'+
+ (p?.sunoJob?
+ 'Suno job: '+esc(p.sunoJob.status)+(p.sunoJob.importedAssetId?' · Imported into Blossom':'') :
+ (state.data.studioStatus?.sunoApiConfigured?
+ 'Suno API key is configured. Generation creates a paid Suno task; confirm before submission.':
+ 'No Suno Platform API key configured. The button opens the authorized Suno workflow; press Create there, then import the MP3 here.'))+
+ '</div></div></section>'+
  '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="tracks" aria-controls="studio-pane-tracks" aria-selected="'+(work.bottomTab==="tracks"?"true":"false")+'">Generated tracks &amp; assets</button>'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="assistant" aria-controls="studio-pane-assistant" aria-selected="'+(work.bottomTab==="assistant"?"true":"false")+'">AI assistant</button></div>'+
@@ -234,14 +289,142 @@ async function refreshKeepingInputs(refresh){
  const duration=document.getElementById("studio-duration"),output=document.getElementById("studio-duration-value");
  if(duration&&output)output.textContent=formatTime(Number(duration.value));
 }
+function watchSunoProject(projectId,api,refresh,message){
+ if(work.sunoTimer){clearInterval(work.sunoTimer);work.sunoTimer=null;}
+ let busy=false,attempts=0;
+ work.sunoTimer=setInterval(async()=>{
+   if(busy)return;
+   busy=true;
+   try{
+     const job=await api("studio/projects/"+projectId+"/suno/status");
+     attempts++;
+     if(job.status==="complete"){
+       clearInterval(work.sunoTimer);work.sunoTimer=null;
+       message("Suno completed generation. Importing the finished audio into Blossom…");
+       try{
+         await api("studio/projects/"+projectId+"/suno/import",{});
+         await refresh();
+         message("Suno music generated and the audio is now linked to your project.");
+       }catch(error){
+         await refresh();
+         message("Suno finished, but automatic audio import failed: "+error.message+
+           ". Use Import finished Suno audio or import an MP3 manually.",true);
+       }
+     }else if(["error","failed"].includes(job.status)){
+       clearInterval(work.sunoTimer);work.sunoTimer=null;
+       await refresh();message("Suno generation failed. Check your Suno Platform account.",true);
+     }else if(attempts>=90){
+       clearInterval(work.sunoTimer);work.sunoTimer=null;
+       await refresh();message("Suno generation is still running. Use Check generation status to resume.",true);
+     }
+   }catch(error){
+     // Keep retrying transient polling errors; never resubmit a paid job.
+     if(++attempts>=90){
+       clearInterval(work.sunoTimer);work.sunoTimer=null;
+       message("Could not check Suno status. The original job is retained; use Check generation status.",true);
+     }
+   }finally{busy=false;}
+ },8000);
+}
+function studioLiveReady(state){
+ const p=stateOf(state);
+ if(!p)return false;
+ const title=document.querySelector("#studio-title")?.value?.trim()||"";
+ const artist=document.querySelector("#studio-artist")?.value||"";
+ const genre=document.querySelector("#studio-genre")?.value?.trim()||"";
+ const instrumental=document.querySelector("#studio-instrumental")?.checked;
+ const lyrics=document.querySelector("#studio-lyrics")?.value?.trim()||"";
+ return !!artist&&!!genre&&!!p.result?.concept?.trim()&&
+   (instrumental||!!lyrics)&&!!title&&title!=="Untitled project";
+}
+function updateStudioReadiness(state){
+ const button=document.querySelector('[data-action="studio-suno-generate"]');
+ if(button)button.disabled=!studioLiveReady(state);
+ const ready=document.querySelector("#studio-step-5 .studio-release-status");
+ if(ready&&!studioLiveReady(state)&&!stateOf(state)?.sunoJob)
+   ready.textContent="Finish the artist, title, brief, style and lyrics before generating.";
+}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
  if(work.busy){message("Current studio operation is still running",true);return;}
  work.busy=true;el.disabled=true;
  try{
-  if(action==="studio-jump"){
-    const target=document.getElementById(el.dataset.target);
-    if(target){target.scrollIntoView({behavior:"smooth",block:"center"});target.focus({preventScroll:true});}
+  if(action==="studio-step"){
+    const step=Number(el.dataset.step);
+    if(!Number.isInteger(step)||step<1||step>5)return;
+    // Save edits so navigating to Release cannot silently use old controls.
+    await save(state,api);
+    work.activeStep=step;
+    await refresh();
+    const target=document.getElementById("studio-step-"+step);
+    if(target){
+      target.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"});
+      target.focus({preventScroll:true});
+    }
+    return;
+  }
+  if(action==="studio-suno-generate"){
+    if(!studioLiveReady(state)){message("Complete artist, title, AI brief, lyrics and genre first.",true);return;}
+    const project=await save(state,api);
+    if(state.data.studioStatus?.sunoApiConfigured){
+      if(!window.confirm("Submit this song for generation on Suno Platform? This may incur Suno API charges."))return;
+      const job=await api("studio/projects/"+project.id+"/suno/generate",{});
+      await refresh();work.activeStep=5;
+      message("Suno accepted the generation request ("+job.status+"). Audio will be imported when complete.");
+      watchSunoProject(project.id,api,refresh,message);
+      return;
+    }
+    const recipe=await api("studio/projects/"+project.id+"/recipe");
+    const dialog=document.querySelector("#recipe-dialog");
+    document.querySelector("#recipe-text").value=JSON.stringify(recipe,null,2);
+    dialog.showModal();
+    // Open the normal browser only; no automated login or Generate click.
+    const native=state.data.browserAccounts?.nativeSafariAvailable &&
+      ["localhost","127.0.0.1"].includes(location.hostname);
+    if(native)await api("browser-accounts/suno/open-safari",{});
+    message("Suno opened. Review the blueprint and press Create in Suno. Import the MP3 into Blossom after generation.");
+    return;
+  }
+  if(action==="studio-suno-status"){
+    const project=stateOf(state);
+    if(!project)return;
+    const status=await api("studio/projects/"+project.id+"/suno/status");
+    await refresh();
+    if(status.status==="complete"&&!status.importedAssetId)message("Suno finished. Select Import finished Suno audio.");
+    else if(status.status==="complete")message("Suno audio already imported.");
+    else{
+      message("Suno generation: "+status.status+(status.warning?" · "+status.warning:""));
+      if(["submitted","queued","streaming"].includes(status.status))
+        watchSunoProject(project.id,api,refresh,message);
+    }
+    return;
+  }
+  if(action==="studio-suno-import"){
+    const project=stateOf(state);
+    if(!project)return;
+    const result=await api("studio/projects/"+project.id+"/suno/import",{});
+    await refresh();
+    message("Generated Suno audio imported and linked to this project: "+result.asset.id);
+    return;
+  }
+  if(action==="studio-create-artist"){
+    const existing=stateOf(state),suggested=existing?.result?.artistName||"";
+    const name=window.prompt("Enter the fictional artist name to create or link:",suggested)?.trim();
+    if(!name)return;
+    const found=(state.data.artists||[]).find(a=>a.name.toLocaleLowerCase()===name.toLocaleLowerCase());
+    let artistId=found?.id;
+    if(!artistId){
+      const params=paramsFromDOM();
+      const created=await api("artists",{name,genre:params.genre,
+        language:params.lyricLanguage==="auto"?"en":params.lyricLanguage,
+        countries:[],voice:params.instrumental?"instrumental":
+        params.vocalGender==="auto"?"mixed":params.vocalGender,
+        dna:(existing?.result?.style||params.genre||"Original fictional artist").slice(0,1000)});
+      artistId=created.id;
+    }
+    document.querySelector("#studio-artist").value=artistId;
+    await save(state,api);await refresh();
+    message("Artist "+name+" linked to this Studio project");
     return;
   }
   if(action==="studio-bottom-tab"){
@@ -253,24 +436,6 @@ export async function studioAction(el,state,api,refresh,message){
     }
     for(const pane of document.querySelectorAll(".studio-bottom-pane"))
       pane.hidden=pane.id!=="studio-pane-"+work.bottomTab;
-    return;
-  }
-  if(action==="studio-create-artist"){
-    const existing=stateOf(state);
-    const suggested=existing?.result?.artistName||"";
-    const name=window.prompt("Enter the fictional artist name to create or link:",suggested)?.trim();
-    if(!name)return;
-    const found=(state.data.artists||[]).find(a=>a.name.toLocaleLowerCase()===name.toLocaleLowerCase());
-    let artistId=found?.id;
-    if(!artistId){
-      const params=paramsFromDOM();
-      const created=await api("artists",{name,genre:params.genre,language:params.lyricLanguage==="auto"?"en":params.lyricLanguage,countries:[],voice:params.instrumental?"instrumental":params.vocalGender==="auto"?"mixed":params.vocalGender,dna:(existing?.result?.style||params.genre||"Original fictional artist").slice(0,1000)});
-      artistId=created.id;
-    }
-    document.querySelector("#studio-artist").value=artistId;
-    await save(state,api);
-    await refresh();
-    message("Artist "+name+" linked to this Studio project");
     return;
   }
   if(action==="studio-use-title"){document.querySelector("#studio-title").value=el.dataset.title;return;}
@@ -341,16 +506,6 @@ export async function studioAction(el,state,api,refresh,message){
   if(action==="studio-save-lyrics"){
     const result={...p.result,lyrics:document.querySelector("#studio-lyrics").value};
     await api("studio/projects/"+p.id+"/result",result);await refresh();message("Lyrics edits saved");return;
-  }
-  if(action==="studio-suno-generate"){
-    const params=paramsFromDOM();
-    const missing=[!document.querySelector("#studio-article").value.trim()&&!document.querySelector("#studio-source").value.trim()?"article":null,!p.result?.concept?"AI brief":null,!params.instrumental&&!document.querySelector("#studio-lyrics").value.trim()?"lyrics":null,!document.querySelector("#studio-artist").value?"artist":null,!params.genre?"genre":null,!params.sunoModel?"Suno model":null].filter(Boolean);
-    if(missing.length)throw Error("Complete before Suno: "+missing.join(", "));
-    await api("studio/projects/"+p.id+"/result",{...p.result,lyrics:document.querySelector("#studio-lyrics").value});
-    await api("studio/projects/"+p.id+"/suno-browser/open",{});
-    const outcome=await api("studio/projects/"+p.id+"/suno-browser/prefill",{});
-    message("Suno opened; filled: "+(outcome.filled?.join(", ")||"none")+". Review and press Generate on Suno."+(outcome.skipped?.length?" Copy skipped: "+outcome.skipped.join(", "):""));
-    return;
   }
   if(action==="studio-suno-open"){
     const canOpenSafari=state.data.browserAccounts?.nativeSafariAvailable &&
@@ -428,25 +583,13 @@ export async function studioAudio(file,state,refresh,message){
  const response=await fetch(url,{method:"POST",headers:{"x-blossom-request":"ui","content-type":type},body:file});
  const data=await response.json();
  if(!response.ok)throw Error(data.error||"Upload failed");
- await refresh();message("Suno audio imported and linked to project");
+ await refresh();work.activeStep=5;message("Suno audio imported and linked to project");
  }catch(error){message(error.message,true)}
-}
-function syncSunoReadiness(){
- const button=document.querySelector('[data-action="studio-suno-generate"]');
- if(!button)return;
- const artist=!!document.getElementById("studio-artist")?.value;
- const source=!!(document.getElementById("studio-article")?.value.trim()||document.getElementById("studio-source")?.value.trim());
- const brief=!!document.getElementById("studio-lyrics")?.value.trim()||!!document.getElementById("studio-instrumental")?.checked;
- const model=!!document.getElementById("studio-model")?.value.trim();
- const genre=!!document.getElementById("studio-genre")?.value.trim();
- const concept=!!document.querySelector(".studio-concept")?.textContent.trim();
- button.disabled=!(artist&&source&&brief&&model&&genre&&concept);
- const hint=document.querySelector(".studio-release-copy .studio-hint");
- if(hint)hint.textContent=!artist?"Select an artist in Article to enable Suno.":!source?"Add an article or source URL.":!brief?"Provide lyrics or select Instrumental.":!model||!genre?"Complete genre and Suno model.":"Ready for Suno. Review the generated draft before submitting.";
 }
 export function studioInput(event,state,refresh){
  const target=event.target;
- if(target.id==="studio-artist"||target.id==="studio-article"||target.id==="studio-source"||target.id==="studio-lyrics"||target.id==="studio-instrumental"||target.id==="studio-model"||target.id==="studio-genre")syncSunoReadiness();
+ if(["studio-title","studio-artist","studio-genre","studio-lyrics","studio-instrumental"].includes(target.id))
+   updateStudioReadiness(state);
  if(target.id==="studio-project-picker"){
    if(target.value==="new"){work.activeId=null;work.creatingNew=true;}else{work.activeId=target.value;work.creatingNew=false;}
    work.assistantAnswer="";refresh();return;

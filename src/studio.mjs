@@ -76,6 +76,22 @@ export class StudioStore {
     for(const [name,type] of Object.entries({provider:"TEXT NOT NULL DEFAULT 'unknown'",prompt:"TEXT NOT NULL DEFAULT ''",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",selected:"INTEGER NOT NULL DEFAULT 0",deleted_at:"TEXT"}))
       if(!columns.has(name))this.db.exec("ALTER TABLE studio_assets ADD COLUMN "+name+" "+type);
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS studio_asset_selection ON studio_assets(project_id,kind) WHERE selected=1 AND deleted_at IS NULL");
+    // Artist media is durable, independent of any News-to-Song project's
+    // selection or removal. Existing selected project photos are migrated once.
+    this.db.exec(`CREATE TABLE IF NOT EXISTS studio_artist_images
+      (id TEXT PRIMARY KEY, artist_id TEXT NOT NULL REFERENCES artists(id),
+       source_asset_id TEXT UNIQUE REFERENCES studio_assets(id),
+       filename TEXT NOT NULL, mime TEXT NOT NULL, provider TEXT NOT NULL,
+       prompt TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+       selected INTEGER NOT NULL DEFAULT 0, deleted_at TEXT);
+      CREATE UNIQUE INDEX IF NOT EXISTS studio_artist_image_active
+        ON studio_artist_images(artist_id) WHERE selected=1 AND deleted_at IS NULL;`);
+    this.migrateArtistImages();
+    this.db.exec(`CREATE TABLE IF NOT EXISTS studio_suno_jobs
+      (project_id TEXT PRIMARY KEY REFERENCES studio_projects(id),
+       job_id TEXT NOT NULL, status TEXT NOT NULL, audio_url TEXT,
+       imported_asset_id TEXT, submitted_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+
   }
   projects() {return this.db.prepare("SELECT * FROM studio_projects ORDER BY updated_at DESC LIMIT 150").all().map(r=>this.convert(r));}
   convert(r){return r&&{id:r.id,title:r.title,article:r.article,sourceUrl:r.source_url,
@@ -107,6 +123,17 @@ export class StudioStore {
       ON CONFLICT(id) DO UPDATE SET title=excluded.title,article=excluded.article,source_url=excluded.source_url,
       artist_id=excluded.artist_id,params=excluded.params,updated_at=excluded.updated_at`).run(
       id,title,article,sourceUrl,artistId||null,JSON.stringify(params),JSON.stringify(result),existing?.trackId||null,createdAt,updatedAt);
+    if(artistId&&artistId!==existing?.artistId){
+      // Associate legacy project-only artist photos when an artist is chosen
+      // later. Never silently transfer an existing artist's media to another.
+      const photo=this.db.prepare(`SELECT id FROM studio_assets
+        WHERE project_id=? AND kind='artist-photo' AND selected=1 AND deleted_at IS NULL`).get(id);
+      const owner=photo&&this.db.prepare(
+        "SELECT artist_id AS artistId FROM studio_artist_images WHERE source_asset_id=?"
+      ).get(photo.id);
+      if(photo&&(!owner||owner.artistId===artistId))
+        this.linkArtistImage(artistId,photo.id);
+    }
     this.store.audit(existing?"updated":"created","studio_project",id,{title});
     return this.require(id);
   }
@@ -160,6 +187,45 @@ export class StudioStore {
     this.db.prepare("UPDATE studio_projects SET track_id=?,updated_at=? WHERE id=?").run(t.id,new Date().toISOString(),id);
     this.store.audit("linked","studio_project",id,{trackId:t.id});return {project:this.require(id),track};
   }
+  sunoJob(projectId){
+    this.require(projectId);
+    const row=this.db.prepare(`SELECT job_id AS id,status,audio_url AS audioUrl,
+      imported_asset_id AS importedAssetId,submitted_at AS submittedAt,updated_at AS updatedAt
+      FROM studio_suno_jobs WHERE project_id=?`).get(projectId);
+    return row||null;
+  }
+  beginSunoJob(projectId,id,status){
+    this.require(projectId);
+    const previous=this.sunoJob(projectId);
+    if(previous&&(!["error","failed"].includes(previous.status) || previous.importedAssetId))
+      throw new DomainError("A Suno generation is already linked to this project",409);
+    const now=new Date().toISOString();
+    this.db.prepare(`INSERT INTO studio_suno_jobs
+      (project_id,job_id,status,submitted_at,updated_at) VALUES(?,?,?,?,?)
+      ON CONFLICT(project_id) DO UPDATE SET job_id=excluded.job_id,
+      status=excluded.status,audio_url=NULL,imported_asset_id=NULL,
+      submitted_at=excluded.submitted_at,updated_at=excluded.updated_at`)
+      .run(projectId,id,status,now,now);
+    this.store.audit("suno_submitted","studio_project",projectId,{status});
+    return this.sunoJob(projectId);
+  }
+  updateSunoJob(projectId,id,{status,audioUrl}){
+    const previous=this.sunoJob(projectId);
+    if(!previous||previous.id!==id)throw new DomainError("Unknown Suno generation",404);
+    if(!["submitted","queued","streaming","complete","error","failed"].includes(status))
+      throw new DomainError("Unknown Suno generation status",502);
+    this.db.prepare(`UPDATE studio_suno_jobs SET status=?,audio_url=?,updated_at=?
+      WHERE project_id=?`).run(status,audioUrl||null,new Date().toISOString(),projectId);
+    return this.sunoJob(projectId);
+  }
+  markSunoImported(projectId,id,assetId){
+    const job=this.sunoJob(projectId);
+    if(!job||job.id!==id||job.status!=="complete"||job.importedAssetId)
+      throw new DomainError("Suno generation is not ready to import",409);
+    this.db.prepare(`UPDATE studio_suno_jobs SET imported_asset_id=?,updated_at=?
+      WHERE project_id=?`).run(assetId,new Date().toISOString(),projectId);
+    return this.sunoJob(projectId);
+  }
   assets(projectId){
     const project=this.require(projectId),fingerprint=studioBriefFingerprint(project);
     return this.db.prepare("SELECT * FROM studio_assets WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC,id DESC")
@@ -167,6 +233,117 @@ export class StudioStore {
         provider:r.provider,prompt:r.prompt,selected:!!r.selected,
         briefMatch:r.brief_fingerprint?(r.brief_fingerprint===fingerprint?"current":"earlier"):"unknown",
         url:"/api/studio/assets/"+r.id+"/content"}));
+  }
+  migrateArtistImages(){
+    // Preserve historical selected photos in the new artist-owned library.
+    // Repeatable across restarts, and no migration of square album covers.
+    const rows=this.db.prepare(`SELECT p.artist_id AS artistId,a.id AS assetId,
+      a.filename,a.mime,a.provider,a.prompt,a.created_at AS createdAt
+      FROM studio_assets a JOIN studio_projects p ON p.id=a.project_id
+      WHERE a.kind='artist-photo' AND a.selected=1
+        AND a.deleted_at IS NULL AND p.artist_id IS NOT NULL AND p.artist_id!=''
+        AND NOT EXISTS(SELECT 1 FROM studio_artist_images ai WHERE ai.source_asset_id=a.id)
+      ORDER BY a.created_at DESC,a.id DESC`).all();
+    for(const row of rows)
+      this.linkArtistImage(row.artistId,row.assetId,{select:false});
+  }
+  artistImages(artistId){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    return this.db.prepare(`SELECT id,artist_id AS artistId,source_asset_id AS sourceAssetId,
+      provider,prompt,created_at AS createdAt,selected
+      FROM studio_artist_images WHERE artist_id=? AND deleted_at IS NULL
+      ORDER BY created_at DESC,id DESC`).all(artistId).map(row=>({
+      ...row,selected:!!row.selected,url:"/api/studio/artist-images/"+row.id+"/content"
+    }));
+  }
+  allArtistImages(){
+    return Object.fromEntries(this.store.artists().map(a=>[a.id,this.artistImages(a.id)]));
+  }
+  artistImage(imageId){
+    return this.db.prepare("SELECT * FROM studio_artist_images WHERE id=? AND deleted_at IS NULL").get(imageId);
+  }
+  linkArtistImage(artistId,assetId,{select=false}={}){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    const asset=this.asset(assetId);
+    if(!asset||asset.kind!=="artist-photo")throw new DomainError("Only artist photos can be linked to an artist",400);
+    // If a photo was previously linked to another artist, a separate record
+    // for each artist still references the same file only with explicit linking.
+    const found=this.db.prepare("SELECT id,artist_id FROM studio_artist_images WHERE source_asset_id=?").get(assetId);
+    if(found&&found.artist_id!==artistId)
+      throw new DomainError("This artist photo belongs to another artist",409);
+    if(!found){
+      this.db.prepare(`INSERT INTO studio_artist_images
+        (id,artist_id,source_asset_id,filename,mime,provider,prompt,created_at)
+        VALUES(?,?,?,?,?,?,?,?)`).run(
+        uuid(),artistId,assetId,asset.filename,asset.mime,asset.provider,asset.prompt,
+        asset.created_at);
+    }
+    const active=this.db.prepare(`SELECT id FROM studio_artist_images
+      WHERE artist_id=? AND selected=1 AND deleted_at IS NULL`).get(artistId);
+    if(select||!active){
+      const target=this.db.prepare("SELECT id FROM studio_artist_images WHERE source_asset_id=?").get(assetId);
+      this.selectArtistImage(artistId,target.id);
+    }
+    return this.artistImages(artistId);
+  }
+  registerArtistPhoto(artistId,{filename,mime,provider="chatgpt",prompt=""}){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    if(!/^[0-9a-f-]{36}\.png$/.test(filename)||mime!=="image/png")
+      throw new DomainError("Unsupported artist photo format",400);
+    if(!["chatgpt","upload","draw-things"].includes(provider))
+      throw new DomainError("Invalid artist image provider",400);
+    const imageId=uuid(),createdAt=new Date().toISOString();
+    this.db.prepare(`INSERT INTO studio_artist_images
+      (id,artist_id,source_asset_id,filename,mime,provider,prompt,created_at)
+      VALUES(?,?,?,?,?,?,?,?)`).run(
+      imageId,artistId,null,filename,mime,provider,clean(prompt,4000),createdAt);
+    const active=this.db.prepare(`SELECT id FROM studio_artist_images
+      WHERE artist_id=? AND selected=1 AND deleted_at IS NULL`).get(artistId);
+    if(!active)this.selectArtistImage(artistId,imageId);
+    this.store.audit("artist_photo_added","artist",artistId,{imageId,provider});
+    return this.artistImages(artistId).find(image=>image.id===imageId);
+  }
+  deleteArtistImage(artistId,imageId){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    const image=this.artistImage(imageId);
+    if(!image||image.artist_id!==artistId)
+      throw new DomainError("Artist photo not found for this artist",404);
+    this.db.exec("BEGIN IMMEDIATE");
+    try{
+      this.db.prepare(`UPDATE studio_artist_images
+        SET selected=0,deleted_at=? WHERE id=?`).run(new Date().toISOString(),imageId);
+      if(image.selected){
+        const next=this.db.prepare(`SELECT id FROM studio_artist_images
+          WHERE artist_id=? AND deleted_at IS NULL
+          ORDER BY created_at DESC,id DESC LIMIT 1`).get(artistId);
+        if(next)this.db.prepare("UPDATE studio_artist_images SET selected=1 WHERE id=?").run(next.id);
+      }
+      this.db.exec("COMMIT");
+    }catch(error){this.db.exec("ROLLBACK");throw error;}
+    this.store.audit("artist_photo_removed","artist",artistId,{imageId});
+    return this.artistImages(artistId);
+  }
+  selectArtistImage(artistId,imageId){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    const image=this.artistImage(imageId);
+    if(!image||image.artist_id!==artistId)
+      throw new DomainError("Artist photo not found for this artist",404);
+    this.db.exec("BEGIN IMMEDIATE");
+    try{
+      this.db.prepare("UPDATE studio_artist_images SET selected=0 WHERE artist_id=? AND deleted_at IS NULL").run(artistId);
+      this.db.prepare("UPDATE studio_artist_images SET selected=1 WHERE id=?").run(imageId);
+      this.db.exec("COMMIT");
+    }catch(error){this.db.exec("ROLLBACK");throw error;}
+    this.store.audit("artist_photo_selected","artist",artistId,{imageId});
+    return this.artistImages(artistId);
+  }
+  artistBanners(){
+    const rows=this.db.prepare(`SELECT id,artist_id AS artistId,created_at AS createdAt
+      FROM studio_artist_images WHERE selected=1 AND deleted_at IS NULL`).all();
+    return Object.fromEntries(rows.map(row=>[
+      row.artistId,{assetId:row.id,url:"/api/studio/artist-images/"+row.id+"/content",
+        createdAt:row.createdAt}
+    ]));
   }
   asset(id){return this.db.prepare("SELECT * FROM studio_assets WHERE id=? AND deleted_at IS NULL").get(id);}
   requireAsset(projectId,id){
@@ -186,6 +363,10 @@ export class StudioStore {
       this.db.prepare("UPDATE studio_assets SET selected=1,kind=? WHERE id=?").run(role,id);
       this.db.exec("COMMIT");
     }catch(error){this.db.exec("ROLLBACK");throw error;}
+    if(role==="artist-photo"){
+      const artistId=this.require(projectId).artistId;
+      if(artistId)this.linkArtistImage(artistId,id,{select:true});
+    }
     this.store.audit("asset_selected","studio_project",projectId,{assetId:id,kind:role});
     return this.assets(projectId);
   }
@@ -200,7 +381,7 @@ export class StudioStore {
     this.require(projectId);
     if(!["cover","artist-photo","audio"].includes(kind))throw new DomainError("Invalid asset type");
     if(!/^[0-9a-f-]{36}\.(?:png|wav|mp3)$/.test(filename))throw new DomainError("Invalid asset filename");
-    if(!["chatgpt","upload","draw-things","unknown"].includes(provider))throw new DomainError("Invalid asset provider");
+    if(!["chatgpt","upload","draw-things","suno","unknown"].includes(provider))throw new DomainError("Invalid asset provider");
     const id=uuid(),createdAt=new Date().toISOString();
     this.db.prepare("INSERT INTO studio_assets(id,project_id,kind,filename,mime,created_at,provider,prompt,brief_fingerprint) VALUES(?,?,?,?,?,?,?,?,?)")
       .run(id,projectId,kind,filename,mime,createdAt,provider,clean(prompt,4000),clean(briefFingerprint,64));

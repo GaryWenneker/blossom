@@ -14,7 +14,7 @@ export function validateDrawRequest(input){
   if(!Number.isInteger(steps)||steps<1||steps>50)throw new DomainError("Invalid inference steps");
   if(!Number.isInteger(seed)||seed<0||seed>2147483647)throw new DomainError("Invalid image seed");
   return {kind:input.kind,prompt:input.prompt.trim(),steps,seed,
-    width:input.kind==="cover"?1024:768,height:1024};
+    width:input.kind==="cover"?1024:1536,height:input.kind==="cover"?1024:864};
 }
 export class DrawThings {
   constructor({command=process.env.BLOSSOM_DRAW_COMMAND||"draw-things-cli",model=process.env.BLOSSOM_DRAW_MODEL||"",directory=process.env.BLOSSOM_ASSET_DIR||".data/assets",

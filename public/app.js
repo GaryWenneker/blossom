@@ -1,9 +1,9 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=artist-identity-v4";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=artist-suno-release-v5";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
-const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
+const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
 const nextStage={idea:"brief",brief:"generated",generated:"review",review:"approved",rejected:"brief"};
 const releaseChecks={audioUploaded:"Audio at distributor",artworkUploaded:"Cover art at distributor",creditsVerified:"Credits verified",codesVerified:"ISRC/UPC verified",aiDisclosuresDone:"AI disclosure completed",distributorRightsConfirmed:"Rights and distribution terms verified"};
 const capitals=s=>s.replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());
@@ -28,9 +28,9 @@ async function api(path,data){
 }
 async function refresh(){
   const dnaRequest=musicDnaRequest(state);
-  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets"];
+  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets","studio/artists/banners","studio/artists/images"];
   const results=await Promise.all(names.map(apiName=>api(apiName)));
-  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("browser-accounts","browserAccounts"),results[i]]));
+  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("studioartistsbanners","artistBanners").replace("studioartistsimages","artistImages").replace("browser-accounts","browserAccounts"),results[i]]));
   const id=studioActiveId(state);
   const [assets,dnaPage,dnaJobs,dnaReferences]=await Promise.all([
     id?api("studio/projects/"+id+"/assets"):Promise.resolve([]),
@@ -77,7 +77,39 @@ function artists(){
  '<div class="field full"><label for="artist-dna">Artist DNA</label><textarea id="artist-dna" name="dna" rows="3" required placeholder="Signature instruments, arrangement, sound, lyrical topics and things to avoid"></textarea></div>'+
  '<div class="field full"><button class="primary">Create artist</button></div></form></div>'+
  '<h2>Roster <span class="small">('+state.data.artists.length+')</span></h2>'+
- (state.data.artists.length?'<div class="artist-grid">'+state.data.artists.map(a=>'<article class="artist-card"><div class="artist-backdrop" style="background-image:linear-gradient(0deg,#15231b 0%,transparent 90%),url(&quot;/api/studio/artists/'+encodeURIComponent(a.id)+'/photo&quot;)" aria-hidden="true"></div><div class="artist-avatar">'+e(a.name[0])+'</div><h3>'+e(a.name)+'</h3><div class="small">'+e(a.genre)+' · '+e(a.language)+' · '+e(a.voice)+'</div><p>'+e(a.dna)+'</p><div class="tagrow">'+a.countries.map(c=>'<span class="tag">'+e(c)+'</span>').join("")+'<span class="tag">Name unverified</span></div></article>').join("")+'</div>':'<div class="empty">No artists yet. Create one above or run npm run seed for eight proposed identities.</div>');
+ (state.data.artists.length?'<div class="artist-grid artist-banner-grid">'+state.data.artists.map(a=>{
+   const banner=state.data.artistBanners?.[a.id];
+   const images=state.data.artistImages?.[a.id]||[];
+   return '<article class="artist-card artist-banner-card">'+
+     '<div class="artist-hero">'+
+       (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" loading="lazy">':
+        '<div class="artist-hero-placeholder" aria-hidden="true">'+e(a.name.slice(0,1))+'</div>')+
+       '<div class="artist-hero-shade" aria-hidden="true"></div>'+
+       '<div class="artist-hero-content"><span class="artist-hero-eyebrow">BLOSSOM ARTIST</span>'+
+         '<h3>'+e(a.name)+'</h3><span class="artist-hero-genre">'+e(a.genre)+'</span></div>'+
+     '</div><div class="artist-banner-details">'+
+       '<div class="small">'+e(a.genre)+' · '+e(a.language)+' · '+e(a.voice)+'</div>'+
+       '<p>'+e(a.dna)+'</p>'+
+       '<div class="tagrow">'+a.countries.map(c=>'<span class="tag">'+e(c)+'</span>').join("")+
+         '<span class="tag">Name unverified</span></div>'+
+       '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(a.id)+'">✦ Generate artist banner</button>'+
+         '<details><summary>Custom photo prompt</summary><textarea id="artist-photo-prompt-'+e(a.id)+'" rows="2" placeholder="Optional: describe the location, clothing, light and artistic direction for a wide photo"></textarea></details></div>'+
+       (images.length?
+         '<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div>'+
+         '<div class="artist-media-list">'+images.map(image=>
+           '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
+           ' data-action="artist-image-select" data-artist-id="'+e(a.id)+'" data-image-id="'+e(image.id)+'"'+
+           ' title="'+e(image.selected?'Active artist background':'Use as artist background')+'"'+
+           ' aria-pressed="'+(image.selected?'true':'false')+'" '+(image.selected?'disabled':'')+'>'+
+           '<img src="'+e(image.url)+'" alt="Artist background option for '+e(a.name)+'" loading="lazy">'+
+           '<span>'+e(image.selected?'Current background':'Use background')+'</span></button>'+
+           '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete"'+
+           ' data-artist-id="'+e(a.id)+'" data-image-id="'+e(image.id)+'"'+
+           ' aria-label="Remove photo from '+e(a.name)+'">Remove</button></div>').join("")+
+         '</div></div>':
+         '<p class="artist-banner-hint">Generate a wide artist photo in News to Song with this artist selected. It will appear here automatically.</p>')+
+     '</div></article>';
+ }).join("")+'</div>':'<div class="empty">No artists yet. Create one above or run npm run seed for eight proposed identities.</div>');
 }
 function tracks(){
  const artists=state.data.artists,tracks=state.data.tracks;
@@ -235,6 +267,29 @@ function render(){
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
+ if(act==="artist-image-generate"){
+   const artistId=el.dataset.artistId;
+   const prompt=document.getElementById("artist-photo-prompt-"+artistId)?.value?.trim()||"";
+   message("Generating the artist's wide photo. This may take a few minutes.");
+   const image=await api("studio/artists/"+artistId+"/generate-photo",{prompt});
+   await refresh();
+   message(image.selected?"New artist background linked":"New photo added. Select it from the artist's gallery.");
+   return;
+ }
+ if(act==="artist-image-delete"){
+   if(!window.confirm("Remove this photo from the artist's gallery? It will remain in any Studio projects."))return;
+   await api("studio/artists/"+el.dataset.artistId+"/images/"+el.dataset.imageId+"/delete",{});
+   await refresh();
+   message("Photo removed from artist gallery");
+   return;
+ }
+ if(act==="artist-image-select"){
+   const artistId=el.dataset.artistId, imageId=el.dataset.imageId;
+   await api("studio/artists/"+artistId+"/images/"+imageId+"/select",{});
+   await refresh();
+   message("Artist background updated");
+   return;
+ }
  if(act?.startsWith("studio-"))return studioAction(el,state,api,refresh,message);
  if(act?.startsWith("dna-")){
    const next=await musicDnaAction(el,state,api,refresh,message);
@@ -416,7 +471,7 @@ document.addEventListener("paste",event=>{
  setTimeout(()=>{void studioPaste(field,state,api,refresh,message).catch(error=>message(error.message,true));},0);
 });
 document.addEventListener("change",async e=>{
- if(e.target.id?.startsWith("studio-") && e.target.id!=="studio-audio-file")studioInput(e,state,refresh);
+ if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
  if(e.target.matches("[data-dna-upload]")){
    try{await musicDnaUpload(e.target,refresh,message);}catch(error){message(error.message,true);}
