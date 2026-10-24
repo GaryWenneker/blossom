@@ -31,6 +31,13 @@ const TOOLS = [
   { name: "music_dna_complete_job", description: "Complete or mark failed a claimed analysis job; an actual analysis payload is needed for success.",
     inputSchema: { ...schema({ jobId: str, analysis: { type: "object" }, error: str }), required: ["jobId"] }, write: true }
 ];
+// Only nonsecret, executable tool contracts enter this identifier. It changes
+// when tools or input schemas change, unlike the old hardcoded "0.1.0" version.
+export const musicDnaMcpToolNames = ({ write = true } = {}) =>
+  TOOLS.filter(tool => write || !tool.write).map(tool => tool.name);
+export const musicDnaMcpToolFingerprint = createHash("sha256")
+  .update(JSON.stringify(TOOLS.map(({name,inputSchema,write}) =>
+    ({name,inputSchema,write:!!write})))).digest("hex").slice(0,20);
 const HASH = value => createHash("sha256").update(value).digest();
 function authenticated(req, secret) {
   if (typeof secret !== "string" || secret.length < 32) return false;
@@ -93,7 +100,8 @@ export class MusicDnaMCP {
       let result;
       if (method === "initialize") {
         result = { protocolVersion: "2025-06-18", capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: "blossom-music-dna", version: "0.1.0" } };
+          serverInfo: { name: "blossom-music-dna",
+            version: "0.3.0+" + musicDnaMcpToolFingerprint } };
       } else if (method === "ping") result = {};
       else if (method === "tools/list") result = {
         tools: TOOLS.filter(tool => write || !tool.write)
