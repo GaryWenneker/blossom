@@ -39,6 +39,7 @@ const panels=(p,assets,state)=>{
  const projectReferences=state.data.studioReferences||[];
  const image=assets.find(a=>a.kind==="cover"&&a.selected),photo=assets.find(a=>a.kind==="artist-photo"&&a.selected);
  const automaticLabel="✦ Generate with ChatGPT";
+ const complete=[Boolean(p?.article?.trim()||p?.sourceUrl?.trim()),Boolean(result.concept&&(params.instrumental||result.lyrics)),Boolean(p?.artistId&&params.genre&&params.sunoModel),Boolean(image),Boolean(assets.some(a=>a.kind==="audio"&&a.selected))];
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
  const updateNotice=state.data.studioStatus?.studioVersion!==STUDIO_ASSET_VERSION?'<div class="studio-update-notice" role="status">Update required: restart Blossom and reload this page to use ChatGPT images and asset selection.</div>':'';
@@ -47,7 +48,7 @@ const panels=(p,assets,state)=>{
  '<div class="studio-toolbar-actions"><select id="studio-project-picker" aria-label="Select project"><option value="new">+ New project</option>'+projectOptions+'</select>'+
  '<button class="secondary" data-action="studio-save">Save project</button>'+
  '<button class="primary studio-run" data-action="studio-generate-all">✦ Prepare all</button></div></div>'+
- '<nav class="studio-stepper" aria-label="Production stages"><button data-action="studio-jump" data-target="studio-article">1 Article</button><button data-action="studio-jump" data-target="studio-lyrics">2 AI Brief</button><button data-action="studio-jump" data-target="studio-model">3 Configure</button><button data-action="studio-jump" data-target="studio-cover-prompt">4 Artwork</button><button data-action="studio-jump" data-target="studio-release">5 Release</button></nav>'+
+ '<nav class="studio-stepper" aria-label="Production stages">'+["Article","AI Brief","Configure","Artwork","Release"].map((name,i)=>'<button type="button" class="'+(complete[i]?'complete':'pending')+'" aria-label="'+esc(name)+(complete[i]?', complete':', incomplete')+'" data-action="studio-jump" data-target="'+["studio-article","studio-lyrics","studio-model","studio-cover-prompt","studio-release"][i]+'"><b>'+(i+1)+'</b> '+name+(complete[i]?' ✓':'')+'</button>').join('<i aria-hidden="true"></i>')+'</nav>'+
  '<div class="studio-columns">'+
  '<section class="studio-panel studio-article"><div class="studio-panel-head"><h2>01 <span>News article</span></h2><span class="studio-mini-tag">SOURCE</span></div>'+
  field("Project title",'<input id="studio-title" maxlength="140" placeholder="Still by Hand" value="'+esc(p?.title||"")+'">')+
