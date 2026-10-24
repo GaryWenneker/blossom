@@ -27,7 +27,9 @@ export function chatGptDomScripts(prompt, { image = false } = {}) {
     var nodes=document.querySelectorAll('[data-message-author-role="assistant"]');
     if(!state||nodes.length<=state.count||document.querySelector('button[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop streaming"]'))return 'WAIT';
     var node=nodes[nodes.length-1];
-    ${image ? `var images=Array.from(node.querySelectorAll('img')).filter(function(i){return i.complete&&i.naturalWidth>=256&&i.naturalHeight>=256});
+    ${image ? `// Image attachments can be siblings of the assistant text container.
+    var scope=node.closest('article')||node;
+    var images=Array.from(scope.querySelectorAll('img')).filter(function(i){return i.complete&&i.naturalWidth>=256&&i.naturalHeight>=256});
     if(!images.length)return 'WAIT';
     var img=images[images.length-1],text=img.currentSrc||img.src;` : `var text=(node.innerText||'').trim();
     if(!text)return 'WAIT';`}
@@ -42,3 +44,4 @@ export function chatGptDomScripts(prompt, { image = false } = {}) {
   })()`;
   return { fill, read };
 }
+
