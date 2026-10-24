@@ -1,6 +1,6 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=suno-playwright-v5";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-integrity-v1";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
@@ -29,8 +29,12 @@ async function api(path,data){
 async function refresh(){
   const dnaRequest=musicDnaRequest(state);
   const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets","studio/artists/banners","studio/artists/images"];
-  const results=await Promise.all(names.map(apiName=>api(apiName)));
+  const results=await Promise.all(names.map(apiName=>api(apiName==="studio/projects"?"studio/projects/page?limit=150"+(state.projectQuery?"&q="+encodeURIComponent(state.projectQuery):""):apiName)));
+  const page=results[names.indexOf("studio/projects")];results[names.indexOf("studio/projects")]=page.results;
   state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("studioartistsbanners","artistBanners").replace("studioartistsimages","artistImages").replace("browser-accounts","browserAccounts"),results[i]]));
+  state.data.studioProjectPage={total:page.total,nextCursor:page.nextCursor};
+  const selected=studioSelectedId();
+  if(selected&&!state.data.studioProjects.some(p=>p.id===selected))state.data.studioProjects.push(await api("studio/projects/"+selected));
   const id=studioActiveId(state);
   const [assets,dnaPage,dnaJobs,dnaReferences]=await Promise.all([
     id?api("studio/projects/"+id+"/assets"):Promise.resolve([]),
@@ -265,8 +269,29 @@ function render(){
  musicDnaChrome(state);
  watchOpenJobs();
 }
+function showStudioReport(title,text){
+ document.getElementById("studio-report-title").textContent=title;
+ document.getElementById("studio-report-text").value=text;
+ document.getElementById("studio-report-dialog").showModal();
+}
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
+ if(act==="studio-project-more"){
+   const cursor=state.data.studioProjectPage?.nextCursor;if(!cursor)return;
+   const page=await api("studio/projects/page?limit=150&cursor="+encodeURIComponent(cursor)+(state.projectQuery?"&q="+encodeURIComponent(state.projectQuery):""));
+   const ids=new Set(state.data.studioProjects.map(p=>p.id));state.data.studioProjects.push(...page.results.filter(p=>!ids.has(p.id)));
+   state.data.studioProjectPage={total:page.total,nextCursor:page.nextCursor};render();return;
+ }
+ if(act==="studio-project-search"){state.projectQuery=document.getElementById("studio-project-search").value.trim();await refresh();return;}
+ if(act==="studio-inventory"){
+   const data=await api("studio/inventory"),c=data.counts;
+   showStudioReport("Library check",[c.artists+" artists",c.projects+" projects",c.briefs+" song briefs",c.tracks+" production tracks",c.audioAssets+" imported audio files","",...data.artists.map(a=>a.name+" — "+a.projectCount+" projects"),"",data.duplicateCandidates.length+" groups with matching content (review before merging)",data.orphans.length+" missing relationships",data.findings.length+" projects with earlier or differing settings"].join("\n"));return;
+ }
+ if(act==="studio-history"){
+   const id=studioActiveId(state);if(!id)return;const data=await api("studio/projects/"+id+"/history");
+   showStudioReport("Project history",data.map(v=>"Version "+v.revision+" · "+niceDate(v.createdAt)+"\n"+v.snapshot.title+"\n"+(v.snapshot.result?.concept||"No brief yet")+"\n\n"+(v.snapshot.result?.lyrics||"Instrumental or no lyrics")).join("\n\n────────\n\n"));return;
+ }
+ if(act==="copy-studio-report"){await navigator.clipboard.writeText(document.getElementById("studio-report-text").value);message("Report copied");return;}
  if(act==="artist-image-generate"){
    const artistId=el.dataset.artistId;
    const prompt=document.getElementById("artist-photo-prompt-"+artistId)?.value?.trim()||"";

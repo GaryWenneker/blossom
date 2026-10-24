@@ -255,7 +255,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         return reply(res,200,{...result,handoff:store.browserAccountStatus(providerName)});
       }
       if(!path.startsWith("/api/"))throw new DomainError("Not found",404);
-      if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path);return;}
+      if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path,parsedUrl.searchParams);return;}
       if(path.startsWith("/api/music-dna/")) {await musicDnaApi.handle(req,res,path,parsedUrl.searchParams);return;}
       const method=req.method;
       if(!["GET","POST"].includes(method))throw new DomainError("Method not allowed",405);

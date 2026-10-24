@@ -45,7 +45,7 @@ function fakeBrowser() {
     library: {chromium:{launchPersistentContext:async(_dir, options)=>{
       assert.equal(options.headless,false);
       assert.equal(options.channel,"chrome");
-      assert.equal(options.acceptDownloads,false);
+      assert.equal(options.acceptDownloads,true,'the existing explicit MP3 download workflow needs download events');
       return context;
     }}} };
 }

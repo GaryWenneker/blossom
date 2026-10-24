@@ -55,6 +55,7 @@
     <div id="dna-queue-body"><p>No analysis jobs yet.</p></div>
     <div class="actions"><button type="button" class="secondary" data-action="dna-refresh">Refresh queue</button></div>
   </dialog>
+  <dialog id="studio-report-dialog"><div class="dialog-header"><strong id="studio-report-title">Studio report</strong><button data-action="close-dialog" class="icon-button" aria-label="Close">×</button></div><textarea id="studio-report-text" readonly rows="17" aria-label="Studio report"></textarea><div class="actions"><button data-action="copy-studio-report" class="primary">Copy report</button><button data-action="close-dialog" class="secondary">Close</button></div></dialog>
   <dialog id="recipe-dialog"><div class="dialog-header"><strong>Production blueprint</strong><button data-action="close-dialog" class="icon-button" aria-label="Close">×</button></div><p class="hint">Copy these reviewed parameters into your authorized Suno session. No live Suno API call occurs.</p><textarea id="recipe-text" readonly rows="17"></textarea><div class="actions"><button data-action="copy-recipe" class="primary">Copy blueprint</button><button data-action="close-dialog" class="secondary">Close</button></div></dialog>
   <dialog id="account-login-dialog" aria-labelledby="account-login-title">
     <div class="dialog-header"><strong id="account-login-title">Connect provider</strong><button type="button" data-action="browser-finished" class="icon-button" aria-label="Close login instructions">×</button></div>

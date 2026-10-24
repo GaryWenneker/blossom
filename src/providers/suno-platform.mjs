@@ -5,6 +5,8 @@ const AUDIO_MAX=40*1024*1024;
 export function sunoReady(project) {
   const missing=[];
   if(!project?.artistId)missing.push("Select an artist");
+  if(project?.integrity?.briefStale)missing.push("Regenerate the brief after changing its inputs");
+  if(project?.integrity?.instructionConflicts?.length)missing.push("Resolve conflicting brief instructions");
   const title=project?.title&&project.title!=="Untitled project"?project.title:project?.result?.titles?.[0];
   if(!title||title==="Untitled")missing.push("Choose a song title");
   if(!project?.result?.concept?.trim())missing.push("Generate the AI brief");

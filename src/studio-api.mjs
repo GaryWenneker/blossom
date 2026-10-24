@@ -1,3 +1,4 @@
+import { inputFingerprint } from "./studio-integrity.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { StudioReferences } from "./music-dna-studio.mjs";
 import { StudioStore, LENGTH_PRESETS, sunoRecipe, studioBriefFingerprint } from "./studio.mjs";
@@ -58,10 +59,19 @@ export class StudioAPI{
     if(!project.sourceUrl)throw new DomainError("Importeer of plak eerst een artikel",400);
     const imported=await this.articleImporter(project.sourceUrl);
     // Preserve operator-selected settings, title and metadata.
-    return this.studio.save({...project,article:imported.text});
+    return this.studio.save({...project,article:imported.text,expectedRevision:project.revision});
   }
-  async handle(req,res,path) {
+  async handle(req,res,path,query=new URLSearchParams()) {
     if(req.method==="GET"){
+      if(path==="/api/studio/projects/page"){
+        const page=this.studio.projectPage({limit:query.has("limit")?Number(query.get("limit")):50,cursor:query.get("cursor"),q:query.get("q")||""});
+        return send(res,200,{...page,results:page.results.map(p=>({...p,sunoJob:this.studio.sunoJob(p.id)}))});
+      }
+      if(path==="/api/studio/inventory")return send(res,200,this.studio.inventory());
+      const versions=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/(history|takes)$/);
+      if(versions)return send(res,200,versions[2]==="history"?this.studio.history(versions[1]):this.studio.sunoJobs(versions[1]));
+      const projectGet=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})$/);
+      if(projectGet){const p=this.studio.require(projectGet[1]);return send(res,200,{...p,sunoJob:this.studio.sunoJob(p.id)});}
       if(path==="/api/studio/projects")return send(res,200,this.studio.projects().map(p=>({...p,sunoJob:this.studio.sunoJob(p.id)})));
       const legacyPhoto=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/photo$/);
       if(legacyPhoto){
@@ -146,13 +156,13 @@ export class StudioAPI{
         const readiness=sunoReady(project);
         if(!readiness.ready)throw new DomainError("Not ready for Suno: "+readiness.missing.join("; "),409);
         if(this.sunoInFlight.has(projectId)||this.studio.sunoJob(projectId)&&
-          !["error","failed"].includes(this.studio.sunoJob(projectId).status))
+          !["error","failed"].includes(this.studio.sunoJob(projectId).status)&&!this.studio.sunoJob(projectId).importedAssetId)
           throw new DomainError("This project already has a Suno generation",409);
         this.sunoInFlight.add(projectId);
         try{
           const recipe=sunoRecipe(project,this.references.recipeStyle(projectId));
           const submitted=await this.sunoPlatform.submit(recipe,key);
-          return send(res,202,this.studio.beginSunoJob(projectId,submitted.id,submitted.status));
+          return send(res,202,this.studio.beginSunoJob(projectId,submitted.id,submitted.status,recipe,studioBriefFingerprint(project)));
         }finally{this.sunoInFlight.delete(projectId);}
       }
       const job=this.studio.sunoJob(projectId);
@@ -167,9 +177,9 @@ export class StudioAPI{
         const filename=randomUUID()+"."+extension;
         await writeFile(join(this.assetDir,filename),bytes,{flag:"wx",mode:0o600});
         const asset=this.studio.registerAsset(projectId,"audio",filename,mime,
-          {provider:"suno",briefFingerprint:studioBriefFingerprint(project)});
+          {provider:"suno",briefFingerprint:job.briefFingerprint||""});
         this.studio.selectAsset(projectId,asset.id,"audio");
-        if(!project.trackId&&project.artistId&&project.result?.concept)this.studio.makeTrack(projectId);
+        if(!project.trackId&&job.recipe?.source?.artistId)this.studio.makeTrack(projectId,{sourceRevision:job.recipe.source.revision});
         this.studio.markSunoImported(projectId,job.id,asset.id);
         return send(res,201,{job:this.studio.sunoJob(projectId),asset});
       }finally{this.sunoInFlight.delete(projectId);}
@@ -218,7 +228,7 @@ export class StudioAPI{
         ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
         referenceDna:this.references.generationContext(project.id)
       });
-      return send(res,200,this.studio.setResult(project.id,composed));
+      return send(res,200,this.studio.setResult(project.id,composed,{expectedRevision:project.revision,expectedInputHash:inputFingerprint(project),generated:true}));
     }
     const chatgptLyricsRoute=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-lyrics$/);
     if(chatgptLyricsRoute){
@@ -228,7 +238,7 @@ export class StudioAPI{
         referenceDna:this.references.generationContext(project.id)
       });
       if(typeof this.chatgptLyrics.notePercent==="function")await this.chatgptLyrics.notePercent(96);
-      const saved=this.studio.setResult(project.id,composed);
+      const saved=this.studio.setResult(project.id,composed,{expectedRevision:project.revision,expectedInputHash:inputFingerprint(project),generated:true});
       if(typeof this.chatgptLyrics.notePercent==="function")await this.chatgptLyrics.notePercent(100);
       return send(res,200,saved);
     }
@@ -251,6 +261,7 @@ export class StudioAPI{
         if(!p.trackId && p.artistId && p.result?.concept)this.studio.makeTrack(p.id);
         return send(res,201,{asset});
       }
+      const ready=sunoReady(p);if(op==="submit"&&!ready.ready)throw new DomainError("Not ready for Suno: "+ready.missing.join("; "),409);
       const recipe=sunoRecipe(p,this.references.recipeStyle(p.id));
       const result=op==="submit"?await this.sunoBrowser.submit(recipe):await this.sunoBrowser.prefill(recipe);
       this.store.audit("supervised_browser_prefill","studio_project",p.id,{filled:result.filled,skipped:result.skipped});
@@ -269,8 +280,14 @@ export class StudioAPI{
     let match=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/preset$/);
     if(match)return send(res,200,this.studio.savePreset(match[1],data));
     match=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/(extract|ask|create-track|generate-art)$/);
+    const lyricsMatch=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/lyrics$/);
+    if(lyricsMatch){
+      if(typeof data?.lyrics!=="string"||data.lyrics.length>12000)throw new DomainError("Invalid lyrics",400);
+      const p=this.studio.require(lyricsMatch[1]);
+      return send(res,200,this.studio.setResult(p.id,{...p.result,lyrics:data.lyrics},{applyParameters:false,expectedRevision:data.expectedRevision}));
+    }
     const resultMatch=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/result$/);
-    if(resultMatch)return send(res,200,this.studio.setResult(resultMatch[1],data));
+    if(resultMatch)return send(res,200,this.studio.setResult(resultMatch[1],data,{expectedRevision:data.expectedRevision}));
     if(!match)throw new DomainError("Not found",404);
     const p=this.studio.require(match[1]),operation=match[2];
     if(operation==="create-track")return send(res,201,this.studio.makeTrack(p.id));
@@ -282,7 +299,7 @@ export class StudioAPI{
         referenceDna:this.references.generationContext(p.id)};
       const result=hasAPIKey?await this.composer.generate(context,key):
         await this.localComposer.generate(context);
-      return send(res,200,this.studio.setResult(p.id,result));
+      return send(res,200,this.studio.setResult(p.id,result,{expectedRevision:articleProject.revision,expectedInputHash:inputFingerprint(articleProject),generated:true}));
     }
     if(operation==="ask")return send(res,200,hasAPIKey?
       await this.composer.ask(data?.question,p,key):

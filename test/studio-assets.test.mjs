@@ -56,7 +56,7 @@ test('recorded brief and provider distinguish current, earlier and legacy assets
     const image=studio.registerAsset(p.id,'cover',file,'image/png',{provider:'chatgpt',prompt:brief.coverPrompt,briefFingerprint:studioBriefFingerprint(p)});
     assert.equal(image.briefMatch,'current');assert.equal(image.provider,'chatgpt');
     studio.save({...p,title:'Retitled'});
-    assert.equal(studio.assets(p.id)[0].briefMatch,'current');
+    assert.equal(studio.assets(p.id)[0].briefMatch,'earlier','a cover with the old printed title belongs to an earlier brief');
     studio.setResult(p.id,{...brief,lyrics:'New song lyrics'});
     assert.equal(studio.assets(p.id)[0].briefMatch,'earlier');
   } finally {store.close();}
