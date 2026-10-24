@@ -411,8 +411,22 @@ export async function studioAudio(file,state,refresh,message){
  await refresh();message("Suno audio imported and linked to project");
  }catch(error){message(error.message,true)}
 }
+function syncSunoReadiness(){
+ const button=document.querySelector('[data-action="studio-suno-generate"]');
+ if(!button)return;
+ const artist=!!document.getElementById("studio-artist")?.value;
+ const source=!!(document.getElementById("studio-article")?.value.trim()||document.getElementById("studio-source")?.value.trim());
+ const brief=!!document.getElementById("studio-lyrics")?.value.trim()||!!document.getElementById("studio-instrumental")?.checked;
+ const model=!!document.getElementById("studio-model")?.value.trim();
+ const genre=!!document.getElementById("studio-genre")?.value.trim();
+ const concept=!!document.querySelector(".studio-concept")?.textContent.trim();
+ button.disabled=!(artist&&source&&brief&&model&&genre&&concept);
+ const hint=document.querySelector(".studio-release-copy .studio-hint");
+ if(hint)hint.textContent=!artist?"Select an artist in Article to enable Suno.":!source?"Add an article or source URL.":!brief?"Provide lyrics or select Instrumental.":!model||!genre?"Complete genre and Suno model.":"Ready for Suno. Review the generated draft before submitting.";
+}
 export function studioInput(event,state,refresh){
  const target=event.target;
+ if(target.id==="studio-artist"||target.id==="studio-article"||target.id==="studio-source"||target.id==="studio-lyrics"||target.id==="studio-instrumental"||target.id==="studio-model"||target.id==="studio-genre")syncSunoReadiness();
  if(target.id==="studio-project-picker"){
    if(target.value==="new"){work.activeId=null;work.creatingNew=true;}else{work.activeId=target.value;work.creatingNew=false;}
    work.assistantAnswer="";refresh();return;
