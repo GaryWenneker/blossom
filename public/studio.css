@@ -74,3 +74,12 @@ input[type=range]{accent-color:var(--lime);padding:0;height:5px;display:block;ba
 .studio-stepper button:hover{background:#252b29}
 .studio-release{margin:18px 0;padding:20px;border:1px solid #324036;border-radius:12px;background:#171c19}
 .studio-release .primary:disabled{opacity:.4;cursor:not-allowed}
+
+/* Release is a compact action bar, never an empty content panel. */
+.studio-release{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;min-height:0!important;height:auto!important;max-height:none;margin:11px 0;padding:13px 17px;align-self:start}
+.studio-release-copy{flex:1;min-width:0}
+.studio-release-copy h2{margin:0 0 5px;font-size:13px;color:#6cbd4c}
+.studio-release-copy h2 span{color:#f3f3f3}
+.studio-release-copy .studio-hint{margin:0;max-width:750px}
+.studio-release .primary{flex-shrink:0}
+@media(max-width:600px){.studio-release{align-items:stretch;flex-direction:column}.studio-release .primary{width:100%}}
