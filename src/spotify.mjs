@@ -2,14 +2,23 @@ import { randomBytes, createHash } from "node:crypto";
 import { DomainError } from "./domain.mjs";
 const hash = s=>createHash("sha256").update(s).digest("base64url");
 export class SpotifyOAuth {
-  constructor({vault,sessions,baseUrl="http://127.0.0.1:8787",fetcher=fetch}={}) {
+  constructor({vault,sessions,baseUrl="http://127.0.0.1:8787",publicCallbackOrigin="",fetcher=fetch}={}) {
     this.vault=vault;this.sessions=sessions;this.fetcher=fetcher;
     const url=new URL(baseUrl);
     if(url.username||url.password||url.search||url.hash||url.pathname!=="/"||
       !(url.protocol==="https:" || (url.protocol==="http:"&&url.hostname==="127.0.0.1")))
       throw Error("BLOSSOM_PUBLIC_URL must be HTTPS or http://127.0.0.1 for development");
     this.baseUrl=url.origin;
-    this.redirectUri=url.origin+"/auth/spotify/callback";
+    if(publicCallbackOrigin) {
+      const publicUrl=new URL(publicCallbackOrigin);
+      if(publicUrl.protocol!=="https:"||publicUrl.username||publicUrl.password||
+        publicUrl.pathname!=="/"||publicUrl.search||publicUrl.hash||publicUrl.port)
+        throw Error("Spotify public callback origin must be a public HTTPS origin");
+      this.redirectUri=publicUrl.origin+"/callback";
+    } else {
+      // Local-only development mode retains the historical loopback callback.
+      this.redirectUri=url.origin+"/auth/spotify/callback";
+    }
   }
   start(sessionHash, { chooseAccount = false } = {}) {
     this.vault.requireKey();
@@ -26,10 +35,25 @@ export class SpotifyOAuth {
     return url.toString();
   }
   async complete(sessionHash,state,code) {
-    if(typeof state!=="string"||!/^[-_a-zA-Z0-9]{20,100}$/.test(state)||
-      typeof code!=="string"||code.length<2||code.length>3000)throw new DomainError("Invalid Spotify callback",400);
+    this.validateCallback(state,code);
     const encrypted=this.sessions.consumeOAuth(state,sessionHash);
     if(!encrypted)throw new DomainError("Spotify login session expired or already used",409);
+    return this.exchangeSpotifyCode(encrypted,code);
+  }
+  async completePublic(state,code) {
+    if(!this.redirectUri.startsWith("https://"))
+      throw new DomainError("Public Spotify callback is not enabled",404);
+    this.validateCallback(state,code);
+    const encrypted=this.sessions.consumeSpotifyPublicOAuth(state);
+    if(!encrypted)throw new DomainError("Spotify consent expired, already processed or local login is no longer valid",409);
+    return this.exchangeSpotifyCode(encrypted,code);
+  }
+  validateCallback(state,code) {
+    if(typeof state!=="string"||!/^[-_a-zA-Z0-9]{20,100}$/.test(state)||
+      typeof code!=="string"||code.length<2||code.length>3000)
+      throw new DomainError("Invalid Spotify callback",400);
+  }
+  async exchangeSpotifyCode(encrypted,code) {
     const verifier=this.vault.decrypt("oauth_verifier",encrypted);
     const clientId=this.vault.getSetting("spotify_client_id");
     const response=await this.fetcher("https://accounts.spotify.com/api/token",{
