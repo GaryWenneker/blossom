@@ -21,7 +21,7 @@ import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
- "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
+ "/studio.js":"studio.js","/studio-persistence.js":"studio-persistence.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {
@@ -163,11 +163,11 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     const secureCookie=secure||(gatewayHost&&publicUiEnabled);
     const allowedOrigin=req.headers.origin===permittedOrigin ||
       (gatewayHost&&publicUiEnabled&&req.headers.origin===mcpOAuth.origin);
-    if(req.method==="POST"&&req.headers.origin&&!allowedOrigin &&
+    if(["POST","PATCH","PUT","DELETE"].includes(req.method)&&req.headers.origin&&!allowedOrigin &&
         !(path==="/mcp"&&(req.headers.origin==="https://chatgpt.com"||
           req.headers.origin===mcpOAuth.origin)))
       return reply(res,403,{error:"Origin verification failed"});
-    if(req.method==="POST"&&path!=="/mcp"&&req.headers["x-blossom-request"]!=="ui")
+    if(["POST","PATCH","PUT","DELETE"].includes(req.method)&&path!=="/mcp"&&req.headers["x-blossom-request"]!=="ui")
       return reply(res,403,{error:"Missing request protection header"});
     if(path==="/mcp")return musicDnaMcp.handle(req,res);
     try {

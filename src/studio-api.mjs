@@ -135,6 +135,11 @@ export class StudioAPI{
         return send(res,200,await this.chatgptLyrics.progress());
       throw new DomainError("Not found",404);
     }
+    if(req.method==="PATCH"){
+      const target=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})$/);
+      if(!target)throw new DomainError("Not found",404);
+      const data=await readJSON(req);return send(res,200,this.studio.patch(target[1],data?.changes,{expectedRevision:data?.expectedRevision,baseValues:data?.baseValues}));
+    }
     if(req.method!=="POST")throw new DomainError("Method not allowed",405);
     const upload=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/upload-audio$/);
     if(upload){

@@ -1,10 +1,66 @@
+import {StudioPersistence,projectChanges,mergeEdits,readDraft} from "./studio-persistence.js";
 export const STUDIO_ASSET_VERSION="chatgpt-assets-v2";
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambient:"Ambient",custom:"Custom"};
 const defaults={sunoModel:"v6",lyricLanguage:"auto",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
  instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,personalize:false,
  durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""};
-const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",chatgptPoll:null,activeStep:1,sunoTimer:null};
+const work={activeId:null,creatingNew:false,busy:false,assistantAnswer:"",uploading:false,bottomTab:"tracks",chatgptPoll:null,activeStep:1,sunoTimer:null,saveStatus:"Saved",renderedProject:null};
+let persistenceContext=null;
+const controllers=new Map();
+const draftPrefix="blossom.studio.draft.v1:";
+function draftStorage(){try{return globalThis.localStorage;}catch{return undefined;}}
+function saveSelection(){try{draftStorage()?.setItem("blossom.studio.active",work.creatingNew?"new":work.activeId||"");}catch{}}
+function showSaveStatus(status,error,backupError){
+ const labels={pending:"Pending",saving:"Saving…",saved:"Saved",conflict:"Conflict — local edits kept",error:"Not saved"};
+ work.saveStatus=(labels[status]||status)+(backupError&&status!=="saved"?" · local backup unavailable":"");
+ const node=typeof document!=="undefined"&&document.getElementById?.("studio-save-state");if(node)node.textContent=work.saveStatus;
+ const controls=typeof document!=="undefined"&&document.getElementById?.("studio-save-conflict");if(controls)controls.hidden=status!=="conflict";
+}
+function controllerFor(state,api){
+ const p=stateOf(state),key=p?.id||"new";
+ if(controllers.has(key)){
+  const c=controllers.get(key);if(p&&!c.dirty&&!c.running){c.base=JSON.parse(JSON.stringify(p));c.draft=JSON.parse(JSON.stringify(p));}return c;
+ }
+ const c=new StudioPersistence({project:p||{title:"",article:"",sourceUrl:"",artistId:"",parameters:{...defaults},result:{}},request:api,storage:draftStorage(),key:draftPrefix+key,
+  onStatus:(status,error)=>{if(stateOf(state)?.id===c.base.id||work.creatingNew&&key==="new")showSaveStatus(status,error,c.backupError);},
+  onSaved:saved=>{
+   const active=stateOf(state)?.id===saved.id||work.creatingNew&&key==="new";
+   const previous=(state.data.studioProjects||[]).find(x=>x.id===saved.id);
+   state.data.studioProjects=[{...previous,...saved},...(state.data.studioProjects||[]).filter(x=>x.id!==saved.id)];controllers.set(saved.id,c);
+   if(key==="new"){
+    controllers.delete("new");const oldKey=c.key;c.key=draftPrefix+saved.id;c.persist();
+    if(!c.backupError)try{draftStorage()?.removeItem(oldKey);}catch{}
+   }
+   if(active){work.activeId=saved.id;work.creatingNew=false;saveSelection();
+    updateStudioReadiness(state);
+    const hint=typeof document!=="undefined"&&document.getElementById?.("studio-brief-state");if(hint)hint.textContent=saved.integrity?.briefStale?"Brief uses earlier inputs. Regenerate it before making music.":"";
+   }
+  }});
+ controllers.set(key,c);return c;
+}
+export function studioConfigurePersistence(state,api,message){
+ persistenceContext={state,api,message};
+ try{const selected=draftStorage()?.getItem("blossom.studio.active");if(selected==="new")work.creatingNew=true;else if(/^[a-f0-9-]{36}$/.test(selected||""))work.activeId=selected;}catch{}
+}
+export async function studioFlush(){
+ for(const c of new Set(controllers.values()))if(c.dirty||c.running)await c.flush();
+}
+export function studioResumePersistence(){
+ if(!persistenceContext)return;const {state,api}=persistenceContext;const key=stateOf(state)?.id||"new";
+ if(!readDraft(draftStorage(),draftPrefix+key))return;
+ const c=controllerFor(state,api);if(!c.error)void c.flush().catch(()=>{});
+}
+export function studioAutoSave(event,state,api){
+ const key=event.target.id;
+ const top={"studio-title":"title","studio-article":"article","studio-source":"sourceUrl","studio-artist":"artistId"};
+ const controls={"studio-model":"sunoModel","studio-genre":"genre","studio-styles":"additionalStyles","studio-excludes":"excludeStyles","studio-language":"lyricLanguage","studio-gender":"vocalGender","studio-instrumental":"instrumental","studio-max-mode":"maxMode","studio-personalize":"personalize","studio-weirdness":"weirdness","studio-styleInfluence":"styleInfluence","studio-variety":"variety","studio-duration-preset":"durationPreset","studio-duration":"targetSeconds","studio-notes":"customInstructions","studio-cover-prompt":"imagePrompt","studio-photo-prompt":"artistPhotoPrompt"};
+ let changes;
+ if(top[key])changes={[top[key]]:event.target.value};
+ else if(key==="studio-lyrics")changes={result:{lyrics:event.target.value}};
+ else if(controls[key]){const params=paramsFromDOM();changes={parameters:{[controls[key]]:params[controls[key]]}};if(key==="studio-duration-preset")changes.parameters.targetSeconds=params.targetSeconds;}
+ if(changes){saveSelection();controllerFor(state,api).edit(changes);}
+}
 const formatTime=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
 const encode=v=>esc(v);
 export function studioSunoReadiness(project){
@@ -88,13 +144,14 @@ const panels=(p,assets,state)=>{
  studioStepper(p,assets)+
  '<div class="studio-columns">'+
  '<section id="studio-step-1" class="studio-panel studio-article" tabindex="-1"><div class="studio-panel-head"><h2>01 <span>News article</span></h2><span class="studio-mini-tag">SOURCE</span></div>'+
+ '<div id="studio-save-conflict" '+(work.saveStatus.startsWith('Conflict')?'':'hidden')+'><p class="studio-hint">The same field changed elsewhere. Your local edits are kept.</p><button class="secondary mini" data-action="studio-conflict-local">Keep my edits</button><button class="secondary mini" data-action="studio-conflict-server">Use saved version</button></div>'+
  field("Project title",'<input id="studio-title" maxlength="140" placeholder="Still by Hand" value="'+esc(p?.title||"")+'">')+
  '<details class="studio-library-tools"><summary>Projects, history &amp; library checks</summary>'+
  '<div class="studio-file-actions"><button class="secondary mini" data-action="studio-history">History</button>'+
  '<button class="secondary mini" data-action="studio-inventory">Check library</button>'+
  (state.data.studioProjectPage?.nextCursor?'<button class="secondary mini" data-action="studio-project-more">More projects</button>':'')+'</div>'+
  '<input id="studio-project-search" aria-label="Search projects or artists" placeholder="Search projects or artists" value="'+esc(state.projectQuery||'')+'"><button class="secondary mini" data-action="studio-project-search">Search</button></details>'+
- (p?.integrity?.briefStale?'<p class="studio-hint" role="status">Brief uses earlier inputs. Regenerate it before making music.</p>':'')+
+ '<p id="studio-brief-state" class="studio-hint" role="status">'+(p?.integrity?.briefStale?'Brief uses earlier inputs. Regenerate it before making music.':'')+'</p>'+
  (p?.integrity?.instructionConflicts||[]).map(message=>'<p class="studio-hint" role="status">'+esc(message)+'</p>').join('')+
  (p?.integrity?.trackMismatch?'<p class="studio-hint" role="status">The linked track belongs to an earlier project version.</p>':'')+
  field("Artist",'<select id="studio-artist"><option value="">Choose an artist</option>'+artists.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===p?.artistId?"selected":"")+'>'+esc(a.name)+" · "+esc(a.genre)+'</option>').join("")+'</select>')+
@@ -196,12 +253,16 @@ const panels=(p,assets,state)=>{
  '<div class="studio-answer">'+esc(work.assistantAnswer||"Antwoorden verschijnen hier. Het lokale model vereist geen API-key.")+'</div></section></div>';
 };
 export function studioView(state){
- const project=stateOf(state),assets=state.data.studioAssets||[];
+ const saved=stateOf(state),key=saved?.id||"new",c=controllers.get(key),stored=readDraft(draftStorage(),draftPrefix+key);
+ const edits=c?.dirty?c.changes:stored?projectChanges(stored.base,stored.draft):{};
+ const project=Object.keys(edits).length?mergeEdits(saved||{parameters:defaults,result:{}},edits):saved;
+ work.renderedProject=project;
+ const assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
  '<div class="studio-statusline"><span>● Lyrics: ChatGPT in your signed-in Safari</span>'+
  '<span>● Images: ChatGPT · '+esc(status.studioVersion===STUDIO_ASSET_VERSION?"asset selection ready":"restart Blossom and reload this page")+'</span>'+
- '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
+ '<span id="studio-save-state" role="status" aria-live="polite">'+esc(Object.keys(edits).length&&work.saveStatus==='Saved'?'Pending':work.saveStatus)+'</span></div></div>';
 }
 function collect(state){
  return {id:stateOf(state)?.id,title:document.querySelector("#studio-title").value,
@@ -211,9 +272,13 @@ function collect(state){
 }
 async function save(state,api,patch={}){
  if(work.activeId&&!work.creatingNew&&!stateOf(state))throw Error("Selected project is unavailable. Reload it before saving.");
- const selected=stateOf(state);const p=await api("studio/projects",{...collect(state),...patch,...(selected?.revision!==undefined?{expectedRevision:selected.revision}:{})});
- work.activeId=p.id;work.creatingNew=false;
- state.data.studioProjects=[p,...(state.data.studioProjects||[]).filter(x=>x.id!==p.id)];return p;
+ const selected=stateOf(state),c=controllerFor(state,api);
+ const baseline=work.renderedProject&&work.renderedProject.id===selected?.id?work.renderedProject:selected||c.base;
+ const values={...collect(state),...patch};const lyrics=document.querySelector("#studio-lyrics");
+ if(lyrics&&lyrics.value!==(baseline.result?.lyrics||""))values.result={lyrics:lyrics.value};
+ const edits=projectChanges(baseline,values);
+ if(Object.keys(edits).length)c.edit(edits);
+ return c.flush();
 }
 export function pasteStartsLyrics(field,text){
  const value=String(text??"").trim();
@@ -463,8 +528,11 @@ export async function studioAction(el,state,api,refresh,message){
       pane.hidden=pane.id!=="studio-pane-"+work.bottomTab;
     return;
   }
-  if(action==="studio-use-title"){document.querySelector("#studio-title").value=el.dataset.title;return;}
-  if(action==="studio-new"){work.activeId=null;work.creatingNew=true;work.assistantAnswer="";await refresh();return;}
+  if(action==="studio-use-title"){document.querySelector("#studio-title").value=el.dataset.title;await save(state,api);return;}
+  if(action==="studio-new"){await studioFlush();work.activeId=null;work.creatingNew=true;work.assistantAnswer="";saveSelection();await refresh();return;}
+  if(action==="studio-conflict-local"||action==="studio-conflict-server"){
+    const c=controllerFor(state,api);await c.resolve(action==="studio-conflict-local");await refresh();return;
+  }
   if(action==="studio-save"){await save(state,api);await refresh();message("Project saved");return;}
   if(action==="studio-use-preset"){
     const id=document.querySelector("#studio-artist").value;
@@ -494,6 +562,7 @@ export async function studioAction(el,state,api,refresh,message){
     const prompt=cover?result.coverPrompt:result.artistPhotoPrompt;
     if(!prompt){message("Generate the song brief with ChatGPT first",true);return;}
     document.querySelector(cover?"#studio-cover-prompt":"#studio-photo-prompt").value=prompt;
+    const input=document.querySelector(cover?"#studio-cover-prompt":"#studio-photo-prompt");studioAutoSave({target:input},state,api);await studioFlush();
     message("Song brief prompt applied");return;
   }
   if(action==="studio-select-asset"||action==="studio-delete-asset"){
@@ -530,7 +599,7 @@ export async function studioAction(el,state,api,refresh,message){
   }
   if(action==="studio-save-lyrics"){
     const result={...p.result,lyrics:document.querySelector("#studio-lyrics").value};
-    await api("studio/projects/"+p.id+"/lyrics",{lyrics:result.lyrics,expectedRevision:p.revision});await refresh();message("Lyrics edits saved");return;
+    if(result.lyrics!==p.result?.lyrics)await api("studio/projects/"+p.id+"/lyrics",{lyrics:result.lyrics,expectedRevision:p.revision});await refresh();message("Lyrics edits saved");return;
   }
   if(action==="studio-suno-open"){
     const canOpenSafari=state.data.browserAccounts?.nativeSafariAvailable &&
@@ -554,7 +623,7 @@ export async function studioAction(el,state,api,refresh,message){
     return;
   }
   if(action==="studio-suno-prefill"){
-    if(p.result?.concept){
+    if(p.result?.concept&&p.result.lyrics!==document.querySelector("#studio-lyrics").value){
       await api("studio/projects/"+p.id+"/lyrics",
         {lyrics:document.querySelector("#studio-lyrics").value,expectedRevision:p.revision});
     }
@@ -616,8 +685,9 @@ export function studioInput(event,state,refresh){
  if(["studio-title","studio-artist","studio-genre","studio-lyrics","studio-instrumental"].includes(target.id))
    updateStudioReadiness(state);
  if(target.id==="studio-project-picker"){
-   if(target.value==="new"){work.activeId=null;work.creatingNew=true;}else{work.activeId=target.value;work.creatingNew=false;}
-   work.assistantAnswer="";refresh();return;
+   const select=()=>{if(target.value==="new"){work.activeId=null;work.creatingNew=true;}else{work.activeId=target.value;work.creatingNew=false;}work.assistantAnswer="";saveSelection();return refresh();};
+   if([...new Set(controllers.values())].some(c=>c.dirty||c.running))return studioFlush().then(select).catch(error=>{target.value=work.activeId||"new";persistenceContext?.message(error.message,true);});
+   return select();
  }
  if(target.id==="studio-duration-preset"){
    const profiles=state.data.studioPresets||{};
