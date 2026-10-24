@@ -151,7 +151,7 @@ const panels=(p,assets,state)=>{
  '<p class="studio-hint">Album artwork is optional for Suno generation. Your selected artist banner remains linked to the artist.</p></div>'+
  '<div class="studio-release-controls"><button type="button" class="primary" data-action="studio-suno-generate" '+
  (studioSunoReadiness(p).ready?'':'disabled')+'>'+
- (state.data.studioStatus?.sunoApiConfigured?'♫ Generate music in Suno':'♫ Prepare song in Suno ↗')+'</button>'+
+ (state.data.studioStatus?.sunoApiConfigured?'♫ Generate music in Suno':'♫ Generate in Suno (Playwright) ↗')+'</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-browser-download">Import selected Suno MP3</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-status"'+(p?.sunoJob?'':' disabled')+'>Check generation status</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-import"'+
