@@ -85,7 +85,7 @@ test("Connections sign-in and Suno Studio actions use the real browser, never Pl
   assert.match(studio,/View \/ copy Suno blueprint/);
   assert.doesNotMatch(studio,/Open Suno \(Playwright\)/);
   assert.match(server,/new ConnectedBrowsers/);
-  assert.match(studioApi,/new VisibleBrowserSession\("suno"\)/);
+  assert.match(studioApi,/new SunoBrowserHandoff\(\)/);
   assert.match(html,/id="account-login-dialog"/);
   assert.match(css,/body\[data-view="connections"\] \.content\{overflow:hidden/);
 });
