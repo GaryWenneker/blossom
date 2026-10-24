@@ -38,6 +38,7 @@ async function refresh(){
   state.data.studioAssets=assets;
   state.data.musicDnaProfiles=dnaProfiles.results;
   state.data.musicDnaJobs=dnaJobs.jobs;
+  state.data.musicDnaJobCounts=dnaJobs.counts||null;
   state.data.studioReferences=dnaReferences.references;
   render();
 }

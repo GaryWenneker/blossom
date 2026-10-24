@@ -59,6 +59,8 @@ function summary(profile) {
 export function musicDnaView(state) {
   const profiles = state.data.musicDnaProfiles || [];
   const jobs = state.data.musicDnaJobs || [];
+  const counts = state.data.musicDnaJobCounts || null;
+  const count = counts?.queued ?? jobs.filter(j=>j.status==="queued").length;
   return '<div class="music-dna-library">' +
     '<header class="studio-toolbar"><div class="studio-title"><div class="studio-square-icon">♫</div>' +
     '<div><h1>Music DNA Library</h1><p>Existing music, analyzed as reusable musical traits for original compositions.</p></div></div></header>' +
@@ -71,8 +73,13 @@ export function musicDnaView(state) {
     '<label>Source notes<input name="sourceNote" maxlength="800" placeholder="Album version, release details..."></label>' +
     '<button type="submit" class="primary">Add to library</button></form>' +
     '<p class="studio-hint">A reference with only a title or link is not yet analyzed. To extract real signal metrics, upload a permitted MP3/WAV. For instruments, vocals and playing techniques, add a verified detailed DNA analysis.</p></section>' +
-    '<section class="studio-panel"><div class="studio-panel-head"><h2>Analysis queue</h2><span class="studio-mini-tag">LOCAL WORKER</span></div>' +
-    '<p class="studio-hint">Audio jobs are processed locally with FFmpeg when the DNA worker is running. Metadata-only jobs wait for actual audio or an analyst.</p>' +
+    '<section class="studio-panel"><div class="studio-panel-head"><h2>Analysis queue</h2><span class="studio-mini-tag">'+
+      count+' WAITING</span></div>' +
+    '<p class="studio-hint">'+
+      (counts ? esc(counts.waitingForEvidence)+' imported tracks waiting for evidence/research · '+
+        esc(counts.readyForAudio)+' ready for local audio analysis · '+
+        esc(counts.completed)+' completed jobs. ' : '')+
+      'Only the first 50 jobs are listed. Importing a Spotify favorite is NOT a measured Music DNA analysis. Local FFmpeg can only process audio you have permission to upload.</p>' +
     '<div class="music-dna-jobs">' +
     (jobs.length ? jobs.slice(0, 12).map(j => '<div><span>' + esc(j.profileId.slice(0, 8)) +
       '</span><strong>' + esc(j.status) + '</strong>' +
