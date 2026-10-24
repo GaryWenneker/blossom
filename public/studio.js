@@ -105,7 +105,7 @@ const panels=(p,assets,state)=>{
  '<section class="studio-panel studio-release" id="studio-release"><div class="studio-panel-head"><h2>05 <span>Release to Suno</span></h2></div>'+
  '<button type="button" class="primary" data-action="studio-suno-generate" '+(!!p?.artistId&&!!result.concept&&(params.instrumental||!!result.lyrics)&&!!params.genre&&!!params.sunoModel&&(!!p.article||!!p.sourceUrl)?'':'disabled')+'>Generate in Suno ↗</button>'+
  '<p class="studio-hint">Blossom opens Suno and fills recognized controls. Review settings and press Generate on Suno, then import the MP3/WAV below.</p></section>'+
- '<div class="studio-lower studio-output'><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
+ '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="tracks" aria-controls="studio-pane-tracks" aria-selected="'+(work.bottomTab==="tracks"?"true":"false")+'">Generated tracks &amp; assets</button>'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="assistant" aria-controls="studio-pane-assistant" aria-selected="'+(work.bottomTab==="assistant"?"true":"false")+'">AI assistant</button></div>'+
  '<section id="studio-pane-tracks" role="tabpanel" aria-label="Generated tracks and assets" class="studio-panel studio-files studio-bottom-pane" '+(work.bottomTab==="tracks"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>Generated tracks & linked assets</h2><span class="studio-mini-tag">PROJECT LIBRARY</span></div>'+
