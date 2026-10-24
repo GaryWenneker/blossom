@@ -65,3 +65,12 @@ input[type=range]{accent-color:var(--lime);padding:0;height:5px;display:block;ba
 .studio-asset-details{font-size:10px;color:#a2afa5;max-width:600px}.studio-asset-details summary{cursor:pointer}.studio-asset-details p{white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0}
 .studio-update-notice{padding:8px 10px;border:1px solid #b7a14a;border-radius:6px;color:#e8d78e;font-size:11px;background:#29261c;margin-bottom:8px}
 @media(max-width:600px){.studio-asset-actions{flex-basis:100%}.studio-trackline audio{width:100%}}
+
+/* Interactive workflow progress, with a distinct completed state. */
+.studio-stepper button{appearance:none;border:0;background:transparent;color:#8f9499;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font:inherit;padding:7px 10px;border-radius:8px}
+.studio-stepper button.complete{background:#203323;color:#b9f18c}
+.studio-stepper button.pending{color:#929a96}
+.studio-stepper button:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.studio-stepper button:hover{background:#252b29}
+.studio-release{margin:18px 0;padding:20px;border:1px solid #324036;border-radius:12px;background:#171c19}
+.studio-release .primary:disabled{opacity:.4;cursor:not-allowed}
