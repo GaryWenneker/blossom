@@ -1,6 +1,6 @@
 import { MusicDNA } from "./music-dna.mjs";
 import { StudioReferences } from "./music-dna-studio.mjs";
-import { StudioStore, LENGTH_PRESETS, sunoRecipe } from "./studio.mjs";
+import { StudioStore, LENGTH_PRESETS, sunoRecipe, studioBriefFingerprint } from "./studio.mjs";
 import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
 import { ChatGptImages } from "./chatgpt-images.mjs";
@@ -67,7 +67,7 @@ export class StudioAPI{
       if(path==="/api/studio/status")return send(res,200,{
         openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY||this.composer.key),
         localAI:await this.localComposer.status(),
-        drawConfigured:this.draw.enabled(),imageProvider:"chatgpt",generationMode:"ChatGPT in signed-in Safari; results saved automatically",
+        studioVersion:"chatgpt-assets-v2",drawConfigured:false,imageProvider:"chatgpt",generationMode:"ChatGPT in signed-in Safari; results saved automatically",
         sunoGeneration:"manual authorized handoff"});
       if(path==="/api/studio/artists/presets")
         return send(res,200,Object.fromEntries(this.store.artists().map(a=>[a.id,this.studio.preset(a.id)])));
@@ -80,7 +80,7 @@ export class StudioAPI{
       }
       m=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/(assets|recipe)$/);
       if(m){const p=this.studio.require(m[1]);
-        return send(res,200,m[2]==="assets"?this.studio.assets(p.id):sunoRecipe(p,this.references.recipeStyle(p.id)));}
+        return send(res,200,m[2]==="assets"?this.studio.assets(p.id):{...sunoRecipe(p,this.references.recipeStyle(p.id)),selectedAssets:this.studio.assets(p.id).filter(a=>a.selected)});}
       throw new DomainError("Not found",404);
     }
     if(req.method!=="POST")throw new DomainError("Method not allowed",405);
@@ -91,9 +91,14 @@ export class StudioAPI{
       await mkdir(this.assetDir,{recursive:true,mode:0o700});
       const filename=randomUUID()+"."+extension;
       await writeFile(join(this.assetDir,filename),bytes,{flag:"wx",mode:0o600});
-      return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime));
+      return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime,{provider:"upload",briefFingerprint:studioBriefFingerprint(this.studio.require(upload[1]))}));
     }
     const data=await readJSON(req);
+    const assetAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/assets\/([a-f0-9-]{36})\/(select|delete)$/);
+    if(assetAction){
+      const [,projectId,assetId,action]=assetAction;
+      return send(res,200,action==="select"?this.studio.selectAsset(projectId,assetId,data?.kind):this.studio.deleteAsset(projectId,assetId));
+    }
     if(path==="/api/studio/articles/import"){
       const imported=await this.articleImporter(data?.url);
       return send(res,200,imported);
@@ -161,9 +166,15 @@ export class StudioAPI{
       await this.composer.ask(data?.question,p,key):
       await this.localComposer.ask(data?.question,p));
     if(operation==="generate-art"){
-      const kind=data?.kind,defaultPrompt=kind==="cover"?p.result?.coverPrompt:p.result?.artistPhotoPrompt;
-      const generated=await this.chatgptImages.generate({kind,prompt:data?.prompt||defaultPrompt});
-      return send(res,201,this.studio.registerAsset(p.id,kind,generated.filename,generated.mime));
+      const kind=data?.kind;
+      if(!["cover","artist-photo"].includes(kind))throw new DomainError("Invalid asset type",400);
+      const defaultPrompt=kind==="cover"?p.result?.coverPrompt:p.result?.artistPhotoPrompt;
+      const prompt=data?.prompt||defaultPrompt;
+      const context={title:sunoRecipe(p).title,concept:p.result?.concept||"",lyrics:p.result?.lyrics||"",genre:p.parameters.genre,
+        artistDna:this.store.artist(p.artistId)?.dna||""};
+      const generated=await this.chatgptImages.generate({kind,prompt,context});
+      return send(res,201,this.studio.registerAsset(p.id,kind,generated.filename,generated.mime,
+        {provider:"chatgpt",prompt,briefFingerprint:studioBriefFingerprint(p)}));
     }
     throw new DomainError("Not found",404);
   }

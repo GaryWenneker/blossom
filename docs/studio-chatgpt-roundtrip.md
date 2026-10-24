@@ -24,3 +24,13 @@ Suno is still an authorized manual handoff: the recipe is preparation data, not 
 ## Validation
 
 `test/studio-chatgpt-roundtrip.test.mjs` executes the actual generated DOM JavaScript against a fake page, rejects stale/streaming replies, checks explicit language, exercises parameter parsing and atomic persistence, checks image validation/error behavior, and runs authenticated HTTP calls through brief generation, both image kinds, asset registration and the Suno recipe. Existing tests cover auth, CSRF, MCP, article import and generation errors. Real signed-in Safari, ChatGPT image generation and Suno account controls must be verified on the user's Mac; Linux unit tests do not establish those external results.
+
+## Asset choices and provenance
+
+Studio image generation now records provider `chatgpt`, the exact visual prompt, and a fingerprint of the song/article context. The request includes the current concept, lyrics, genre and artist context rather than only an old imported news headline. Legacy assets retain unknown provenance; the migration never labels old images as ChatGPT output. The footer identifies ChatGPT instead of the former Draw Things status.
+
+Each saved image is a candidate. Use **Use as cover** or **Use as artist photo** in the project library to select one per role. Uploaded audio has **Use audio**. New generations never replace an explicit choice. Preview panels and the recipe's `selectedAssets` use only selected assets. Context labels distinguish the current brief, an earlier brief and unrecorded legacy context; these labels establish provenance, not a claim of visual quality or semantic analysis. Selection changes preserve unsaved text fields.
+
+**Remove** hides the asset from its project, clears its selection and disables its content URL. Original files and metadata remain recoverable; no other project is affected. POST routes require the normal authenticated/CSRF-protected session and verify that the asset belongs to the project before changes.
+
+The current UI checks `studioVersion: chatgpt-assets-v2` before image generation and asset changes. If the backend is older, it asks for restart/reload instead of sending an image request that an old backend could route to Draw Things. A versioned Studio module import makes the changed frontend dependency explicit on reload. A screenshot still showing the DRAW THINGS panel is an older loaded frontend, not evidence that the current ChatGPT-only route completed.

@@ -1,5 +1,5 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload } from "./music-dna.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=chatgpt-assets-v2";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};

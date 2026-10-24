@@ -1,3 +1,4 @@
+export const STUDIO_ASSET_VERSION="chatgpt-assets-v2";
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambient:"Ambient",custom:"Custom"};
 const defaults={sunoModel:"v6",lyricLanguage:"auto",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["Auto-Tune","unlicensed samples"],vocalGender:"male",
@@ -36,10 +37,11 @@ const panels=(p,assets,state)=>{
  const artists=state.data.artists||[],genres=Object.values(state.data.genres||{}).flat();
  const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
  const projectReferences=state.data.studioReferences||[];
- const image=assets.find(a=>a.kind==="cover"),photo=assets.find(a=>a.kind==="artist-photo");
+ const image=assets.find(a=>a.kind==="cover"&&a.selected),photo=assets.find(a=>a.kind==="artist-photo"&&a.selected);
  const automaticLabel="✦ Generate with ChatGPT";
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(x.title)+'</option>').join("");
  const artPrompt=params.imagePrompt||result.coverPrompt||"",photoPrompt=params.artistPhotoPrompt||result.artistPhotoPrompt||"";
+ const updateNotice=state.data.studioStatus?.studioVersion!==STUDIO_ASSET_VERSION?'<div class="studio-update-notice" role="status">Update required: restart Blossom and reload this page to use ChatGPT images and asset selection.</div>':'';
  return '<div class="studio-toolbar">'+
  '<div class="studio-title"><div class="studio-square-icon">♫</div><div><h1>News to Song</h1><p>From story to original music, visual identity and release preparation.</p></div></div>'+
  '<div class="studio-toolbar-actions"><select id="studio-project-picker" aria-label="Select project"><option value="new">+ New project</option>'+projectOptions+'</select>'+
@@ -89,13 +91,15 @@ const panels=(p,assets,state)=>{
  '<div class="studio-suno-handoff"><button type="button" class="secondary" data-action="studio-suno-open">Open Suno in Safari / browser ↗</button>'+
  '<button type="button" class="primary" data-action="studio-suno-prefill">View / copy Suno blueprint</button>'+
  '<p class="studio-hint">Use your regular browser for Google login. Copy the blueprint into Suno and click Generate yourself.</p></div></section>'+
- '<section class="studio-panel studio-art"><div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">CHATGPT</span></div>'+
- '<div class="studio-assetpreview">'+(image?'<img src="'+esc(image.url)+'" alt="Generated album artwork" loading="lazy">':'<div class="studio-empty-art"><div>♫</div><strong>ALBUM ART</strong><small>Generated with ChatGPT</small></div>')+'</div>'+
+ '<section class="studio-panel studio-art">'+updateNotice+'<div class="studio-panel-head"><h2>04 <span>Asset generation</span></h2><span class="studio-mini-tag">CHATGPT</span></div>'+
+ '<div class="studio-assetpreview">'+(image?'<img src="'+esc(image.url)+'" alt="Generated album artwork" loading="lazy">':'<div class="studio-empty-art"><div>♫</div><strong>ALBUM ART</strong><small>Generate with ChatGPT, then select a cover below</small></div>')+'</div>'+
  '<div class="studio-arttabs"><span>Album cover</span><span>Artist portrait</span></div>'+
  field("Album artwork prompt",'<textarea id="studio-cover-prompt" rows="3" placeholder="Original cinematic artwork, square format...">'+esc(artPrompt)+'</textarea>')+
- '<button class="primary wide" data-action="studio-cover">Generate album art</button>'+
+ '<button class="secondary mini" data-action="studio-brief-cover-prompt">Use song brief prompt</button>'+
+ '<button class="primary wide" data-action="studio-cover">Generate album art with ChatGPT</button>'+
  field("Spotify artist photo prompt",'<textarea id="studio-photo-prompt" rows="2" placeholder="Photorealistic portrait of a fictional musician...">'+esc(photoPrompt)+'</textarea>')+
- '<button class="secondary wide" data-action="studio-photo">Generate artist photo</button>'+
+ '<button class="secondary mini" data-action="studio-brief-photo-prompt">Use song brief prompt</button>'+
+ '<button class="secondary wide" data-action="studio-photo">Generate artist photo with ChatGPT</button>'+
  (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">ChatGPT generates both images in signed-in Safari. Finished images are saved and linked to this project.</p>')+
  '</section></div>'+
  '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
@@ -104,7 +108,12 @@ const panels=(p,assets,state)=>{
  '<section id="studio-pane-tracks" role="tabpanel" aria-label="Generated tracks and assets" class="studio-panel studio-files studio-bottom-pane" '+(work.bottomTab==="tracks"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>Generated tracks & linked assets</h2><span class="studio-mini-tag">PROJECT LIBRARY</span></div>'+
  '<div class="studio-tracks">'+(p?.trackId?'<div class="studio-trackline"><div class="studio-note">♫</div><div><strong>'+esc(p.title)+'</strong><small>Track linked · ID '+esc(p.trackId.slice(0,8))+'</small></div><span class="studio-mini-tag">IN PRODUCTION</span></div>':'<div class="studio-empty-row">No track linked yet. Extract an article, then create the production brief.</div>')+
  assets.map(a=>'<div class="studio-trackline">'+(a.kind==="audio"?'<div class="studio-note">▶</div>':'<img src="'+esc(a.url)+'" alt="'+esc(a.kind)+'">')+
- '<div><strong>'+esc(a.kind.replace("-"," "))+'</strong><small>'+esc(a.createdAt.slice(0,16).replace("T"," "))+'</small></div>'+
+ '<div><strong>'+esc(a.kind.replace("-"," "))+(a.selected?' · <span class="studio-selected-label">Selected</span>':'')+'</strong><small>'+esc(a.createdAt.slice(0,16).replace("T"," "))+' · '+esc(a.provider==="chatgpt"?"ChatGPT":a.provider==="upload"?"Uploaded audio":a.provider==="draw-things"?"Draw Things":"Legacy · provider unknown")+' · '+esc(a.briefMatch==="current"?"Current song brief":a.briefMatch==="earlier"?"Earlier song brief":"Brief not recorded")+'</small>'+
+ (a.prompt?'<details class="studio-asset-details"><summary>View prompt</summary><p>'+esc(a.prompt)+'</p></details>':'')+'</div>'+
+ '<div class="studio-asset-actions">'+(a.kind==="audio"?'<button class="secondary mini" data-action="studio-select-asset" data-asset-id="'+esc(a.id)+'" data-kind="audio" '+(a.selected?'disabled':'')+'>Use audio</button>':
+ '<button class="secondary mini" data-action="studio-select-asset" data-asset-id="'+esc(a.id)+'" data-kind="cover" '+(a.selected&&a.kind==="cover"?'disabled':'')+'>Use as cover</button>'+
+ '<button class="secondary mini" data-action="studio-select-asset" data-asset-id="'+esc(a.id)+'" data-kind="artist-photo" '+(a.selected&&a.kind==="artist-photo"?'disabled':'')+'>Use as artist photo</button>')+
+ '<button class="secondary mini" data-action="studio-delete-asset" data-asset-id="'+esc(a.id)+'">Remove</button></div>'+
  (a.kind==="audio"?'<audio controls preload="none" src="'+esc(a.url)+'"></audio>':'<a class="secondary mini" href="'+esc(a.url)+'" target="_blank">Open</a>')+'</div>').join("")+'</div>'+
  '<div class="studio-file-actions"><button class="primary" data-action="studio-create-track">Create linked track</button>'+
  '<label class="secondary studio-upload">Import Suno audio<input id="studio-audio-file" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" hidden></label></div></section>'+
@@ -119,7 +128,7 @@ export function studioView(state){
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
  '<div class="studio-statusline"><span>● Lyrics: ChatGPT in your signed-in Safari</span>'+
- '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
+ '<span>● Images: ChatGPT · '+esc(status.studioVersion===STUDIO_ASSET_VERSION?"asset selection ready":"restart Blossom and reload this page")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
 function collect(state){
@@ -167,6 +176,22 @@ export async function studioPaste(field,state,api,refresh,message){
   await generateChatGpt(state,api,refresh,message);
  }finally{work.busy=false;}
 }
+async function refreshKeepingInputs(refresh){
+ const edits=[...document.querySelectorAll(".studio-workspace input[id], .studio-workspace textarea[id], .studio-workspace select[id]")]
+   .filter(node=>node.id!=="studio-project-picker"&&node.type!=="file")
+   .map(node=>({id:node.id,value:node.value,checked:node.checked}));
+ await refresh();
+ for(const edit of edits){
+   const node=document.getElementById(edit.id);
+   if(node){node.value=edit.value;if(typeof edit.checked==="boolean")node.checked=edit.checked;}
+ }
+ for(const id of ["weirdness","styleInfluence","variety"]){
+   const value=document.getElementById("studio-"+id)?.value,out=document.getElementById("out-"+id);
+   if(out&&value!==undefined)out.textContent=value+"%";
+ }
+ const duration=document.getElementById("studio-duration"),output=document.getElementById("studio-duration-value");
+ if(duration&&output)output.textContent=formatTime(Number(duration.value));
+}
 export async function studioAction(el,state,api,refresh,message){
  const action=el.dataset.action;
  if(work.busy){message("Current studio operation is still running",true);return;}
@@ -209,6 +234,23 @@ export async function studioAction(el,state,api,refresh,message){
     message("Artikeltekst geïmporteerd. Klaar voor automatische generatie.");
     return;
   }
+  if(action==="studio-brief-cover-prompt"||action==="studio-brief-photo-prompt"){
+    const result=stateOf(state)?.result||{},cover=action==="studio-brief-cover-prompt";
+    const prompt=cover?result.coverPrompt:result.artistPhotoPrompt;
+    if(!prompt){message("Generate the song brief with ChatGPT first",true);return;}
+    document.querySelector(cover?"#studio-cover-prompt":"#studio-photo-prompt").value=prompt;
+    message("Song brief prompt applied");return;
+  }
+  if(action==="studio-select-asset"||action==="studio-delete-asset"){
+    const project=stateOf(state);
+    if(!project)throw Error("Choose a saved project first");
+    if(state.data.studioStatus?.studioVersion!==STUDIO_ASSET_VERSION)throw Error("Restart the updated Blossom server and reload this page first");
+    const operation=action==="studio-select-asset"?"select":"delete";
+    await api("studio/projects/"+project.id+"/assets/"+el.dataset.assetId+"/"+operation,operation==="select"?{kind:el.dataset.kind}:{});
+    await refreshKeepingInputs(refresh);message(operation==="select"?"Selected asset linked to this project":"Asset removed from this project");return;
+  }
+  if(["studio-cover","studio-photo","studio-generate-all"].includes(action)&&state.data.studioStatus?.studioVersion!==STUDIO_ASSET_VERSION)
+    throw Error("Restart the updated Blossom server and reload this page first; ChatGPT image routing is not confirmed");
   const p=await save(state,api);
   if(action==="studio-add-dna"||action==="studio-remove-dna"){
     const previous=(state.data.studioReferences||[]).map(x=>({profileId:x.profileId,weight:x.weight}));
@@ -285,7 +327,7 @@ export async function studioAction(el,state,api,refresh,message){
     const prompt=document.querySelector(kind==="cover"?"#studio-cover-prompt":"#studio-photo-prompt").value;
     message("ChatGPT is generating the image in Safari…");
     await api("studio/projects/"+p.id+"/generate-art",{kind,prompt});
-    await refresh();message(kind==="cover"?"Album artwork linked":"Artist photo linked");return;
+    await refresh();message("ChatGPT image saved. Select Use as cover or Use as artist photo below.");return;
   }
   if(action==="studio-generate-all"){
     message("ChatGPT is preparing the song brief and both images…");
@@ -296,7 +338,7 @@ export async function studioAction(el,state,api,refresh,message){
       if(prompt)await api("studio/projects/"+p.id+"/generate-art",{kind,prompt});
       await refresh();
     }
-    await refresh();message("Project brief and available assets prepared. Suno handoff remains manual.");return;
+    await refresh();message("ChatGPT brief and images saved. Select the images you want to use below.");return;
   }
  }catch(error){message(error.message,true)}
  finally{work.busy=false;el.disabled=false}
