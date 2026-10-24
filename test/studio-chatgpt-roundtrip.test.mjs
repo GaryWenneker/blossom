@@ -94,6 +94,7 @@ test('ChatGPT PNG export is saved privately; unsupported, login and corrupt resp
 
 test('Studio generates and saves lyrics, Suno controls and both ChatGPT images without Draw Things',async t=>{
   const store=new Store(':memory:');let imageCalls=[];
+  const artist=store.addArtist({name:'Homebound',genre:'Country Pop',language:'en',countries:[],voice:'male',dna:'Dry acoustic instruments'});
   const server=createAppServer({store,password:'long-test-password',provider:{available:()=>false},
     chatgptLyrics:{async generate(){return {...brief,generationParameters:{weirdness:17,styleInfluence:80}};}},
     chatgptImages:{async generate(input){imageCalls.push(input);return {filename:'12345678-1234-1234-1234-123456789abc.png',mime:'image/png'};}},
@@ -105,7 +106,7 @@ test('Studio generates and saves lyrics, Suno controls and both ChatGPT images w
   const post=(path,body)=>fetch(base+path,{method:'POST',headers:{cookie,'content-type':'application/json','x-blossom-request':'ui'},body:JSON.stringify(body)});
   const login=await post('/auth/login',{username:'admin',password:'long-test-password'});
   cookie=login.headers.get('set-cookie').split(';')[0];
-  const created=await (await post('/api/studio/projects',{article:'A fictional community comes together after a difficult winter.',parameters:{lyricLanguage:'en',targetSeconds:215}})).json();
+  const created=await (await post('/api/studio/projects',{artistId:artist.id,article:'A fictional community comes together after a difficult winter.',parameters:{lyricLanguage:'en',targetSeconds:215}})).json();
   const p=await (await post('/api/studio/projects/'+created.id+'/chatgpt-lyrics',{})).json();
   assert.equal(p.result.lyrics,brief.lyrics);assert.equal(p.parameters.weirdness,17);
   for(const kind of ['cover','artist-photo']){

@@ -47,3 +47,17 @@ Blossom is an independent local-first, security-first music-label workspace. It 
 
 ## Related skills
 music-dna-reference-analysis, music-dna-bulk-ingestion, news-to-song-workflow, suno-production-blueprint, mcp-oauth-diagnosis, cloudflare-mcp-gateway-diagnosis, provider-browser-session-triage, local-ai-headless-generation, blossom-studio-viewport-qa, blossom-setup-and-ci, music-release-rights-review.
+
+## New artist-owned media architecture (2026-10-24)
+- `studio_artist_images` is the artist-level, durable media library; each item has `artist_id`, independent selected status, optional Studio source asset, filename, provenance and timestamp. A direct Artists-screen generation needs no Studio project.
+- Studio-generated artist-photo is linked to its selected artist and kept after project asset removal. Historic selected project photos migrate into artist library on startup. Reassigning a project to another artist must not silently transfer the former artist's photo.
+- The Artists page renders a wide responsive 16:9 hero using a selected image, with CSS overlay of the name; the gallery below the hero selects or removes artist images. New variants preserve active background by default.
+- Album covers stay square and separate. Prompts use artist identity, genre and DNA, and avoid baked-in text or fake Spotify verification/listener claims.
+- See `.agents/rules/blossom-artist-media.mdc` and `.agents/skills/artist-media-workflow/SKILL.md`.
+
+## Studio release and Suno integration (2026-10-24)
+- Stepper Article → AI Brief → Configure → Artwork → Release must represent real navigable sections, persist inputs and reflect completion. Release must be enabled only with artist, proper title, brief, style, and lyrics or instrumental.
+- Suno Platform API (separate paid developer key) supports real job submission/status and a guarded audio download into selected Studio audio assets; store job state and never equate submission with an audio file.
+- Consumer Suno Safari access is a manual handoff: the user must press Create in Suno and import the MP3/WAV. Do not impersonate an API or automate unauthorized browser endpoints.
+- Preserve advanced Suno settings in the recipe; only send fields documented by the official endpoint. Check a real platform account before claiming live functionality.
+- See `src/providers/suno-platform.mjs`, `src/studio-api.mjs`, `test/studio-suno-platform.test.mjs`.

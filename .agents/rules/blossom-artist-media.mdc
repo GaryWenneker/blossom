@@ -1,0 +1,25 @@
+---
+id: blossom-artist-media
+description: "Artist photos belong to artist identities, not to individual song projects"
+level: CRITICAL
+alwaysApply: true
+priority: 92
+scope: project
+group: music
+enabled: true
+status: approved
+globs: ["src/studio.mjs", "src/studio-api.mjs", "src/chatgpt-images.mjs", "src/drawthings.mjs", "public/app.js", "public/studio.js", "public/viewport.css", "test/artist-banners.test.mjs"]
+triggers: ["artist photo","artist cover","banner","artist background","Spotify-style hero","portrait"]
+tags: ["artist","images","media","design"]
+---
+
+# Artist promotional photography
+
+- Artist portrait imagery is an **artist-owned media library**, not just a Studio project's temporary attachment. In schema `studio_artist_images` it is linked by `artist_id`, has independent selected state and can optionally retain a `source_asset_id` for provenance.
+- New artist photos generated inside Studio attach automatically to the selected artist; artist-only generation is available on the Artists screen without any song project. A project without an assigned artist cannot generate an artist-photo.
+- Preserve existing selected Studio images via idempotent migration. Never silently transfer an artist's photo to a different artist if the Studio project's artist changes.
+- Deleting a project image must not delete the independently owned artist image or its original file. Artist gallery removal is a separate explicit action; do not destroy project assets.
+- Only one selected hero background per artist, with photo variants selectable from the gallery. Preserve the current hero when new variants arrive and do not overwrite it silently.
+- Artist banners are wide horizontal 16:9, responsive full width with cover crop and name/genre layered by CSS in the lower-left. Artist names, metadata, badges and stats should never be baked into photo pixels. Never invent Spotify verification/listener metrics.
+- Albums use their own square 1:1 artwork and assets. Keep them separate from artist promotional images.
+- Check actual image generation, gallery selection, auth and migration with tests before reporting success. `src/chatgpt-images.mjs`, `src/studio.mjs`, `public/app.js`.

@@ -66,7 +66,7 @@ function validateRemoteResponse(data) {
     throw new DomainError("Distributor validation returned errors. Resolve them before approval.",409);
 }
 export function createAppServer({store,provider,password,username="admin",vaultKey=process.env.BLOSSOM_VAULT_KEY,
-  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,localComposer=null,articleImporter=undefined,draw=null,chatgptImages=null,sunoBrowser=null,chatgptLyrics=null,connectedBrowsers=null,nativeBrowserOptions={},mcpOrigin=process.env.BLOSSOM_MCP_PUBLIC_URL||"",publicUiEnabled=process.env.BLOSSOM_PUBLIC_UI_ENABLED==="true",cloudflareAccess=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
+  publicUrl="http://127.0.0.1:8787",spotifyFetcher=fetch,allowLive=false,monitor=false,composer=null,localComposer=null,articleImporter=undefined,draw=null,chatgptImages=null,sunoBrowser=null,sunoPlatform=null,sunoAudioFetcher=fetch,chatgptLyrics=null,connectedBrowsers=null,nativeBrowserOptions={},mcpOrigin=process.env.BLOSSOM_MCP_PUBLIC_URL||"",publicUiEnabled=process.env.BLOSSOM_PUBLIC_UI_ENABLED==="true",cloudflareAccess=null,assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}) {
   if(!password || password.length<12) throw new Error("BLOSSOM_ADMIN_PASSWORD must contain at least 12 characters");
   if(!store || !provider)throw new Error("Store and provider required");
   const sessions=new Sessions(store.db,{username,password});
@@ -80,7 +80,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     publicCallbackOrigin:mcpOAuth.origin,fetcher:spotifyFetcher});
   const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
   const studioApi=new StudioAPI({store,vault,composer,localComposer,...(articleImporter?{articleImporter}:{}),draw,chatgptImages,
-    sunoBrowser:sunoBrowser||browserAccounts.suno,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
+    sunoBrowser:sunoBrowser||browserAccounts.suno,sunoPlatform,sunoAudioFetcher,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
   const musicDna=new MusicDNA(store);
   const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
   const spotifyCatalog=new SpotifyCatalog(spotify,musicDna);

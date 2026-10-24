@@ -112,15 +112,7 @@ The new **Genres** view contains a broad editorial taxonomy (100+ styles), inclu
 
 The secret vault encrypts values with AES-256-GCM. It never returns credentials to the browser. Losing your `BLOSSOM_VAULT_KEY` makes existing saved secrets unrecoverable.
 
-## Suno supervised handoff
-
-In Studio, complete the article, AI brief, selected artist, genre and Suno model, then choose **Generate in Suno** under Release. On a local desktop installation with Chrome and Playwright Core, Blossom opens a dedicated Suno browser and attempts to fill recognized lyrics, style, exclusion and title fields. Review all Suno settings and press Generate on Suno yourself. The generated MP3/WAV is imported through Studio's **Import Suno audio** control; this is not automatic generation, download or import. A hosted/headless Blossom server cannot launch the local visible Chrome session without desktop browser support.
-
 ## Creative Studio (News to Song)
-
-Studio resolves the song artist from its structured ChatGPT brief (`artistId` or `artistName`): an existing roster artist is reused or a new fictional artist profile is created and linked to the project. The **Assigned artist** label displays this association. For older briefs without artist metadata, use **Create / link artist** and enter the intended artist name; a name printed on a cover image is not reliable structured identity metadata.
-
-
 
 The **News to Song** workspace combines the full label workflow in one authenticated, responsive dark interface. It uses original custom vector audio-wave branding, not screenshot backgrounds or mockups.
 
@@ -234,3 +226,27 @@ An official OpenAI API key continues to enable automatic OpenAI-backed generatio
 ### ChatGPT plugin not added after OAuth approval
 
 A Blossom OAuth consent approval is not by itself a ChatGPT plugin installation. Complete the **Scan Tools** and **Create as a plugin** steps in ChatGPT after authorization. If a second click on the Blossom approval page reports **Toestemming al verwerkt**, do not reuse that one-time form. Start a fresh connection from ChatGPT. In local Blossom **Connections → Blossom MCP-koppeling met ChatGPT controleren**, request the private OAuth diagnosis to distinguish redirect, code exchange and tool scan. See `docs/chatgpt-mcp-oauth.md`. To save music briefs, the connection needs a separately approved `blossom:write` scope, not read-only access.
+
+## Artist-owned wide promotional photos
+
+In **Artists**, every artist has a full-width responsive 16:9 photo banner. The artist name and genre are layered over the image in CSS (Spotify-inspired presentation, not an official Spotify verification or profile). Photo files do **not** contain baked-in names or labels. Album covers remain square.
+
+Use **Generate artist banner** on an artist card to create a new widescreen portrait based on the artist's name, genre and Music DNA without creating a song first. The first photo becomes the background; additional variants are saved in that artist's own photo library. Use **Use background** to change the active one or **Remove** to remove it from that artist's library. Project-linked artist images also auto-attach to the artist selected in News to Song. An artist must be chosen before generating from Studio.
+
+The artist library is persisted separately from individual Studio attachments. Deleting a project's copy of an artist photo does not remove the image from the artist's media library. On upgrade, already-selected older Studio artist photos are migrated idempotently. A newly generated artist image still uses the configured ChatGPT image generation handoff, and the generation may require signed-in Safari on the hosting Mac. No album-art or real third-party artist images are copied automatically.
+
+Main code: `src/studio.mjs` (`studio_artist_images`), `src/studio-api.mjs`, `public/app.js`, `public/viewport.css`. Tests in `test/artist-banners.test.mjs`.
+
+## Suno generation from News to Song Release
+
+The Studio toolbar has a real five-stage stepper (Article → AI Brief → Configure → Artwork → Release). Clicking a stage saves editable form data, navigates to the corresponding panel and updates completion indicators. **Release** shows missing required inputs and exposes **Generate music in Suno** once artist, title, original brief, style and (unless instrumental) lyrics are complete. Artwork is optional for audio generation; chosen artist backgrounds remain attached to the artist.
+
+If an authorized **Suno Platform API key** is stored in Blossom Connections, Generate explicitly asks for confirmation of possible API charges, calls the Suno Platform generation endpoint from the Blossom server, persists the returned job ID, and polls without resubmitting/duplicating charges. Once Suno reports `complete`, Blossom attempts to download MP3/WAV only from approved Suno media hosts, validates audio signatures and 40 MB limit, and links the resulting audio to the project and a production track. If the browser closes, **Check generation status** and **Import finished Suno audio** resume an existing job. API status `submitted` is not an audio file.
+
+Without separate Suno Platform API access, the same Release area provides a *manual consumer website handoff*: Blossom builds a complete Suno recipe, opens the normal authorized Safari window, and the user reviews controls and presses **Create** within Suno. A consumer Suno website session is not a developer API key. After downloading audio there, use **Import Suno audio** to attach the MP3/WAV. No silent browser authentication, undocumented APIs, or fake “music generated” statuses are used.
+
+The official API currently sends only its documented title, lyrics, style and instrumental fields; model/duration/weirdness/style influence/variety and other unsupported controls are preserved in the Studio blueprint for manual review, not silently sent as made-up API keys. Runtime API response compatibility and Suno account permissions must be tested on the user's own account.
+
+Core: `src/providers/suno-platform.mjs`, `src/studio-api.mjs`, `src/studio.mjs`, `public/studio.js`, `test/studio-suno-platform.test.mjs`.
+
+The new Studio Artist field offers **Create / link artist**, preserving fictional artist identity selected by ChatGPT via `artistName` or `artistId`. The recorded artist relation is authoritative, not lettering baked into album art.
