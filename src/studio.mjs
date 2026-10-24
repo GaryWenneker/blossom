@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { DomainError } from "./domain.mjs";
 
 export const LENGTH_PRESETS = Object.freeze({
@@ -50,6 +50,10 @@ export function sunoRecipe(project, referenceStyles = "") {
     note:"Duration is an editorial target, not a guaranteed Suno output. These keys are a preparation sheet, not an undocumented API request."
   };
 }
+export function studioBriefFingerprint(project) {
+  return createHash("sha256").update(JSON.stringify({article:project.article,artistId:project.artistId,
+    genre:project.parameters?.genre||"",concept:project.result?.concept||"",lyrics:project.result?.lyrics||"",style:project.result?.style||""})).digest("hex");
+}
 export class StudioStore {
   constructor(store) {
     this.store=store;this.db=store.db;
@@ -64,6 +68,10 @@ export class StudioStore {
       CREATE TABLE IF NOT EXISTS studio_artist_presets
         (artist_id TEXT PRIMARY KEY REFERENCES artists(id), params TEXT NOT NULL);
     `);
+    const columns=new Set(this.db.prepare("PRAGMA table_info(studio_assets)").all().map(c=>c.name));
+    for(const [name,type] of Object.entries({provider:"TEXT NOT NULL DEFAULT 'unknown'",prompt:"TEXT NOT NULL DEFAULT ''",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",selected:"INTEGER NOT NULL DEFAULT 0",deleted_at:"TEXT"}))
+      if(!columns.has(name))this.db.exec("ALTER TABLE studio_assets ADD COLUMN "+name+" "+type);
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS studio_asset_selection ON studio_assets(project_id,kind) WHERE selected=1 AND deleted_at IS NULL");
   }
   projects() {return this.db.prepare("SELECT * FROM studio_projects ORDER BY updated_at DESC LIMIT 150").all().map(r=>this.convert(r));}
   convert(r){return r&&{id:r.id,title:r.title,article:r.article,sourceUrl:r.source_url,
@@ -126,18 +134,50 @@ export class StudioStore {
     this.store.audit("linked","studio_project",id,{trackId:t.id});return {project:this.require(id),track};
   }
   assets(projectId){
-    this.require(projectId);
-    return this.db.prepare("SELECT id,project_id,kind,mime,created_at FROM studio_assets WHERE project_id=? ORDER BY created_at DESC")
-      .all(projectId).map(r=>({id:r.id,projectId:r.project_id,kind:r.kind,mime:r.mime,createdAt:r.created_at,url:"/api/studio/assets/"+r.id+"/content"}));
+    const project=this.require(projectId),fingerprint=studioBriefFingerprint(project);
+    return this.db.prepare("SELECT * FROM studio_assets WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC,id DESC")
+      .all(projectId).map(r=>({id:r.id,projectId:r.project_id,kind:r.kind,mime:r.mime,createdAt:r.created_at,
+        provider:r.provider,prompt:r.prompt,selected:!!r.selected,
+        briefMatch:r.brief_fingerprint?(r.brief_fingerprint===fingerprint?"current":"earlier"):"unknown",
+        url:"/api/studio/assets/"+r.id+"/content"}));
   }
-  asset(id){return this.db.prepare("SELECT * FROM studio_assets WHERE id=?").get(id);}
-  registerAsset(projectId,kind,filename,mime){
+  asset(id){return this.db.prepare("SELECT * FROM studio_assets WHERE id=? AND deleted_at IS NULL").get(id);}
+  requireAsset(projectId,id){
+    this.require(projectId);
+    const asset=this.asset(id);
+    if(!asset||asset.project_id!==projectId)throw new DomainError("Asset not found in this project",404);
+    return asset;
+  }
+  selectAsset(projectId,id,kind){
+    const asset=this.requireAsset(projectId,id);
+    const role=kind||asset.kind;
+    if(!["cover","artist-photo","audio"].includes(role) || (asset.kind==="audio")!==(role==="audio"))
+      throw new DomainError("Unsupported asset role",400);
+    this.db.exec("BEGIN IMMEDIATE");
+    try{
+      this.db.prepare("UPDATE studio_assets SET selected=0 WHERE project_id=? AND kind=?").run(projectId,role);
+      this.db.prepare("UPDATE studio_assets SET selected=1,kind=? WHERE id=?").run(role,id);
+      this.db.exec("COMMIT");
+    }catch(error){this.db.exec("ROLLBACK");throw error;}
+    this.store.audit("asset_selected","studio_project",projectId,{assetId:id,kind:role});
+    return this.assets(projectId);
+  }
+  deleteAsset(projectId,id){
+    this.requireAsset(projectId,id);
+    // Remove from the project without destroying the original file.
+    this.db.prepare("UPDATE studio_assets SET deleted_at=?,selected=0 WHERE id=?").run(new Date().toISOString(),id);
+    this.store.audit("asset_removed","studio_project",projectId,{assetId:id});
+    return this.assets(projectId);
+  }
+  registerAsset(projectId,kind,filename,mime,{provider="unknown",prompt="",briefFingerprint=""}={}){
     this.require(projectId);
     if(!["cover","artist-photo","audio"].includes(kind))throw new DomainError("Invalid asset type");
     if(!/^[0-9a-f-]{36}\.(?:png|wav|mp3)$/.test(filename))throw new DomainError("Invalid asset filename");
+    if(!["chatgpt","upload","draw-things","unknown"].includes(provider))throw new DomainError("Invalid asset provider");
     const id=uuid(),createdAt=new Date().toISOString();
-    this.db.prepare("INSERT INTO studio_assets VALUES(?,?,?,?,?,?)").run(id,projectId,kind,filename,mime,createdAt);
-    this.store.audit("asset_added","studio_project",projectId,{assetId:id,kind});
+    this.db.prepare("INSERT INTO studio_assets(id,project_id,kind,filename,mime,created_at,provider,prompt,brief_fingerprint) VALUES(?,?,?,?,?,?,?,?,?)")
+      .run(id,projectId,kind,filename,mime,createdAt,provider,clean(prompt,4000),clean(briefFingerprint,64));
+    this.store.audit("asset_added","studio_project",projectId,{assetId:id,kind,provider});
     return this.assets(projectId).find(a=>a.id===id);
   }
 }
