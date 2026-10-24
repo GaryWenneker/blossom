@@ -47,7 +47,7 @@ const panels=(p,assets,state)=>{
  '<div class="studio-toolbar-actions"><select id="studio-project-picker" aria-label="Select project"><option value="new">+ New project</option>'+projectOptions+'</select>'+
  '<button class="secondary" data-action="studio-save">Save project</button>'+
  '<button class="primary studio-run" data-action="studio-generate-all">✦ Prepare all</button></div></div>'+
- '<div class="studio-stepper"><span class="active"><b>1</b> Article</span><i></i><span><b>2</b> AI Brief</span><i></i><span><b>3</b> Configure</span><i></i><span><b>4</b> Artwork</span><i></i><span><b>5</b> Release</span></div>'+
+ '<nav class="studio-stepper" aria-label="Production stages"><button data-action="studio-jump" data-target="studio-article">1 Article</button><button data-action="studio-jump" data-target="studio-lyrics">2 AI Brief</button><button data-action="studio-jump" data-target="studio-model">3 Configure</button><button data-action="studio-jump" data-target="studio-cover-prompt">4 Artwork</button><button data-action="studio-jump" data-target="studio-release">5 Release</button></nav>'+
  '<div class="studio-columns">'+
  '<section class="studio-panel studio-article"><div class="studio-panel-head"><h2>01 <span>News article</span></h2><span class="studio-mini-tag">SOURCE</span></div>'+
  field("Project title",'<input id="studio-title" maxlength="140" placeholder="Still by Hand" value="'+esc(p?.title||"")+'">')+
@@ -102,7 +102,10 @@ const panels=(p,assets,state)=>{
  '<button class="secondary wide" data-action="studio-photo">Generate artist photo with ChatGPT</button>'+
  (photo?'<div class="studio-photo-thumb"><img src="'+esc(photo.url)+'" alt="Fictional artist portrait"><span>Artist photo linked</span></div>':'<p class="studio-hint">ChatGPT generates both images in signed-in Safari. Finished images are saved and linked to this project.</p>')+
  '</section></div>'+
- '<div class="studio-lower studio-output"><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
+ '<section class="studio-panel studio-release" id="studio-release"><div class="studio-panel-head"><h2>05 <span>Release to Suno</span></h2></div>'+
+ '<button type="button" class="primary" data-action="studio-suno-generate" '+(!!p?.artistId&&!!result.concept&&(params.instrumental||!!result.lyrics)&&!!params.genre&&!!params.sunoModel&&(!!p.article||!!p.sourceUrl)?'':'disabled')+'>Generate in Suno ↗</button>'+
+ '<p class="studio-hint">Blossom opens Suno and fills recognized controls. Review settings and press Generate on Suno, then import the MP3/WAV below.</p></section>'+
+ '<div class="studio-lower studio-output'><div class="studio-output-tabs" role="tablist" aria-label="Studio output">'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="tracks" aria-controls="studio-pane-tracks" aria-selected="'+(work.bottomTab==="tracks"?"true":"false")+'">Generated tracks &amp; assets</button>'+
  '<button type="button" class="studio-output-tab" role="tab" data-action="studio-bottom-tab" data-tab="assistant" aria-controls="studio-pane-assistant" aria-selected="'+(work.bottomTab==="assistant"?"true":"false")+'">AI assistant</button></div>'+
  '<section id="studio-pane-tracks" role="tabpanel" aria-label="Generated tracks and assets" class="studio-panel studio-files studio-bottom-pane" '+(work.bottomTab==="tracks"?"":"hidden")+' tabindex="0"><div class="studio-panel-head"><h2>Generated tracks & linked assets</h2><span class="studio-mini-tag">PROJECT LIBRARY</span></div>'+
@@ -233,6 +236,11 @@ export async function studioAction(el,state,api,refresh,message){
  if(work.busy){message("Current studio operation is still running",true);return;}
  work.busy=true;el.disabled=true;
  try{
+  if(action==="studio-jump"){
+    const target=document.getElementById(el.dataset.target);
+    if(target){target.scrollIntoView({behavior:"smooth",block:"center"});target.focus({preventScroll:true});}
+    return;
+  }
   if(action==="studio-bottom-tab"){
     work.bottomTab=el.dataset.tab==="assistant"?"assistant":"tracks";
     for(const tab of document.querySelectorAll(".studio-output-tab")){
@@ -312,6 +320,16 @@ export async function studioAction(el,state,api,refresh,message){
   if(action==="studio-save-lyrics"){
     const result={...p.result,lyrics:document.querySelector("#studio-lyrics").value};
     await api("studio/projects/"+p.id+"/result",result);await refresh();message("Lyrics edits saved");return;
+  }
+  if(action==="studio-suno-generate"){
+    const params=paramsFromDOM();
+    const missing=[!document.querySelector("#studio-article").value.trim()&&!document.querySelector("#studio-source").value.trim()?"article":null,!p.result?.concept?"AI brief":null,!params.instrumental&&!document.querySelector("#studio-lyrics").value.trim()?"lyrics":null,!document.querySelector("#studio-artist").value?"artist":null,!params.genre?"genre":null,!params.sunoModel?"Suno model":null].filter(Boolean);
+    if(missing.length)throw Error("Complete before Suno: "+missing.join(", "));
+    await api("studio/projects/"+p.id+"/result",{...p.result,lyrics:document.querySelector("#studio-lyrics").value});
+    await api("studio/projects/"+p.id+"/suno-browser/open",{});
+    const outcome=await api("studio/projects/"+p.id+"/suno-browser/prefill",{});
+    message("Suno opened; filled: "+(outcome.filled?.join(", ")||"none")+". Review and press Generate on Suno."+(outcome.skipped?.length?" Copy skipped: "+outcome.skipped.join(", "):""));
+    return;
   }
   if(action==="studio-suno-open"){
     const canOpenSafari=state.data.browserAccounts?.nativeSafariAvailable &&
