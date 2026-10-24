@@ -1,6 +1,6 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=chatgpt-assets-v2";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=artist-suno-readiness-v3";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
@@ -416,7 +416,7 @@ document.addEventListener("paste",event=>{
  setTimeout(()=>{void studioPaste(field,state,api,refresh,message).catch(error=>message(error.message,true));},0);
 });
 document.addEventListener("change",async e=>{
- if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
+ if(e.target.id?.startsWith("studio-") && e.target.id!=="studio-audio-file")studioInput(e,state,refresh);
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
  if(e.target.matches("[data-dna-upload]")){
    try{await musicDnaUpload(e.target,refresh,message);}catch(error){message(error.message,true);}
