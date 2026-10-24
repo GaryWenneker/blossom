@@ -53,6 +53,8 @@ const panels=(p,assets,state)=>{
  '<section class="studio-panel studio-article"><div class="studio-panel-head"><h2>01 <span>News article</span></h2><span class="studio-mini-tag">SOURCE</span></div>'+
  field("Project title",'<input id="studio-title" maxlength="140" placeholder="Still by Hand" value="'+esc(p?.title||"")+'">')+
  field("Artist",'<select id="studio-artist"><option value="">Choose an artist</option>'+artists.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===p?.artistId?"selected":"")+'>'+esc(a.name)+" · "+esc(a.genre)+'</option>').join("")+'</select>')+
+ '<div class="studio-artist-identity"><span>Assigned artist: <strong>'+esc(artists.find(a=>a.id===p?.artistId)?.name||result.artistName||"Not assigned")+'</strong></span>'+
+ '<button class="secondary mini" type="button" data-action="studio-create-artist">Create / link artist</button></div>'+
  '<div class="studio-tabstrip"><span class="active">Artikeltekst / bron-URL</span><span>Music DNA</span><span>Origineel concept</span></div>'+
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
  field("Artikel-URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'">')+
@@ -251,6 +253,24 @@ export async function studioAction(el,state,api,refresh,message){
     }
     for(const pane of document.querySelectorAll(".studio-bottom-pane"))
       pane.hidden=pane.id!=="studio-pane-"+work.bottomTab;
+    return;
+  }
+  if(action==="studio-create-artist"){
+    const existing=stateOf(state);
+    const suggested=existing?.result?.artistName||"";
+    const name=window.prompt("Enter the fictional artist name to create or link:",suggested)?.trim();
+    if(!name)return;
+    const found=(state.data.artists||[]).find(a=>a.name.toLocaleLowerCase()===name.toLocaleLowerCase());
+    let artistId=found?.id;
+    if(!artistId){
+      const params=paramsFromDOM();
+      const created=await api("artists",{name,genre:params.genre,language:params.lyricLanguage==="auto"?"en":params.lyricLanguage,countries:[],voice:params.instrumental?"instrumental":params.vocalGender==="auto"?"mixed":params.vocalGender,dna:(existing?.result?.style||params.genre||"Original fictional artist").slice(0,1000)});
+      artistId=created.id;
+    }
+    document.querySelector("#studio-artist").value=artistId;
+    await save(state,api);
+    await refresh();
+    message("Artist "+name+" linked to this Studio project");
     return;
   }
   if(action==="studio-use-title"){document.querySelector("#studio-title").value=el.dataset.title;return;}
