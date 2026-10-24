@@ -279,6 +279,16 @@ export class MusicDNA {
         "byte_size INTEGER NOT NULL, rights_confirmed INTEGER NOT NULL DEFAULT 0," +
         "created_at TEXT NOT NULL);"
     );
+    // Backfill old metadata-only queue jobs already satisfied by a separate
+    // verified source audit submitted through MCP. Authorized local audio jobs
+    // remain pending: a source-only audit must NOT stand in for measured audio.
+    this.db.prepare(`UPDATE music_dna_jobs SET status='completed',worker='source-audit',
+      error='',leased_until=NULL,updated_at=?
+      WHERE status='queued' AND EXISTS
+        (SELECT 1 FROM music_dna_profiles p
+          WHERE p.id=music_dna_jobs.profile_id AND p.current_analysis_id IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM music_dna_audio_assets a
+          WHERE a.profile_id=music_dna_jobs.profile_id)`).run(timestamp());
   }
   create(input = {}) {
     checkShape(input, "reference");
@@ -336,6 +346,14 @@ export class MusicDNA {
         s.endMs, s.label, toJson(s.instruments), toJson(s.techniques), s.notes));
       this.db.prepare("UPDATE music_dna_profiles SET current_analysis_id=?,updated_at=? WHERE id=?")
         .run(analysisId, timestamp(), profileId);
+      // A metadata-only research task is satisfied by a recorded, auditable
+      // Music DNA analysis. Don't leave it counted as waiting indefinitely.
+      // Crucially, don't close jobs waiting for permitted attached audio.
+      this.db.prepare(`UPDATE music_dna_jobs SET status='completed',worker='source-audit',
+        error='',leased_until=NULL,updated_at=?
+        WHERE profile_id=? AND status='queued'
+          AND NOT EXISTS (SELECT 1 FROM music_dna_audio_assets a
+            WHERE a.profile_id=music_dna_jobs.profile_id)`).run(timestamp(),profileId);
       this.db.prepare("DELETE FROM music_dna_fts WHERE profile_id=?").run(profileId);
       this.db.prepare("INSERT INTO music_dna_fts(profile_id,artist,title,description) VALUES(?,?,?,?)")
         .run(profileId, profile.artist, profile.title, searchable(profile, data));
@@ -393,6 +411,26 @@ export class MusicDNA {
       }
       result.push({ profileId: profile.id, jobId: jobId || null, duplicate: !!profile.duplicate });
     }
+    return result;
+  }
+  jobCounts() {
+    const result={total:0,queued:0,running:0,completed:0,failed:0,
+      waitingForEvidence:0,readyForAudio:0};
+    for(const row of this.db.prepare(
+      "SELECT status,COUNT(*) AS n FROM music_dna_jobs GROUP BY status").all()){
+      result.total+=row.n;
+      if(Object.hasOwn(result,row.status))result[row.status]=row.n;
+    }
+    const queue=this.db.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN a.profile_id IS NULL THEN 1 ELSE 0 END),0)
+        AS waitingForEvidence,
+      COALESCE(SUM(CASE WHEN a.profile_id IS NOT NULL AND a.rights_confirmed=1
+        THEN 1 ELSE 0 END),0) AS readyForAudio
+      FROM music_dna_jobs j
+      LEFT JOIN music_dna_audio_assets a ON a.profile_id=j.profile_id
+      WHERE j.status='queued'`).get();
+    result.waitingForEvidence=queue.waitingForEvidence;
+    result.readyForAudio=queue.readyForAudio;
     return result;
   }
   jobs(status = "", limit = 50) {
