@@ -85,7 +85,9 @@ test("Public /callback is reachable without admin cookies while unrelated admin 
   assert.equal((await invoke("/login",{host:publicHost})).status,404);
   assert.equal((await invoke("/api/connections",{host:publicHost})).status,404);
   assert.equal((await invoke("/auth/spotify/start",{host:publicHost})).status,404);
-  assert.equal((await invoke("/callback")).status,404);
+  // On the local hostname, unauthenticated requests are challenged before
+  // route dispatch; /callback must still NOT be a public loopback endpoint.
+  assert.equal((await invoke("/callback")).status,401);
   assert.equal((await invoke("/callback",{host:publicHost,method:"POST"})).status,405);
   const redirect=await start();
   assert.equal(redirect.status,303);
