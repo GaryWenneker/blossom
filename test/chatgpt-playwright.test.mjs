@@ -260,10 +260,10 @@ test("the Studio screen asks for ChatGPT and a URL paste imports before generati
   try {
   const calls = [];
   const messages = [];
-  const api = async (path) => {
+  const api = async (path,data) => {
     calls.push(path);
     if (path === "studio/articles/import") return { text: ARTICLE, sourceUrl: "https://example.com/molen", title: "Dorpsnieuws" };
-    if (path === "studio/projects") return { id: "9b5989a0-c982-45ce-a860-ed5466511227" };
+    if (path === "studio/projects") return { ...data,id: "9b5989a0-c982-45ce-a860-ed5466511227",revision:1,result:{} };
     if (path === "studio/chatgpt-lyrics/status") return { percent: 40, label: "Waiting for ChatGPT to finish" };
     if (path.endsWith("/chatgpt-lyrics")) return { result: BRIEF };
     throw new Error("unexpected " + path);

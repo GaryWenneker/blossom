@@ -26,7 +26,9 @@ export function initializeIntegrity(db){
     const columns=new Set(db.prepare('PRAGMA table_info(studio_projects)').all().map(c=>c.name));
     if(!columns.has('revision'))db.exec('ALTER TABLE studio_projects ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
     if(!columns.has('brief_input_hash'))db.exec("ALTER TABLE studio_projects ADD COLUMN brief_input_hash TEXT NOT NULL DEFAULT ''");
-    db.exec(`CREATE TABLE IF NOT EXISTS studio_project_versions(
+    db.exec(`CREATE TABLE IF NOT EXISTS studio_project_creations(
+      request_id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES studio_projects(id));
+      CREATE TABLE IF NOT EXISTS studio_project_versions(
       project_id TEXT NOT NULL REFERENCES studio_projects(id), revision INTEGER NOT NULL,
       snapshot TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL,
       PRIMARY KEY(project_id,revision));

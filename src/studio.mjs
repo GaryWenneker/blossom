@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { DomainError } from "./domain.mjs";
+import { applyProjectPatch } from "./studio-patches.mjs";
 import { atomic,checkRevision,initializeIntegrity,inputFingerprint,snapshot,projectIntegrity,projectPage,inventory,referenceInputs } from "./studio-integrity.mjs";
 
 export const LENGTH_PRESETS = Object.freeze({
@@ -114,16 +115,27 @@ export class StudioStore {
     this.store.audit("updated","artist_preset",artistId);
     return p;
   }
-  save(input={}){return atomic(this.db,()=>this.saveProject(input));}
+  patch(id,changes,options={}){return applyProjectPatch(this,id,changes,options,normalizeParameters,DEFAULT_PARAMETERS);}
+  save(input={}){return atomic(this.db,()=>{
+    if(!input.id&&input.requestId!==undefined){
+      if(typeof input.requestId!=="string"||!/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestId))throw new DomainError("Invalid draft request ID");
+      const previous=this.db.prepare("SELECT project_id FROM studio_project_creations WHERE request_id=?").get(input.requestId);
+      if(previous)return this.require(previous.project_id);
+    }
+    const p=this.saveProject(input);
+    if(!input.id&&input.requestId)this.db.prepare("INSERT INTO studio_project_creations VALUES(?,?)").run(input.requestId,p.id);
+    return p;
+  });}
   saveProject(input={}){
-    const title=clean(input.title||"Untitled project",140)||"Untitled project";
-    const article=clean(input.article||"",10000);
-    const sourceUrl=clean(input.sourceUrl||"",1000);
+    const existing=input.id?this.require(input.id):null;
+    for(const key of ["title","article","sourceUrl","artistId"])if(Object.hasOwn(input,key)&&input[key]===null)throw new DomainError("Invalid "+key);
+    const title=clean(input.title??existing?.title??"Untitled project",140)||"Untitled project";
+    const article=clean(input.article??existing?.article??"",10000);
+    const sourceUrl=clean(input.sourceUrl??existing?.sourceUrl??"",1000);
     if(sourceUrl){let url;try{url=new URL(sourceUrl)}catch{throw new DomainError("Invalid article URL");}
       if(!["https:","http:"].includes(url.protocol))throw new DomainError("Article URL must be http(s)");}
-    const artistId=clean(input.artistId||"",80);
+    const artistId=clean(input.artistId??existing?.artistId??"",80);
     if(artistId&&!this.store.artist(artistId))throw new DomainError("Artist not found",404);
-    const existing=input.id?this.require(input.id):null;
     if(existing)checkRevision(existing,input.expectedRevision);
     const params=normalizeParameters(input.parameters||{},existing?.parameters||this.preset(artistId)||DEFAULT_PARAMETERS);
     const result=existing?.result||{};
@@ -133,7 +145,12 @@ export class StudioStore {
       ON CONFLICT(id) DO UPDATE SET title=excluded.title,article=excluded.article,source_url=excluded.source_url,
       artist_id=excluded.artist_id,params=excluded.params,updated_at=excluded.updated_at,revision=studio_projects.revision+1`).run(
       id,title,article,sourceUrl,artistId||null,JSON.stringify(params),JSON.stringify(result),existing?.trackId||null,createdAt,updatedAt);
-    if(artistId&&artistId!==existing?.artistId){
+    if(artistId&&artistId!==existing?.artistId)this.associateArtistPhoto(id,artistId);
+    this.store.audit(existing?"updated":"created","studio_project",id,{title});
+    snapshot(this,id,existing?"project_edit":"created");
+    return this.require(id);
+  }
+  associateArtistPhoto(id,artistId){
       // Associate legacy project-only artist photos when an artist is chosen
       // later. Never silently transfer an existing artist's media to another.
       const photo=this.db.prepare(`SELECT id FROM studio_assets
@@ -143,10 +160,6 @@ export class StudioStore {
       ).get(photo.id);
       if(photo&&(!owner||owner.artistId===artistId))
         this.linkArtistImage(artistId,photo.id);
-    }
-    this.store.audit(existing?"updated":"created","studio_project",id,{title});
-    snapshot(this,id,existing?"project_edit":"created");
-    return this.require(id);
   }
   setResult(id,result,options={}){return atomic(this.db,()=>this.saveResult(id,result,options));}
   saveResult(id,result,{expectedRevision,expectedInputHash,generated=false,applyParameters=true}={}){
@@ -190,6 +203,7 @@ export class StudioStore {
     if(result.artistPhotoPrompt && result.artistPhotoPrompt!==project.result?.artistPhotoPrompt)params.artistPhotoPrompt=result.artistPhotoPrompt;
     const editing=!applyParameters||(!generated&&replay&&project.result?.concept&&["concept","style","exclusions","moods","titles","coverPrompt","artistPhotoPrompt","suggestedGenre","rationale"].every(k=>JSON.stringify(result[k])===JSON.stringify(project.result[k])));
     const hash=editing?project.briefInputHash:inputFingerprint({...project,artistId,parameters:params});
+    if(JSON.stringify(result)===JSON.stringify(project.result)&&JSON.stringify(params)===JSON.stringify(project.parameters)&&artistId===project.artistId&&hash===project.briefInputHash)return project;
     this.db.prepare("UPDATE studio_projects SET result=?,params=?,artist_id=?,updated_at=?,revision=revision+1,brief_input_hash=? WHERE id=?").run(JSON.stringify(result),JSON.stringify(params),artistId||null,new Date().toISOString(),hash,id);
     this.store.audit("ai_extracted","studio_project",id,{title:result.titles?.[0]||""});
     snapshot(this,id,applyParameters?"generated_result":"lyrics_edit");

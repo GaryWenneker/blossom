@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync,mkdtempSync,rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { once } from 'node:events';
+import { createServer as reserveServer } from 'node:net';
+import { chromium } from 'playwright-core';
+import { Store } from '../src/storage.mjs';
+import { StudioStore } from '../src/studio.mjs';
+import { createAppServer } from '../src/server.mjs';
+
+const chrome=[process.env.CHROME_BIN,'/usr/bin/google-chrome','/usr/bin/chromium','/opt/google/chrome/chrome','/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(x=>x&&existsSync(x));
+test('real browser autosaves only edited fields and retains lyrics through reload and project switches',async t=>{
+ if(process.env.CI&&process.env.BLOSSOM_BROWSER_LAYOUT_TEST==='false')return t.skip('Browser behavior is checked in the Node 22 CI job');
+ if(!chrome){if(process.env.CI)assert.fail('CI must provide Chromium for persistence checks');return t.skip('Chromium not installed locally');}
+ const dir=mkdtempSync(join(tmpdir(),'blossom-autosave-'));const store=new Store(join(dir,'database.db')),studio=new StudioStore(store);
+ const artist=store.addArtist({name:'Browser fixture',genre:'Piano',language:'fr',countries:[],voice:'female',dna:'Piano'});
+ const p=studio.save({title:'First project',article:'Original article',artistId:artist.id,parameters:{instrumental:true,vocalGender:'female'}});
+ studio.setResult(p.id,{concept:'Test concept',lyrics:'Old lyrics',style:'Piano'});
+ const other=studio.save({title:'Second project',article:'Second article',artistId:artist.id});
+ const reservation=reserveServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(r=>reservation.close(r));
+ const base='http://127.0.0.1:'+port;
+ const server=createAppServer({store,publicUrl:base,password:'browser-persistence-password',provider:{available:()=>false},localComposer:{status:async()=>({available:false})}});
+ server.listen(port,'127.0.0.1');await once(server,'listening');
+ const browser=await chromium.launch({executablePath:chrome,headless:true,args:['--no-sandbox']});
+ t.after(async()=>{await browser.close();await new Promise(r=>server.close(r));store.close();rmSync(dir,{recursive:true,force:true});});
+ const login=await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json','x-blossom-request':'ui'},body:JSON.stringify({username:'admin',password:'browser-persistence-password'})});
+ const [name,value]=login.headers.get('set-cookie').split(';')[0].split('=');
+ const context=await browser.newContext();await context.addCookies([{name,value,url:base}]);const page=await context.newPage();
+ const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto(base+'/#studio');await page.locator('#studio-project-picker').selectOption(p.id);await page.waitForFunction(()=>document.querySelector('#studio-title')?.value==='First project');
+ const patches=[];page.on('request',request=>{if(request.method()==='PATCH')patches.push(request.postDataJSON());});
+ await page.locator('#studio-title').fill('Persisted title');await page.locator('#studio-lyrics').fill('Persisted lyrics');
+ await page.waitForFunction(()=>document.querySelector('#studio-save-state')?.textContent==='Saved');
+ assert.equal(studio.require(p.id).title,'Persisted title');assert.equal(studio.require(p.id).result.lyrics,'Persisted lyrics');assert.equal(studio.require(p.id).parameters.vocalGender,'female');
+ assert.ok(patches.length>=1);assert.equal(patches.some(x=>Object.hasOwn(x.changes,'article')),false);assert.equal(patches.some(x=>Object.hasOwn(x.changes,'artistId')),false);
+ await page.reload();await page.waitForFunction(()=>document.querySelector('#studio-title')?.value==='Persisted title');assert.equal(await page.locator('#studio-lyrics').inputValue(),'Persisted lyrics');
+ await page.locator('#studio-lyrics').fill('Saved before switching');await page.locator('#studio-project-picker').selectOption(other.id);
+ await page.waitForFunction(()=>document.querySelector('#studio-title')?.value==='Second project');
+ assert.equal(studio.require(p.id).result.lyrics,'Saved before switching');assert.equal(studio.require(other.id).article,'Second article');assert.deepEqual(errors,[]);
+});

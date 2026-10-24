@@ -1,6 +1,6 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-integrity-v1";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioConfigurePersistence,studioAutoSave,studioFlush,studioResumePersistence,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-partial-v1";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
@@ -12,9 +12,9 @@ function message(text,error=false){
   toast.textContent=text;toast.className=error?"error":"";toast.style.display="block";
   clearTimeout(message.timer);message.timer=setTimeout(()=>toast.style.display="none",4500);
 }
-async function api(path,data){
+async function api(path,data,options={}){
   const opts={headers:{Accept:"application/json"}};
-  if(data!==undefined){opts.method="POST";opts.headers["Content-Type"]="application/json";opts.headers["X-Blossom-Request"]="ui";opts.body=JSON.stringify(data);}
+  if(data!==undefined){opts.method=options.method||"POST";opts.headers["Content-Type"]="application/json";opts.headers["X-Blossom-Request"]="ui";opts.body=JSON.stringify(data);}
   const res=await fetch("/api/"+path,opts);
   const body=await res.json().catch(()=>({error:"Unexpected server response"}));
   if(res.status===401){window.location.assign("/login");throw Error("Session expired");}
@@ -27,6 +27,7 @@ async function api(path,data){
   return body;
 }
 async function refresh(){
+  await studioFlush();
   const dnaRequest=musicDnaRequest(state);
   const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets","studio/artists/banners","studio/artists/images"];
   const results=await Promise.all(names.map(apiName=>api(apiName==="studio/projects"?"studio/projects/page?limit=150"+(state.projectQuery?"&q="+encodeURIComponent(state.projectQuery):""):apiName)));
@@ -49,7 +50,7 @@ async function refresh(){
   state.data.musicDnaJobCounts=dnaJobs.counts||null;
   state.data.studioReferences=dnaReferences.references;
   if(state.tab==="music-dna") await loadOpenJobs(false);
-  render();
+  render();studioResumePersistence();
 }
 function badge(value){return '<span class="pill '+(["needs_reconciliation","rejected"].includes(value)?"warning":value==="draft"?"neutral":"")+'">'+e(capitals(value))+"</span>";}
 function header(title,subtitle,action=""){
@@ -469,9 +470,10 @@ document.addEventListener("visibilitychange",()=>{
  if(state.tab==="music-dna")void loadOpenJobs(true);
 });
 window.addEventListener("focus",()=>{void updateBrowserStatusOnReturn();});
-window.addEventListener("hashchange",()=>{
+window.addEventListener("hashchange",async()=>{
  const page=pageFromHash(location.hash);
  if(page===state.tab)return;
+ try{await studioFlush();}catch(error){message(error.message,true);return;}
  state.tab=page;
  render();
 });
@@ -479,6 +481,7 @@ document.addEventListener("click",async event=>{
  const tab=event.target.closest("[data-tab]");
  const route=routeFromClick({tab:tab?.dataset.tab,action:tab?.dataset.action});
  if(route){
+  try{await studioFlush();}catch(error){message(error.message,true);return;}
   state.tab=route.page;
   if(location.hash!==route.hash)history.pushState(null,"",route.hash);
   render();
@@ -487,7 +490,7 @@ document.addEventListener("click",async event=>{
  const btn=event.target.closest("[data-action]");
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
-document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-"))studioInput(e,state,refresh);});
+document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-")&&e.target.id!=="studio-project-picker"){studioInput(e,state,refresh);studioAutoSave(e,state,api);}});
 document.addEventListener("paste",event=>{
  const field=event.target?.id==="studio-source"?"url":event.target?.id==="studio-article"?"article":"";
  if(!field)return;
@@ -496,7 +499,8 @@ document.addEventListener("paste",event=>{
  setTimeout(()=>{void studioPaste(field,state,api,refresh,message).catch(error=>message(error.message,true));},0);
 });
 document.addEventListener("change",async e=>{
- if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
+ if(e.target.id==="studio-project-picker")try{await studioInput(e,state,refresh);}catch(error){message(error.message,true);}
+ else if(e.target.id?.startsWith("studio-"))studioAutoSave(e,state,api);
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
  if(e.target.matches("[data-dna-upload]")){
    try{await musicDnaUpload(e.target,refresh,message);}catch(error){message(error.message,true);}
@@ -552,5 +556,6 @@ function watchOpenJobs(){
 }
 if(new URLSearchParams(location.search).get("spotify")==="connected"){
  state.tab="connections";history.replaceState(null,"","/");}
+studioConfigurePersistence(state,api,message);
 bindMusicDna(state,api,render,message);
 refresh().catch(error=>{view.innerHTML='<div class="warning-banner">Could not load Blossom: '+e(error.message)+'. Check the server and credentials.</div>'});
