@@ -112,6 +112,10 @@ The new **Genres** view contains a broad editorial taxonomy (100+ styles), inclu
 
 The secret vault encrypts values with AES-256-GCM. It never returns credentials to the browser. Losing your `BLOSSOM_VAULT_KEY` makes existing saved secrets unrecoverable.
 
+## Suno supervised handoff
+
+In Studio, complete the article, AI brief, selected artist, genre and Suno model, then choose **Generate in Suno** under Release. On a local desktop installation with Chrome and Playwright Core, Blossom opens a dedicated Suno browser and attempts to fill recognized lyrics, style, exclusion and title fields. Review all Suno settings and press Generate on Suno yourself. The generated MP3/WAV is imported through Studio's **Import Suno audio** control; this is not automatic generation, download or import. A hosted/headless Blossom server cannot launch the local visible Chrome session without desktop browser support.
+
 ## Creative Studio (News to Song)
 
 The **News to Song** workspace combines the full label workflow in one authenticated, responsive dark interface. It uses original custom vector audio-wave branding, not screenshot backgrounds or mockups.
