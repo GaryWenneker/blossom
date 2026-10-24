@@ -1,6 +1,6 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=artist-suno-release-v5";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=suno-playwright-v5";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
