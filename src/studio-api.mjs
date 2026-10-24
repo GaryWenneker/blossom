@@ -59,6 +59,19 @@ export class StudioAPI{
   async handle(req,res,path) {
     if(req.method==="GET"){
       if(path==="/api/studio/projects")return send(res,200,this.studio.projects());
+      const artistPhoto=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/photo$/);
+      if(artistPhoto){
+        const artist=this.store.artist(artistPhoto[1]);
+        if(!artist)throw new DomainError("Artist not found",404);
+        const asset=this.store.db.prepare(`SELECT sa.filename,sa.mime FROM studio_assets sa
+          JOIN studio_projects sp ON sp.id=sa.project_id
+          WHERE sp.artist_id=? AND sa.kind='artist-photo' AND sa.selected=1 AND sa.deleted_at IS NULL
+          ORDER BY sa.created_at DESC,sa.id DESC LIMIT 1`).get(artist.id);
+        if(!asset)throw new DomainError("Artist photo not found",404);
+        const bytes=await readFile(join(this.assetDir,asset.filename));
+        res.writeHead(200,{"Content-Type":asset.mime,"Content-Length":bytes.length,"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"});
+        res.end(bytes);return;
+      }
       if(path==="/api/studio/suno-browser/status")
         return send(res,200,this.sunoBrowser.status());
       const referencesGet=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
