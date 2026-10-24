@@ -1,0 +1,19 @@
+---
+id: no-duplicate-persistence
+level: CRITICAL
+alwaysApply: true
+globs: []
+triggers: []
+tags: []
+priority: 50
+enabled: true
+status: approved
+scope: project
+group: data-persistence
+description: Do not create an Ax copy of the canonical Pi conversation.
+---
+
+Do not create an Ax copy of the canonical Pi conversation.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

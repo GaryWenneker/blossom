@@ -1,0 +1,11 @@
+---
+id: pi-owns-runtime
+level: CRITICAL
+alwaysApply: true
+description: Pi is authoritative for agent execution.
+---
+
+Pi is authoritative for agent execution. Ax must not start a second agent loop.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

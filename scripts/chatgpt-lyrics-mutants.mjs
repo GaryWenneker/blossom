@@ -11,7 +11,7 @@ const mutants = control
       ["value.length >= MIN_ARTICLE_PASTE", "value.length >= 1"],
       ['typeof parsed.lyrics !== "string"', "false"],
       ["if (this.busy) throw fail", "if (false) throw fail"],
-      ["return /\\b(het|een|niet|naar|wordt)\\b/i.test(article);", "return false;"]
+      ["LYRIC_LANGUAGES[code] || LYRIC_LANGUAGES.en", "LYRIC_LANGUAGES.nl"]
     ];
 
 let killed = 0;

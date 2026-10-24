@@ -8,7 +8,7 @@ import { Store } from "../src/storage.mjs";
 import { createAppServer } from "../src/server.mjs";
 import { DomainError } from "../src/domain.mjs";
 import {
-  pasteStartsLyrics, buildChatGptLyricsPrompt, parseChatGptBrief, ChatGptLyricsBrowser
+  pasteStartsLyrics, buildChatGptLyricsPrompt, parseChatGptBrief, lyricsProgress, ChatGptLyricsBrowser
 } from "../src/chatgpt-playwright.mjs";
 import { pasteStartsLyrics as uiPaste, studioView, studioPaste } from "../public/studio.js";
 
@@ -54,8 +54,17 @@ test("the prompt carries the article and production context and nothing secret",
   assert.match(prompt, /Country Pop/);
   assert.match(prompt, /original lyrics/i);
   assert.match(prompt, /untrusted/i);
-  assert.match(prompt, /Dutch/);
+  assert.match(prompt, /in English/);
   assert.doesNotMatch(prompt, /cookie|password|api_key/i);
+});
+
+test("a Dutch article still uses the selected lyric language, English by default", () => {
+  const prompt = buildChatGptLyricsPrompt(project());
+  assert.match(prompt, /Write the lyrics, titles, and concept in English\./);
+  assert.doesNotMatch(prompt, /Write the lyrics in Dutch/);
+  const dutch = project();
+  dutch.parameters = { ...dutch.parameters, lyricLanguage: "nl" };
+  assert.match(buildChatGptLyricsPrompt(dutch), /Write the lyrics, titles, and concept in Dutch\./);
 });
 
 test("an English article does not demand Dutch lyrics", () => {
@@ -230,6 +239,9 @@ test("Chrome launches only against chatgpt.com and refuses a non-directory profi
 
 test("the Studio screen asks for ChatGPT and a URL paste imports before generation", async () => {
   const html = studioView({ data: { studioProjects: [], studioAssets: [], studioStatus: {}, artists: [], genres: {}, musicDnaProfiles: [], studioReferences: [] } });
+  assert.match(html, /id="studio-language"/);
+  assert.match(html, /value="auto" selected/);
+  assert.match(html, />English</);
   assert.match(html, /Generate with ChatGPT/);
   assert.match(html, /Generate again/);
   assert.match(html, /signed-in Safari/);
@@ -252,13 +264,14 @@ test("the Studio screen asks for ChatGPT and a URL paste imports before generati
     calls.push(path);
     if (path === "studio/articles/import") return { text: ARTICLE, sourceUrl: "https://example.com/molen", title: "Dorpsnieuws" };
     if (path === "studio/projects") return { id: "9b5989a0-c982-45ce-a860-ed5466511227" };
+    if (path === "studio/chatgpt-lyrics/status") return { percent: 40, label: "Waiting for ChatGPT to finish" };
     if (path.endsWith("/chatgpt-lyrics")) return { result: BRIEF };
     throw new Error("unexpected " + path);
   };
   await studioPaste("url", { data: {} }, api, async () => {}, text => messages.push(text));
   assert.equal(values["#studio-article"].value, ARTICLE);
   assert.equal(values["#studio-title"].value, "Dorpsnieuws");
-  assert.deepEqual(calls, ["studio/articles/import", "studio/projects", "studio/projects/9b5989a0-c982-45ce-a860-ed5466511227/chatgpt-lyrics"]);
+  assert.deepEqual(calls, ["studio/articles/import", "studio/projects", "studio/chatgpt-lyrics/status", "studio/projects/9b5989a0-c982-45ce-a860-ed5466511227/chatgpt-lyrics"]);
   assert.match(messages[0], /ChatGPT is writing the lyrics/);
   values["#studio-article"].value = "kort";
   calls.length = 0;
@@ -379,6 +392,14 @@ test("a held login window is closed before the next headless launch", async () =
   await writeFile(join(dir, "seen"), "seen\n");
   await assert.rejects(browser.generate(project()), error => error.code === "chatgpt_login_required");
   assert.deepEqual(events, ["launch:false", "close:false", "launch:true", "close:true", "launch:false"]);
+});
+
+test("lyrics progress names each stage of the Safari handoff", () => {
+  assert.deepEqual(lyricsProgress(0), { percent: 0, label: "Ready" });
+  assert.equal(lyricsProgress(35).label, "Sending the article");
+  assert.equal(lyricsProgress(70).label, "Waiting for ChatGPT to finish");
+  assert.equal(lyricsProgress(90).label, "Reading the reply into Blossom");
+  assert.equal(lyricsProgress(100).label, "Song brief placed in Blossom");
 });
 
 test("generation uses the signed-in Safari session instead of a blank Chrome profile", async () => {
@@ -504,8 +525,36 @@ async function boot(t, chatgptLyrics) {
   });
   const login = await post("/auth/login", { username: "admin", password: "long-test-password" });
   const cookie = login.headers.get("set-cookie").split(";")[0];
-  return { store, post, cookie };
+  return { store, post, cookie, url };
 }
+
+test("studio reports ChatGPT lyrics progress for the signed-in session", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "chatgpt-phase-"));
+  const browser = new ChatGptLyricsBrowser({ profileDir: dir, transport: "system", runner() {} });
+  browser.phaseFile = join(dir, "phase");
+  await writeFile(browser.phaseFile, "40");
+  const { url, cookie } = await boot(t, browser);
+  const open = await fetch(url + "/api/studio/chatgpt-lyrics/status");
+  assert.equal(open.status, 401);
+  const status = await fetch(url + "/api/studio/chatgpt-lyrics/status", { headers: { cookie } });
+  assert.equal(status.status, 200);
+  const body = await status.json();
+  assert.equal(body.percent, 40);
+  assert.equal(body.label, "Waiting for ChatGPT to finish");
+});
+
+test("the studio progress bar shows the current ChatGPT stage", async () => {
+  const { chatGptProgressMarkup, nextChatGptPercent } = await import("../public/studio.js");
+  assert.equal(nextChatGptPercent(40, 8), 40);
+  assert.equal(nextChatGptPercent(40, 70), 70);
+  assert.equal(nextChatGptPercent(0, 8), 8);
+  const html = chatGptProgressMarkup({ percent: 35, label: "Sending the article" });
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /aria-valuenow="35"/);
+  assert.match(html, /width:35%/);
+  assert.match(html, /Sending the article/);
+  assert.doesNotMatch(html, /<script/i);
+});
 
 test("chatgpt-lyrics saves a brief and keeps the guards", async t => {
   const calls = [];

@@ -34,6 +34,9 @@ test("References deduplicate verified identifiers but not identical artist/title
     const another = dna.create({ artist: reference.artist, title: reference.title, sourceKind: "manual" });
     assert.notEqual(another.id, first.id);
     assert.equal(dna.search({ q: "River Signals" }).length, 2);
+    assert.equal(dna.count({ q: "River Signals" }), 2);
+    assert.equal(dna.search({ q: "River Signals", limit: 1, offset: 1 }).length, 1);
+    assert.equal(dna.count({ q: "River Signals" }), 2);
     assert.throws(() => dna.create({ artist: "Bad", title: "URL", sourceUrl: "file:///etc/passwd" }), /HTTP/);
   } finally { store.close(); }
 });
@@ -53,6 +56,9 @@ test("Versioned analyses preserve musical segments and index free text and facet
     assert.equal(dna.versions(ref.id).length, 2);
     assert.equal(dna.search({ mood: "Reflective" }).length, 0);
     assert.equal(dna.search({ mood: "Hopeful" }).length, 1);
+    assert.equal(dna.count({ q: "fingerpicked", instrument: "Flute", genre: "Southern rock" }), 1);
+    assert.equal(dna.count({ mood: "Hopeful" }), 1);
+    assert.equal(dna.count({ q: '"><(*' }), 1);
     assert.throws(() => dna.saveAnalysis(ref.id, { ...analysis, sections: [
       { startMs: 700, endMs: 500, label: "Invalid" }] }), /time boundaries/);
   } finally { store.close(); }
@@ -75,6 +81,26 @@ test("Batch queue deduplicates pending work and processes claimed jobs", () => {
     assert.equal(dna.get(items[0].profileId).analysisVersion, 1);
     assert.throws(() => dna.completeJob(job.jobId, analysis), /claimed/);
     assert.throws(() => dna.importBatch(new Array(501).fill(reference)), /1–500/);
+  } finally { store.close(); }
+});
+test("job listings name the recording they belong to", () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  try {
+    const items = dna.importBatch([reference]);
+    const queued = dna.jobs("queued");
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].artist, "Test Orchestra");
+    assert.equal(queued[0].title, "River Signals");
+    assert.equal(queued[0].profileId, items[0].profileId);
+    assert.equal(queued[0].status, "queued");
+    assert.equal(queued[0].hasAudio, false);
+    assert.equal(queued[0].id, items[0].jobId);
+    const more = [1, 2].map(n => dna.importBatch([{ ...reference, sourceUrl: "https://example.org/music/river-" + n }])[0]);
+    assert.equal(more.length, 2);
+    assert.equal(dna.jobs("queued", 2).length, 2);
+    assert.equal(dna.jobs("queued").length, 3);
+    assert.throws(() => dna.jobs("queued", 0), /Invalid limit/);
+    assert.throws(() => dna.jobs("queued", 501), /Invalid limit/);
   } finally { store.close(); }
 });
 test("REST auth, MCP read/write token scopes and JSON-RPC tools are enforced", async t => {
@@ -108,7 +134,9 @@ test("REST auth, MCP read/write token scopes and JSON-RPC tools are enforced", a
   const saved = await create.json();
   assert.equal((await rest("/api/music-dna/profiles/" + saved.id + "/analyses", analysis, cookie)).status, 201);
   const search = await rest("/api/music-dna/search?q=flute&instrument=Flute", undefined, cookie);
-  assert.equal((await search.json()).results.length, 1);
+  const found = await search.json();
+  assert.equal(found.results.length, 1);
+  assert.equal(found.total, 1);
   const rpc = (token, method, params = {}) => fetch(base + "/mcp", {
     method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + token },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
@@ -184,4 +212,33 @@ test("Bar-resolved Music DNA preserves per-instrument techniques, vocal layers, 
        vocals:[{singer:"Lead",evidence:"unsupported"}]}
     ]}),/evidence/);
   }finally{store.close();}
+});
+test("search and get report the latest job after analysis fails or succeeds", () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  try {
+    const created = dna.importBatch([{
+      artist: "Anne Clark", title: "Sleeper In Metropolis", sourceKind: "metadata",
+      sourceUrl: "https://open.spotify.com/track/" + "a".repeat(22)
+    }])[0];
+    assert.equal(dna.get(created.profileId).jobStatus, "queued");
+    const claimed = dna.claimJob("chatgpt", { metadataOnly: true });
+    dna.completeJob(claimed.jobId, null, "ChatGPT did not finish a reply");
+    const failed = dna.search({ q: "Sleeper" });
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0].analysis, null);
+    assert.equal(failed[0].jobStatus, "failed");
+    assert.equal(dna.get(created.profileId).jobStatus, "failed");
+    const again = dna.importBatch([{
+      artist: "Anne Clark", title: "Sleeper In Metropolis", sourceKind: "metadata",
+      sourceUrl: "https://open.spotify.com/track/" + "a".repeat(22)
+    }])[0];
+    const retry = dna.claimJob("chatgpt", { metadataOnly: true });
+    assert.equal(retry.jobId, again.jobId);
+    dna.completeJob(retry.jobId, analysis);
+    const saved = dna.search({ q: "Sleeper" })[0];
+    assert.equal(saved.jobStatus, "completed");
+    assert.equal(saved.analysis.genres[0], "Southern rock");
+    assert.equal(dna.get(created.profileId).analysisVersion, 1);
+    assert.equal(dna.get(created.profileId).jobStatus, "completed");
+  } finally { store.close(); }
 });

@@ -81,6 +81,8 @@ export class StudioAPI{
       m=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/(assets|recipe)$/);
       if(m){const p=this.studio.require(m[1]);
         return send(res,200,m[2]==="assets"?this.studio.assets(p.id):{...sunoRecipe(p,this.references.recipeStyle(p.id)),selectedAssets:this.studio.assets(p.id).filter(a=>a.selected)});}
+      if(path==="/api/studio/chatgpt-lyrics/status")
+        return send(res,200,await this.chatgptLyrics.progress());
       throw new DomainError("Not found",404);
     }
     if(req.method!=="POST")throw new DomainError("Method not allowed",405);
@@ -121,7 +123,10 @@ export class StudioAPI{
         ...project,artistLanguage:this.store.artist(project.artistId)?.language||"",artistDna:this.store.artist(project.artistId)?.dna||"",
         referenceDna:this.references.generationContext(project.id)
       });
-      return send(res,200,this.studio.setResult(project.id,composed));
+      if(typeof this.chatgptLyrics.notePercent==="function")await this.chatgptLyrics.notePercent(96);
+      const saved=this.studio.setResult(project.id,composed);
+      if(typeof this.chatgptLyrics.notePercent==="function")await this.chatgptLyrics.notePercent(100);
+      return send(res,200,saved);
     }
     if(path==="/api/studio/projects")return send(res,201,this.studio.save(data));
     const sunoBrowserAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno-browser\/(open|prefill|close)$/);

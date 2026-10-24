@@ -1,0 +1,11 @@
+---
+id: cache-invalidation
+level: INFO
+alwaysApply: false
+description: Invalidate only the context a change affects.
+---
+
+If source affecting context changes, invalidate that context. If unrelated source changes, retain the rest. Policy, skill, and graph-version changes invalidate only the context that depends on them.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

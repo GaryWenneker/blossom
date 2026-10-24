@@ -36,6 +36,12 @@ function ensureId(value) {
   if (typeof value !== "string" || !UUID.test(value)) throw new DomainError("Invalid ID");
   return value;
 }
+function latestJobStatus(db, profileId) {
+  const row = db.prepare(
+    "SELECT status FROM music_dna_jobs WHERE profile_id=? ORDER BY updated_at DESC, rowid DESC LIMIT 1"
+  ).get(profileId);
+  return row?.status || "";
+}
 function checkShape(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new DomainError("Invalid " + label);
   return value;
@@ -241,6 +247,20 @@ function fullTextTerms(value) {
   const words = text(value, "Search query", 180).toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
   return words.slice(0, 12).map(word => '"' + word + '"').join(" AND ");
 }
+function searchClauses(options) {
+  checkShape(options, "search options");
+  const clauses = [], bindings = [];
+  const term = fullTextTerms(options.q || "");
+  if (term) { clauses.push("music_dna_fts MATCH ?"); bindings.push(term); }
+  for (const [kind, value] of [["genre", options.genre], ["mood", options.mood],
+    ["instrument", options.instrument], ["vocal", options.vocal]]) {
+    if (value) {
+      clauses.push("EXISTS (SELECT 1 FROM music_dna_features f WHERE f.profile_id=p.id AND f.kind=? AND f.value=?)");
+      bindings.push(kind, text(value, kind, 120).toLocaleLowerCase());
+    }
+  }
+  return { clauses, bindings, term };
+}
 
 export class MusicDNA {
   constructor(store) {
@@ -279,6 +299,9 @@ export class MusicDNA {
         "byte_size INTEGER NOT NULL, rights_confirmed INTEGER NOT NULL DEFAULT 0," +
         "created_at TEXT NOT NULL);"
     );
+    const jobColumns = this.db.prepare("PRAGMA table_info(music_dna_jobs)").all();
+    if (!jobColumns.some(column => column.name === "progress"))
+      this.db.exec("ALTER TABLE music_dna_jobs ADD COLUMN progress INTEGER NOT NULL DEFAULT 0");
     // Backfill old metadata-only queue jobs already satisfied by a separate
     // verified source audit submitted through MCP. Authorized local audio jobs
     // remain pending: a source-only audit must NOT stand in for measured audio.
@@ -326,7 +349,8 @@ export class MusicDNA {
     return { id: p.id, artist: p.artist, title: p.title, releaseYear: p.release_year,
       sourceUrl: p.source_url, sourceKind: p.source_kind, recordingSha256: p.recording_sha256,
       sourceNote: p.source_note, createdAt: p.created_at, updatedAt: p.updated_at,
-      analysisVersion: analysis?.version || 0, analysis: analysis ? fromJson(analysis.payload) : null };
+      analysisVersion: analysis?.version || 0, analysis: analysis ? fromJson(analysis.payload) : null,
+      jobStatus: latestJobStatus(this.db, p.id) };
   }
   versions(profileId) {
     this.get(profileId);
@@ -369,22 +393,15 @@ export class MusicDNA {
     return this.get(profileId);
   }
   search(options = {}) {
-    checkShape(options, "search options");
     const limit = options.limit == null ? 20 : optionalNumber(options.limit, "limit", 1, 100);
     const offset = options.offset == null ? 0 : optionalNumber(options.offset, "offset", 0, 10_000_000);
     if (!Number.isInteger(limit) || !Number.isInteger(offset)) throw new DomainError("Invalid pagination");
-    const clauses = [], bindings = [];
-    const term = fullTextTerms(options.q || "");
-    if (term) { clauses.push("music_dna_fts MATCH ?"); bindings.push(term); }
-    for (const [kind, value] of [["genre", options.genre], ["mood", options.mood],
-      ["instrument", options.instrument], ["vocal", options.vocal]]) {
-      if (value) {
-        clauses.push("EXISTS (SELECT 1 FROM music_dna_features f WHERE f.profile_id=p.id AND f.kind=? AND f.value=?)");
-        bindings.push(kind, text(value, kind, 120).toLocaleLowerCase());
-      }
-    }
+    const { clauses, bindings, term } = searchClauses(options);
     const sql = "SELECT p.id,p.artist,p.title,p.release_year,p.source_kind,p.updated_at," +
-      "a.version,a.payload FROM music_dna_profiles p " +
+      "a.version,a.payload," +
+      "(SELECT j.status FROM music_dna_jobs j WHERE j.profile_id=p.id " +
+      "ORDER BY j.updated_at DESC, j.rowid DESC LIMIT 1) AS job_status " +
+      "FROM music_dna_profiles p " +
       "JOIN music_dna_fts ON music_dna_fts.profile_id=p.id " +
       "LEFT JOIN music_dna_analyses a ON a.id=p.current_analysis_id " +
       (clauses.length ? "WHERE " + clauses.join(" AND ") + " " : "") +
@@ -392,8 +409,16 @@ export class MusicDNA {
     return this.db.prepare(sql).all(...bindings, limit, offset).map(row => ({
       id: row.id, artist: row.artist, title: row.title, releaseYear: row.release_year,
       sourceKind: row.source_kind, updatedAt: row.updated_at,
-      analysisVersion: row.version || 0, analysis: row.payload ? fromJson(row.payload) : null
+      analysisVersion: row.version || 0, analysis: row.payload ? fromJson(row.payload) : null,
+      jobStatus: row.job_status || ""
     }));
+  }
+  count(options = {}) {
+    const { clauses, bindings } = searchClauses(options);
+    const sql = "SELECT COUNT(*) AS n FROM music_dna_profiles p " +
+      "JOIN music_dna_fts ON music_dna_fts.profile_id=p.id" +
+      (clauses.length ? " WHERE " + clauses.join(" AND ") : "");
+    return this.db.prepare(sql).get(...bindings).n;
   }
   importBatch(items) {
     if (!Array.isArray(items) || items.length < 1 || items.length > 500)
@@ -436,11 +461,17 @@ export class MusicDNA {
   jobs(status = "", limit = 50) {
     if (status && !["queued", "running", "completed", "failed"].includes(status))
       throw new DomainError("Invalid job status");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new DomainError("Invalid limit");
+    const columns = "SELECT j.id,j.profile_id,j.status,j.worker,j.attempts,j.error,j.progress,j.created_at,j.updated_at,p.artist,p.title," +
+      "(EXISTS(SELECT 1 FROM music_dna_audio_assets a WHERE a.profile_id=j.profile_id)) AS has_audio " +
+      "FROM music_dna_jobs j LEFT JOIN music_dna_profiles p ON p.id=j.profile_id";
     const rows = status
-      ? this.db.prepare("SELECT * FROM music_dna_jobs WHERE status=? ORDER BY created_at LIMIT ?").all(status, limit)
-      : this.db.prepare("SELECT * FROM music_dna_jobs ORDER BY created_at DESC LIMIT ?").all(limit);
+      ? this.db.prepare(columns + " WHERE j.status=? ORDER BY j.created_at LIMIT ?").all(status, limit)
+      : this.db.prepare(columns + " ORDER BY j.created_at DESC LIMIT ?").all(limit);
     return rows.map(r => ({ id:r.id, profileId:r.profile_id, status:r.status, worker:r.worker,
-      attempts:r.attempts, error:r.error, createdAt:r.created_at, updatedAt:r.updated_at }));
+      attempts:r.attempts, error:r.error, createdAt:r.created_at, updatedAt:r.updated_at,
+      artist:r.artist || "", title:r.title || "", hasAudio: r.has_audio === 1,
+      progress: Number.isInteger(r.progress) ? r.progress : 0 }));
   }
   audioForProfile(profileId) {
     ensureId(profileId);
@@ -484,14 +515,16 @@ export class MusicDNA {
     this.store.audit("audio_attached", "music_dna_reference", profileId, { sha256, byteSize: info.byteSize });
     return this.audioForProfile(profileId);
   }
-  claimJob(worker = "blossom-local", { audioOnly = false } = {}) {
+  claimJob(worker = "blossom-local", { audioOnly = false, metadataOnly = false } = {}) {
     worker = text(worker, "Worker", 100, true);
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const queued = this.db.prepare(
         "SELECT j.id,j.profile_id FROM music_dna_jobs j " +
         (audioOnly ? "JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
+        (metadataOnly && !audioOnly ? "LEFT JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
         "WHERE (j.status='queued' OR (j.status='running' AND j.leased_until < ?)) " +
+        (metadataOnly && !audioOnly ? "AND audio.profile_id IS NULL " : "") +
         "AND j.attempts < 3 ORDER BY j.created_at LIMIT 1").get(timestamp());
       if (!queued) { this.db.exec("COMMIT"); return null; }
       const leased = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -500,6 +533,35 @@ export class MusicDNA {
       this.db.exec("COMMIT");
       return { jobId: queued.id, profile: this.get(queued.profile_id), leaseUntil: leased };
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
+  setJobProgress(jobId, percent) {
+    ensureId(jobId);
+    if (!Number.isInteger(percent) || percent < 0 || percent > 100)
+      throw new DomainError("Invalid job progress");
+    this.db.prepare("UPDATE music_dna_jobs SET progress=?,updated_at=? WHERE id=? AND status='running'")
+      .run(percent, timestamp(), jobId);
+  }
+  releaseJob(jobId) {
+    ensureId(jobId);
+    this.db.prepare(
+      "UPDATE music_dna_jobs SET status='queued',worker='',attempts=MAX(attempts-1,0),progress=0,leased_until=NULL,updated_at=? " +
+      "WHERE id=? AND status='running'").run(timestamp(), jobId);
+  }
+  requeueCatalogAnalysis(worker = "chatgpt") {
+    worker = text(worker, "Worker", 100, true);
+    const now = timestamp();
+    const interrupted = this.db.prepare(
+      "UPDATE music_dna_jobs SET status='queued',worker='',progress=0,leased_until=NULL,updated_at=? " +
+      "WHERE status='running' AND worker=? AND attempts<3"
+    ).run(now, worker);
+    const failed = this.db.prepare(
+      "UPDATE music_dna_jobs SET status='queued',worker='',error='',progress=0,leased_until=NULL,updated_at=? " +
+      "WHERE id IN (SELECT j.id FROM music_dna_jobs j " +
+      "JOIN music_dna_profiles p ON p.id=j.profile_id " +
+      "LEFT JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " +
+      "WHERE j.status='failed' AND p.current_analysis_id IS NULL AND audio.profile_id IS NULL AND j.attempts<3)"
+    ).run(now);
+    return { interrupted: interrupted.changes, failed: failed.changes };
   }
   completeJob(jobId, analysis, error = "") {
     ensureId(jobId);

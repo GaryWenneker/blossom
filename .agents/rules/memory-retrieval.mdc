@@ -1,0 +1,11 @@
+---
+id: memory-retrieval
+level: INFO
+alwaysApply: false
+description: Retrieve relevant memories only.
+---
+
+Memory belongs to Ax. Pi owns conversation state. Retrieve only relevant high-confidence memories that fit the context budget. Do not inject the entire memory store and do not copy the Pi conversation into memory.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

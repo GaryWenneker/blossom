@@ -1,0 +1,11 @@
+---
+id: read-optimization
+level: INFO
+alwaysApply: false
+description: Indexed source may propose graph retrieval.
+---
+
+If requested source is indexed and only structural information is required, graph-backed retrieval may be proposed. A recommendation is not an automatic replacement.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

@@ -1,0 +1,11 @@
+---
+id: tool-output-cost
+level: INFO
+alwaysApply: false
+description: Large tool output can increase model context cost.
+---
+
+Large search output can increase model context cost when that output is delivered to a model. The tool process itself is not a model token cost. Do not record grep as universally expensive.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

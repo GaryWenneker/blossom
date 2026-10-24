@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ax": {
+      "args": [
+        "serve",
+        "--mcp",
+        "--path",
+        "${CLAUDE_PROJECT_DIR:-.}"
+      ],
+      "command": "/Users/gary/.local/bin/ax",
+      "cwd": "${CLAUDE_PROJECT_DIR:-.}"
+    }
+  }
+}

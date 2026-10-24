@@ -1,0 +1,11 @@
+---
+id: measure-before-optimize
+level: WARNING
+alwaysApply: false
+description: Do not automatically replace a tool until measurements exist.
+---
+
+Do not automatically replace a tool until sufficient measurements exist. A recommendation is not a replacement.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

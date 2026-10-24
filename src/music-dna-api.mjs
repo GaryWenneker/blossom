@@ -24,10 +24,12 @@ async function jsonBody(req) {
 
 export class MusicDnaAPI {
   constructor(dna, { audioDir = process.env.BLOSSOM_REFERENCE_AUDIO_DIR || ".data/reference-audio",
-    spotifyLiked=null } = {}) {
+    spotifyLiked=null, spotifyCatalog=null, chatgpt=null } = {}) {
     this.dna = dna;
     this.audioDir = audioDir;
     this.spotifyLiked = spotifyLiked;
+    this.spotifyCatalog = spotifyCatalog;
+    this.chatgpt = chatgpt;
   }
   async handle(req, res, path, searchParams) {
     const method = req.method;
@@ -38,6 +40,10 @@ export class MusicDnaAPI {
         if (!/^\d{1,7}$/.test(offset)||!/^\d{1,2}$/.test(limit))
           throw new DomainError("Invalid Spotify Liked Songs pagination",400);
         return respond(res,200,await this.spotifyLiked.page({offset:Number(offset),limit:Number(limit)}));
+      }
+      if (path === "/api/music-dna/spotify/search") {
+        if (!this.spotifyCatalog) throw new DomainError("Spotify library integration unavailable",503);
+        return respond(res, 200, await this.spotifyCatalog.search(searchParams.get("q") || ""));
       }
       if (path === "/api/music-dna/search") {
         const filters = {};
@@ -50,11 +56,14 @@ export class MusicDnaAPI {
             filters[name] = Number(value);
           }
         }
-        return respond(res, 200, { results: this.dna.search(filters) });
+        return respond(res, 200, { results: this.dna.search(filters), total: this.dna.count(filters) });
       }
       if (path === "/api/music-dna/jobs") {
-        return respond(res, 200, { jobs: this.dna.jobs(searchParams.get("status") || ""),
-          counts: this.dna.jobCounts(), hasMore: this.dna.jobCounts().total > 50 });
+        const rawLimit = searchParams.get("limit");
+        const limit = rawLimit == null ? 50 : Number(rawLimit);
+        const counts = this.dna.jobCounts();
+        return respond(res, 200, { jobs: this.dna.jobs(searchParams.get("status") || "", limit),
+          counts, hasMore: counts.total > 50 });
       }
       const profileMatch = path.match(/^\/api\/music-dna\/profiles\/([0-9a-f-]{36})(?:\/(versions))?$/i);
       if (profileMatch) return respond(res, 200,
@@ -106,6 +115,18 @@ export class MusicDnaAPI {
         offset:body?.offset===undefined?0:body.offset,
         limit:body?.limit===undefined?50:body.limit
       }));
+    }
+    if (path === "/api/music-dna/spotify/tracks") {
+      if (!this.spotifyCatalog) throw new DomainError("Spotify library integration unavailable",503);
+      return respond(res, 200, await this.spotifyCatalog.importTrack(body?.id));
+    }
+    if (path === "/api/music-dna/spotify/albums") {
+      if (!this.spotifyCatalog) throw new DomainError("Spotify library integration unavailable",503);
+      return respond(res, 200, await this.spotifyCatalog.importAlbum(body?.id));
+    }
+    if (path === "/api/music-dna/jobs/start") {
+      if (!this.chatgpt) throw new DomainError("ChatGPT analysis is unavailable", 503);
+      return respond(res, 202, this.chatgpt.start());
     }
     if (path === "/api/music-dna/profiles") return respond(res, 201, this.dna.create(body));
     if (path === "/api/music-dna/import-batch")

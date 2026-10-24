@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, lstat, readFile, writeFile, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { DomainError } from "./domain.mjs";
-import { chatGptDomScripts } from "./chatgpt-dom.mjs";
+import { LYRIC_LANGUAGES } from "./studio.mjs";
 
 export const CHATGPT_URL = "https://chatgpt.com/";
 export const MIN_ARTICLE_PASTE = 80;
@@ -31,19 +33,37 @@ export function pasteStartsLyrics(field, text) {
   return field === "article" && value.length >= MIN_ARTICLE_PASTE;
 }
 
+export function lyricsProgress(percent) {
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  let label = "Ready";
+  if (value >= 100) label = "Song brief placed in Blossom";
+  else if (value >= 88) label = "Reading the reply into Blossom";
+  else if (value >= 40) label = "Waiting for ChatGPT to finish";
+  else if (value >= 20) label = "Sending the article";
+  else if (value > 0) label = "Opening your ChatGPT tab";
+  return { percent: value, label };
+}
+
 function looksDutch(article) {
   return /\b(het|een|niet|naar|wordt)\b/i.test(article);
+}
+
+export function lyricLanguageName(parameters) {
+  const code = parameters?.lyricLanguage;
+  return LYRIC_LANGUAGES[code] || LYRIC_LANGUAGES.en;
 }
 
 export function buildChatGptLyricsPrompt(project) {
   const article = String(project?.article || "");
   const parameters = project?.parameters || {};
-  const selectedLanguage=parameters.lyricLanguage && parameters.lyricLanguage!=="auto" ? parameters.lyricLanguage : project.artistLanguage;
-  const language = selectedLanguage
-    ? "Write the lyrics, titles, and concept in " + selectedLanguage + "."
-    : looksDutch(article)
-    ? "Write the lyrics in Dutch."
-    : "Write the lyrics in the language of the article.";
+  const code = parameters.lyricLanguage;
+  const language = code === "auto"
+    ? (project.artistLanguage
+      ? "Write the lyrics, titles, and concept in " + project.artistLanguage + "."
+      : looksDutch(article)
+      ? "Write the lyrics in Dutch."
+      : "Write the lyrics in the language of the article.")
+    : "Write the lyrics, titles, and concept in " + lyricLanguageName(parameters) + ".";
   return [
     "You are Blossom's original music editor.",
     "Write completely original lyrics inspired by the article.",
@@ -157,6 +177,23 @@ export class ChatGptLyricsBrowser {
     await rm(this.seenFile, { force: true });
   }
 
+  async notePercent(percent) {
+    const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    if (this.phaseFile) await writeFile(this.phaseFile, String(value), { mode: 0o600 });
+    return lyricsProgress(value);
+  }
+
+  async progress() {
+    let percent = 0;
+    if (this.phaseFile) {
+      try {
+        const value = Number((await readFile(this.phaseFile, "utf8")).trim());
+        if (Number.isInteger(value) && value >= 0 && value <= 100) percent = value;
+      } catch { /* the run has not written a phase yet */ }
+    }
+    return lyricsProgress(percent);
+  }
+
   async open({ headless }) {
     if (this.live) {
       const still = typeof this.live.isOpen !== "function" || await this.live.isOpen();
@@ -240,12 +277,13 @@ export class ChatGptLyricsBrowser {
   async generateInSystemBrowser(project) {
     const prompt = buildChatGptLyricsPrompt(project);
     const script = fileURLToPath(new URL("../scripts/chatgpt-safari-lyrics.applescript", import.meta.url));
+    this.phaseFile = join(tmpdir(), "blossom-lyrics-" + randomUUID() + ".progress");
+    await this.notePercent(8);
     let stdout = "";
     try {
       stdout = await new Promise((resolve, reject) => {
-        const scripts = chatGptDomScripts(prompt);
-        this.runner(script, [this.browserApp, scripts.fill, scripts.read, "180"],
-          { timeout: 220000, windowsHide: true, maxBuffer: 4_000_000 },
+        this.runner(script, [this.browserApp, JSON.stringify(prompt), this.phaseFile],
+          { timeout: 130000, windowsHide: true, maxBuffer: 4_000_000 },
           (error, out, err) => {
             if (error) {
               error.stderr = String(err || "");
@@ -265,7 +303,86 @@ export class ChatGptLyricsBrowser {
     const split = text.indexOf("\n");
     const reply = text.startsWith("REPLY") && split >= 0 ? text.slice(split + 1) : "";
     if (!reply) throw fail("ChatGPT reply was not a song brief", 502, "chatgpt_reply_invalid");
-    return parseChatGptBrief(reply);
+    const brief = parseChatGptBrief(reply);
+    await this.notePercent(92);
+    return brief;
+  }
+
+  async askHidden(prompt, report = () => {}) {
+    if (this.analysisBusy) throw fail("Music DNA analysis is already running", 409, "chatgpt_busy");
+    const text = String(prompt || "");
+    if (!text.trim() || text.length > 8000) throw fail("ChatGPT prompt is empty", 400);
+    this.analysisBusy = true;
+    try {
+      if (this.transport === "system") return await this.askInSystemBrowser(text, report);
+      return await this.askHeadless(text, report);
+    } finally { this.analysisBusy = false; }
+  }
+  async askInSystemBrowser(prompt, report) {
+    const script = fileURLToPath(new URL("../scripts/chatgpt-safari-dna.applescript", import.meta.url));
+    const progressPath = join(tmpdir(), "blossom-dna-" + randomUUID() + ".progress");
+    await writeFile(progressPath, "0\n", { mode: 0o600 });
+    let last = -1;
+    const timer = setInterval(() => {
+      readFile(progressPath, "utf8").then(raw => {
+        const value = Number(String(raw).trim());
+        if (Number.isInteger(value) && value >= 0 && value <= 100 && value !== last) {
+          last = value;
+          report(value);
+        }
+      }).catch(() => {});
+    }, 400);
+    try {
+      const stdout = await new Promise((resolve, reject) => {
+        this.runner(script, [this.browserApp, JSON.stringify(prompt), progressPath],
+          { timeout: 150000, windowsHide: true, maxBuffer: 4_000_000 },
+          (error, out, err) => {
+            if (error) {
+              error.stderr = String(err || "");
+              reject(error);
+            } else resolve(String(out || ""));
+          });
+      });
+      const text = stdout.trim();
+      if (text === "LOGIN" || text.startsWith("LOGIN"))
+        throw fail("Sign in to ChatGPT in Safari, then start the analysis again.", 409, "chatgpt_login_required");
+      const split = text.indexOf("\n");
+      const reply = text.startsWith("REPLY") && split >= 0 ? text.slice(split + 1) : "";
+      if (!reply) throw fail("ChatGPT reply was not a music analysis", 502, "chatgpt_reply_invalid");
+      return reply;
+    } finally {
+      clearInterval(timer);
+      await rm(progressPath, { force: true });
+    }
+  }
+  async askHeadless(prompt, report) {
+    report(15);
+    const session = await this.open({ headless: true });
+    let composer;
+    try { composer = await session.hasComposer(); }
+    catch (error) {
+      try { await session.close(); } catch { /* the hidden window is already gone */ }
+      throw error;
+    }
+    if (!composer) {
+      await session.close();
+      throw fail("Sign in to ChatGPT, then start the analysis again.", 409, "chatgpt_login_required");
+    }
+    report(40);
+    let percent = 40;
+    const timer = setInterval(() => {
+      percent = Math.min(80, percent + 5);
+      report(percent);
+    }, 3000);
+    try {
+      const reply = await session.submit(prompt);
+      report(85);
+      return reply;
+    } finally {
+      clearInterval(timer);
+      await session.close();
+      this.live = null;
+    }
   }
 
   async generate(project) {

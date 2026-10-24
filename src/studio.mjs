@@ -8,6 +8,9 @@ export const LENGTH_PRESETS = Object.freeze({
   ambient:{label:"Ambient / sleep",seconds:420,min:240,max:900},
   custom:{label:"Custom",seconds:210,min:35,max:900}
 });
+export const LYRIC_LANGUAGES = Object.freeze({
+  en:"English",nl:"Dutch",de:"German",fr:"French",es:"Spanish",it:"Italian",pt:"Portuguese"
+});
 export const DEFAULT_PARAMETERS = Object.freeze({
   sunoModel:"v6",lyricLanguage:"auto",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["imitated voices","unlicensed samples"],
   vocalGender:"male",instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,
@@ -26,7 +29,7 @@ export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
   for(const f of ["weirdness","styleInfluence","variety"])p[f]=int(p[f],0,100,f);
   for(const f of ["maxMode","instrumental","personalize"])if(typeof p[f]!=="boolean")throw new DomainError(f+" must be boolean");
   if(!["male","female","auto"].includes(p.vocalGender))throw new DomainError("Unsupported vocal gender");
-  p.lyricLanguage=clean(p.lyricLanguage||"auto",50);
+  if(p.lyricLanguage!=="auto" && !Object.hasOwn(LYRIC_LANGUAGES,p.lyricLanguage))throw new DomainError("Unsupported lyric language");
   p.sunoModel=clean(p.sunoModel||"v6",50);
   p.genre=clean(p.genre,100);
   if(!p.genre)throw new DomainError("Genre required");
@@ -47,6 +50,7 @@ export function sunoRecipe(project, referenceStyles = "") {
     exclude:[...new Set([...p.excludeStyles,...(project.result?.exclusions||[])])].join(", "),vocalGender:p.instrumental?null:p.vocalGender,
     instrumental:p.instrumental,maxMode:p.maxMode,weirdness:p.weirdness,styleInfluence:p.styleInfluence,
     variety:p.variety,personalize:p.personalize,targetDurationSeconds:p.targetSeconds,
+    lyricLanguage:LYRIC_LANGUAGES[p.lyricLanguage]||LYRIC_LANGUAGES.en,
     note:"Duration is an editorial target, not a guaranteed Suno output. These keys are a preparation sheet, not an undocumented API request."
   };
 }

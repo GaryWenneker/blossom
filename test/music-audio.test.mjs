@@ -103,6 +103,9 @@ test("Worker only processes authorized local audio and stores measured rather th
       sha256: "a".repeat(64), byteSize: 2500, rightsConfirmed: true
     });
     assert.equal(attachment.rightsConfirmed, true);
+    const open = dna.jobs("queued");
+    assert.equal(open.find(job => job.profileId === metadata[0].profileId).hasAudio, false);
+    assert.equal(open.find(job => job.profileId === file[0].profileId).hasAudio, true);
     assert.throws(() => dna.attachAudio(metadata[0].profileId, {
       filename: attachment.filename, mime: "audio/wav",
       sha256: "a".repeat(64), byteSize: 2500, rightsConfirmed: false }), /permitted/);

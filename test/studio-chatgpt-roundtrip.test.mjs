@@ -51,7 +51,7 @@ test('English selection overrides Dutch source; controls survive parsing and per
     const studio=new StudioStore(db);
     const p=studio.save({article:'Het dorp wordt wakker en een buurman gaat naar de winkel.',parameters:{lyricLanguage:'en',targetSeconds:215}});
     const prompt=buildChatGptLyricsPrompt(p);
-    assert.match(prompt,/lyrics, titles, and concept in en/);
+    assert.match(prompt,/lyrics, titles, and concept in English/);
     assert.doesNotMatch(prompt,/Write the lyrics in Dutch/);
     assert.match(prompt,/styleInfluence/);
     const result=parseChatGptBrief(JSON.stringify({...brief,generationParameters:{weirdness:18,styleInfluence:82,variety:30}}));

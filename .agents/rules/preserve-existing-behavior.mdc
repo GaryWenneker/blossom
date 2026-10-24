@@ -1,0 +1,11 @@
+---
+id: preserve-existing-behavior
+level: WARNING
+alwaysApply: false
+description: Optimization stays off until it is explicitly enabled.
+---
+
+New optimization features must remain backward compatible unless explicitly enabled. The default mode is observe.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

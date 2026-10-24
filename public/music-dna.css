@@ -1,29 +1,66 @@
-.music-dna-library{display:grid;gap:1.2rem}
-.music-dna-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.2rem}
-.music-dna-form{display:grid;gap:.8rem}
-.music-dna-form label{display:grid;gap:.3rem;font-size:.88rem}
-.music-dna-form input,.music-dna-search input,.studio-dna-picker input,
-.studio-dna-picker select{background:var(--surface,#111e1b);color:inherit;border:1px solid #4a6258;border-radius:.55rem;padding:.65rem;width:100%;min-width:0}
-.music-dna-jobs{display:grid;gap:.5rem;margin-bottom:1rem}
-.music-dna-jobs>div{display:flex;gap:.8rem;align-items:center;justify-content:space-between;padding:.65rem;border-bottom:1px solid #365046}
-.music-dna-jobs small{max-width:60%;overflow-wrap:anywhere}
-.music-dna-search{display:flex;gap:.5rem;align-items:center;margin:.6rem 0 1rem}
-.music-dna-results{display:grid;gap:.6rem}
-.music-dna-result{display:flex;align-items:center;justify-content:space-between;gap:1rem;border:1px solid #375047;border-radius:.7rem;padding:.8rem}
-.music-dna-result p{font-size:.83rem;opacity:.78;margin:.45rem 0}
-.music-dna-result small{opacity:.65}
-.music-dna-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.music-dna-library{min-height:0}
+.dna-toolbar{display:flex;gap:6px;align-items:center}
+.dna-toolbar input{flex:1 1 auto;height:30px;min-width:0;padding:0 8px;font-size:13px;background:#111e1b;color:inherit;border:1px solid #3c564b;border-radius:6px}
+.dna-toolbar .secondary,.dna-toolbar .primary{height:30px;padding:0 10px;font-size:12px}
+.dna-count{flex:0 0 auto;font-size:12px;color:var(--muted,#93a69b);white-space:nowrap}
+.dna-cols{display:grid;grid-template-columns:minmax(0,1.6fr) 52px minmax(0,.9fr) 28px;gap:8px;padding:0 8px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#7f9488}
+.dna-span{position:relative;width:100%}
+.dna-window{position:absolute;left:0;right:0;top:0}
+.dna-row{display:grid;grid-template-columns:minmax(0,1.6fr) 52px minmax(0,.9fr) 28px;gap:8px;align-items:center;height:30px;padding:0 8px;border:0;border-bottom:1px solid #24332c;background:transparent;color:inherit;width:100%;text-align:left;font-size:12px;border-radius:0}
+.dna-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dna-row-pending span{height:8px;align-self:center;border-radius:4px;background:#2c3b34}
+.dna-row-pending span:nth-child(1){width:46%}
+.dna-row-pending span:nth-child(2){width:70%}
+.dna-row-pending span:nth-child(3){width:55%}
+.dna-row-pending span:nth-child(4){width:40%}
+.dna-row.is-selected{background:hsl(var(--dna-hue),38%,14%);box-shadow:inset 3px 0 0 hsl(var(--dna-hue),78%,62%)}
+.dna-row.is-selected .dna-row-title{color:hsl(var(--dna-hue),85%,78%);font-weight:650}
+.dna-focus{border:1px solid hsl(var(--dna-hue),55%,42%);border-left:5px solid hsl(var(--dna-hue),78%,62%);background:linear-gradient(90deg,hsl(var(--dna-hue),42%,16%),#101614 78%);padding:8px 10px;border-radius:8px}
+.dna-focus-empty{border:1px solid #2c4036;border-left-color:#5f7a68;background:#121916;color:#9aada3;font-size:12px;padding:6px 10px;margin:0}
+.dna-focus-main{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.dna-focus-main strong{font-size:16px;letter-spacing:-.02em}
+.dna-focus-main span,.dna-row-version{color:#c5d4cb;font-size:11px}
+.dna-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.dna-chip{font-size:11px;line-height:1.4;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.dna-chip.genre{background:#1c4d32;color:#b6f5c8}
+.dna-chip.mood{background:#4d3a12;color:#ffd48a}
+.dna-chip.instrument{background:#14384a;color:#9ad4ff}
+.dna-chip.vocal{background:#4a1e40;color:#f3b6e4}
+.dna-chip.bpm,.dna-chip.key{background:#2c3d16;color:#d5f5a4}
+.dna-chip.awaiting{background:#2a3330;color:#c5d0ca}
+.dna-focus-actions{margin-top:6px}
+.dna-raw{margin-top:6px;font-size:12px}
+.dna-raw pre{max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+.dna-empty{margin:8px;font-size:12px;color:#9aada3}
+.dna-activity{border:1px solid #2c4036;border-radius:8px;padding:8px 10px;margin:8px 0;background:#101614}
+.dna-activity h2{margin:0 0 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#9aada3}
+.dna-activity-empty{margin:0;font-size:12px;color:#9aada3}
+.dna-activity-summary{margin:0 0 4px;font-size:12px;color:#d5f5a4}
+.dna-activity-list{list-style:none;margin:0;padding:0;max-height:140px;overflow:auto}
+.dna-activity-list li{display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #24332c;font-size:12px}
+.dna-activity-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dna-activity-percent{flex:0 0 auto;font-variant-numeric:tabular-nums;color:#d5f5a4;font-weight:650}
+.dna-activity-list button,.dna-queue-list button{flex:0 0 auto}
+.topbar-queue{height:30px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.dna-queue-count{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#b4ec76;color:#14210c;font-size:10px;font-weight:700}
+#dna-register-dialog,#dna-queue-dialog{background:#121a17;color:inherit;border:1px solid #365046;border-radius:10px;width:min(480px,calc(100vw - 32px));padding:16px}
+#dna-queue-dialog{width:min(560px,calc(100vw - 32px))}
+#dna-register-dialog::backdrop,#dna-queue-dialog::backdrop{background:rgba(0,0,0,.55)}
+.music-dna-form{display:grid;gap:.7rem}
+.music-dna-form label{display:grid;gap:.25rem;font-size:.82rem}
+.music-dna-form input,.studio-dna-picker input,.studio-dna-picker select{background:#111e1b;color:inherit;border:1px solid #4a6258;border-radius:6px;padding:.5rem .6rem;width:100%;min-width:0}
+.dna-queue-list{display:grid;max-height:320px;overflow:auto}
+.dna-queue-list>div{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2a4036;font-size:12px}
+.dna-queue-list small{max-width:55%;overflow-wrap:anywhere;color:#e7b4b4}
 .music-dna-upload{display:inline-flex;align-items:center;cursor:pointer}
-.music-dna-details{margin-top:1rem;padding:1rem;border:1px solid #375047;border-radius:.7rem}
-.music-dna-details pre{max-height:350px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.78rem}
 .studio-dna-picker{border:1px solid #3d5e51;border-radius:.7rem;padding:.85rem;margin:.8rem 0;background:rgba(70,120,90,.07)}
 .studio-dna-picker strong{display:block}
 .studio-dna-choice{display:grid;grid-template-columns:minmax(0,3fr) minmax(80px,1fr) auto;gap:.6rem;align-items:end}
 .studio-dna-choice .studio-field{min-width:0}
 .studio-dna-linked>div{display:flex;justify-content:space-between;gap:.5rem;align-items:center;border-top:1px solid #375047;padding:.45rem 0;font-size:.82rem}
 .studio-dna-linked span{min-width:0;overflow-wrap:anywhere}
-@media(max-width:850px){.music-dna-grid{grid-template-columns:1fr}.music-dna-result{align-items:flex-start;flex-direction:column}.studio-dna-choice{grid-template-columns:1fr}}
-@media(max-width:520px){.music-dna-search{flex-wrap:wrap}.music-dna-search input{flex-basis:100%}.music-dna-actions{width:100%}}
+@media(max-width:850px){.studio-dna-choice{grid-template-columns:1fr}}
+@media(max-width:520px){.dna-toolbar{flex-wrap:wrap}.dna-toolbar input{flex-basis:100%}.dna-cols{display:none}}
 
 .dna-bar-blocks{display:grid;gap:.35rem;margin:1rem 0}
 .dna-bar-blocks h4{margin:.4rem 0;font-size:1rem}
@@ -42,4 +79,10 @@
 .dna-spotify-liked .studio-panel-head,.dna-spotify-liked>p{flex-basis:100%;margin:0}
 .dna-spotify-liked .dna-spotify-consent{display:inline-flex;align-items:center;border:1px solid #436657;border-radius:.5rem;padding:.65rem;text-decoration:none;color:inherit}
 .dna-spotify-progress{font-size:.83rem;opacity:.8;overflow-wrap:anywhere}
+.dna-spotify-liked input{flex:1 1 16rem;height:30px;min-width:12rem;padding:0 8px;font-size:13px;background:#111e1b;color:inherit;border:1px solid #3c564b;border-radius:6px}
+.dna-spotify-search-status,.dna-spotify-results{flex-basis:100%;margin:0}
+.dna-spotify-results{display:flex;flex-direction:column;gap:4px}
+.dna-spotify-hit{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
+.dna-spotify-hit span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dna-spotify-hit button{height:30px;padding:0 10px;font-size:12px;flex:0 0 auto}
 @media(max-width:650px){.dna-spotify-liked button,.dna-spotify-liked .dna-spotify-consent{width:100%;justify-content:center}}

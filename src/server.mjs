@@ -2,12 +2,14 @@ import { createServer } from "node:http";
 import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
 import { SpotifyLikedImporter } from "./spotify-liked.mjs";
+import { SpotifyCatalog } from "./spotify-catalog.mjs";
 import { ConnectedBrowsers, providerBrowserUrl } from "./browser-connections.mjs";
 import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
+import { MusicDnaChatGpt } from "./music-dna-chatgpt.mjs";
 import { MusicDnaMCP, musicDnaMcpToolFingerprint, musicDnaMcpToolNames } from "./music-dna-mcp.mjs";
 import { CloudflareAccess } from "./cloudflare-access.mjs";
 import { BlossomMcpOAuth } from "./mcp-oauth.mjs";
@@ -19,7 +21,7 @@ import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
- "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg",
+ "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {
@@ -81,7 +83,9 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     sunoBrowser:sunoBrowser||browserAccounts.suno,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
   const musicDna=new MusicDNA(store);
   const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
-  const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked});
+  const spotifyCatalog=new SpotifyCatalog(spotify,musicDna);
+  const musicDnaChat=new MusicDnaChatGpt(musicDna,(prompt,report)=>studioApi.chatgptLyrics.askHidden(prompt,report));
+  const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked,spotifyCatalog,chatgpt:musicDnaChat});
   const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth,spotifyLiked});
   // Nonsecret live-process tool contract. /healthz must reveal which code is
   // ACTUALLY handling requests, not merely whether an old process is alive.

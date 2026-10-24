@@ -148,4 +148,61 @@ export class SpotifyOAuth {
       ?offset+body.items.length:null;
     return {offset,limit,total:body.total,items:body.items,nextOffset};
   }
+  assertSpotifyId(id) {
+    if (typeof id !== "string" || !/^[A-Za-z0-9]{22}$/.test(id))
+      throw new DomainError("Invalid Spotify id", 400);
+    return id;
+  }
+  async spotifyJson(url) {
+    if (!(url instanceof URL) || url.origin !== "https://api.spotify.com")
+      throw new DomainError("Invalid Spotify id", 400);
+    const token = await this.accessToken();
+    const res = await this.fetcher(url.toString(), {
+      headers: { Authorization: "Bearer " + token, Accept: "application/json" },
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) throw new DomainError(
+        "Spotify cannot read this catalog. Reconnect through the official Spotify OAuth page.", res.status);
+      if (res.status === 429) {
+        const retryRaw = Number(res.headers?.get?.("retry-after"));
+        const wait = Number.isFinite(retryRaw) ? Math.min(Math.max(Math.ceil(retryRaw), 1), 3600) : 30;
+        throw new DomainError("Spotify rate limit reached; retry in " + wait + " seconds", 429);
+      }
+      if (res.status === 404) throw new DomainError("Spotify item was not found", 404);
+      throw new DomainError("Spotify request failed (" + res.status + ")", 502);
+    }
+    const body = await res.json().catch(() => null);
+    if (!body || typeof body !== "object")
+      throw new DomainError("Spotify returned an invalid response", 502);
+    return body;
+  }
+  async searchCatalog(query) {
+    const q = typeof query === "string" ? query.trim() : "";
+    if (!q) throw new DomainError("Enter a Spotify search query", 400);
+    if (q.length > 100) throw new DomainError("Spotify search query is too long", 400);
+    const url = new URL("https://api.spotify.com/v1/search");
+    url.searchParams.set("q", q);
+    url.searchParams.set("type", "track,album");
+    url.searchParams.set("limit", "8");
+    url.searchParams.set("market", "from_token");
+    return { query: q, body: await this.spotifyJson(url) };
+  }
+  async catalogTrack(id) {
+    return this.spotifyJson(new URL("https://api.spotify.com/v1/tracks/" + this.assertSpotifyId(id)));
+  }
+  async catalogAlbum(id) {
+    return this.spotifyJson(new URL("https://api.spotify.com/v1/albums/" + this.assertSpotifyId(id)));
+  }
+  async catalogAlbumTracks(id, offset) {
+    if (!Number.isInteger(offset) || offset < 0 || offset > 1_000_000)
+      throw new DomainError("Spotify album tracks require offset 0–1000000 and limit 1–50", 400);
+    const url = new URL("https://api.spotify.com/v1/albums/" + this.assertSpotifyId(id) + "/tracks");
+    url.searchParams.set("limit", "50");
+    url.searchParams.set("offset", String(offset));
+    const body = await this.spotifyJson(url);
+    if (!Array.isArray(body.items) || body.items.length > 50)
+      throw new DomainError("Spotify returned an invalid album track list", 502);
+    return body;
+  }
 }

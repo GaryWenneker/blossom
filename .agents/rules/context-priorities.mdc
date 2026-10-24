@@ -1,0 +1,11 @@
+---
+id: context-priorities
+level: INFO
+alwaysApply: false
+description: Context selection order.
+---
+
+Context priority: 1 mandatory rules, 2 explicit user or project constraints, 3 required skills, 4 directly relevant graph entities, 5 relevant memory, 6 relevant source, 7 previous tool results, 8 background information. Do not drop mandatory rules to meet the budget.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

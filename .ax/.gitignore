@@ -1,0 +1,6 @@
+*
+!.gitignore
+!policy/
+!policy/**
+policy-private/
+policy-inactive/

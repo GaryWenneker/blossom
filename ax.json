@@ -1,0 +1,14 @@
+{
+  "agents": {
+    "ides": [
+      "cursor",
+      "vscode",
+      "claude"
+    ]
+  },
+  "policy": {
+    "agentsDir": ".agents",
+    "stackDetect": "off",
+    "stacks": []
+  }
+}

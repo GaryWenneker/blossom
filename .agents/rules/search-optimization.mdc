@@ -1,0 +1,11 @@
+---
+id: search-optimization
+level: INFO
+alwaysApply: false
+description: Known-entity search may propose ax_explore.
+---
+
+If a search targets a known graph entity and the entity resolves confidently, ax_explore may be proposed. Do not always replace search with ax_explore.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

@@ -1,8 +1,9 @@
-import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload } from "./music-dna.js";
+import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
+import { pageFromHash, routeFromClick } from "./route.js";
 import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=chatgpt-assets-v2";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
-const state={tab:"studio",data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
+const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
 const nextStage={idea:"brief",brief:"generated",generated:"review",review:"approved",rejected:"brief"};
 const releaseChecks={audioUploaded:"Audio at distributor",artworkUploaded:"Cover art at distributor",creditsVerified:"Credits verified",codesVerified:"ISRC/UPC verified",aiDisclosuresDone:"AI disclosure completed",distributorRightsConfirmed:"Rights and distribution terms verified"};
 const capitals=s=>s.replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());
@@ -26,20 +27,24 @@ async function api(path,data){
   return body;
 }
 async function refresh(){
+  const dnaRequest=musicDnaRequest(state);
   const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets"];
   const results=await Promise.all(names.map(apiName=>api(apiName)));
   state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("browser-accounts","browserAccounts"),results[i]]));
   const id=studioActiveId(state);
-  const [assets,dnaProfiles,dnaJobs,dnaReferences]=await Promise.all([
+  const [assets,dnaPage,dnaJobs,dnaReferences]=await Promise.all([
     id?api("studio/projects/"+id+"/assets"):Promise.resolve([]),
-    api("music-dna/search?limit=100"),api("music-dna/jobs"),
+    api(dnaRequest.path),api("music-dna/jobs"),
     id?api("studio/projects/"+id+"/references"):Promise.resolve({references:[]})
   ]);
   state.data.studioAssets=assets;
-  state.data.musicDnaProfiles=dnaProfiles.results;
+  state.data.musicDnaProfiles=dnaPage.results||[];
+  state.data.musicDnaTotal=Number.isInteger(dnaPage.total)?dnaPage.total:state.data.musicDnaProfiles.length;
+  state.data.musicDnaOffset=dnaRequest.offset;
   state.data.musicDnaJobs=dnaJobs.jobs;
   state.data.musicDnaJobCounts=dnaJobs.counts||null;
   state.data.studioReferences=dnaReferences.references;
+  if(state.tab==="music-dna") await loadOpenJobs(false);
   render();
 }
 function badge(value){return '<span class="pill '+(["needs_reconciliation","rejected"].includes(value)?"warning":value==="draft"?"neutral":"")+'">'+e(capitals(value))+"</span>";}
@@ -225,6 +230,8 @@ function render(){
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
  view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
+ musicDnaChrome(state);
+ watchOpenJobs();
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
@@ -377,12 +384,26 @@ async function updateBrowserStatusOnReturn(){
  finally{browserReturnRefreshing=false;}
 }
 document.addEventListener("visibilitychange",()=>{
- if(document.visibilityState==="visible")void updateBrowserStatusOnReturn();
+ if(document.visibilityState!=="visible")return;
+ void updateBrowserStatusOnReturn();
+ if(state.tab==="music-dna")void loadOpenJobs(true);
 });
 window.addEventListener("focus",()=>{void updateBrowserStatusOnReturn();});
+window.addEventListener("hashchange",()=>{
+ const page=pageFromHash(location.hash);
+ if(page===state.tab)return;
+ state.tab=page;
+ render();
+});
 document.addEventListener("click",async event=>{
  const tab=event.target.closest("[data-tab]");
- if(tab){state.tab=tab.dataset.tab;render();return;}
+ const route=routeFromClick({tab:tab?.dataset.tab,action:tab?.dataset.action});
+ if(route){
+  state.tab=route.page;
+  if(location.hash!==route.hash)history.pushState(null,"",route.hash);
+  render();
+  return;
+ }
  const btn=event.target.closest("[data-action]");
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
@@ -420,6 +441,36 @@ document.addEventListener("submit",async event=>{
  }catch(error){message(error.message,true)}
  finally{if(button)button.disabled=false}
 });
+let openJobPoll=0;
+async function loadOpenJobs(paint){
+ if(state.tab!=="music-dna"||document.visibilityState==="hidden")return;
+ try{
+  const [queued,running]=await Promise.all([
+   api("music-dna/jobs?status=queued&limit=200"),
+   api("music-dna/jobs?status=running&limit=200")
+  ]);
+  const open=[...(running.jobs||[]),...(queued.jobs||[])];
+  const changed=musicDnaJobsChanged(state.data.musicDnaOpenJobs, open);
+  state.data.musicDnaOpenJobs=open;
+  if(changed) await reloadMusicDna(state, api);
+  if(paint && state.tab==="music-dna"){
+    if(changed) render();
+    else paintDnaActivity(state);
+  }
+  musicDnaChrome(state);
+ }catch{/* keep the last statuses */}
+}
+function watchOpenJobs(){
+ if(state.tab==="music-dna"){
+  if(openJobPoll)return;
+  void loadOpenJobs(true);
+  openJobPoll=setInterval(()=>{void loadOpenJobs(true);},1000);
+  return;
+ }
+ clearInterval(openJobPoll);
+ openJobPoll=0;
+}
 if(new URLSearchParams(location.search).get("spotify")==="connected"){
  state.tab="connections";history.replaceState(null,"","/");}
+bindMusicDna(state,api,render,message);
 refresh().catch(error=>{view.innerHTML='<div class="warning-banner">Could not load Blossom: '+e(error.message)+'. Check the server and credentials.</div>'});

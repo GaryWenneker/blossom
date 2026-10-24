@@ -1,0 +1,11 @@
+---
+id: ax-owns-intelligence
+level: CRITICAL
+alwaysApply: true
+description: Ax provides contextual intelligence around the runtime.
+---
+
+Ax provides contextual intelligence around the runtime: graph, memory, rules, skills, context, and cost.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0

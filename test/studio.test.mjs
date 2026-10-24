@@ -26,6 +26,11 @@ test("Project CRUD preserves original article, genre, source and artist preset",
  const updated=studio.save({...project,title:"New title"});assert.equal(updated.id,project.id);
  db.close();
 });
+test("lyric language defaults to the article language and only accepts a known language",()=>{
+ assert.equal(normalizeParameters(DEFAULT_PARAMETERS).lyricLanguage,"auto");
+ assert.equal(normalizeParameters({...DEFAULT_PARAMETERS,lyricLanguage:"nl"}).lyricLanguage,"nl");
+ assert.throws(()=>normalizeParameters({...DEFAULT_PARAMETERS,lyricLanguage:"xx"}),/lyric language/);
+});
 test("Song length presets and numeric controls are bounded and checked",()=>{
  assert.equal(normalizeParameters(DEFAULT_PARAMETERS).targetSeconds,205);
  assert.throws(()=>normalizeParameters({...DEFAULT_PARAMETERS,styleInfluence:101}),/Style|styleInfluence|0-100/);

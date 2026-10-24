@@ -17,6 +17,14 @@ Music DNA **metadata** reference:
 - Existing analyzed profiles are left intact
 - New references are queued as **metadata-only**, awaiting real audio or an analyst
 
+The same Spotify connection can search the public catalog and add individual recordings.
+`GET /api/music-dna/spotify/search?q=` returns at most 8 tracks and 8 albums.
+`POST /api/music-dna/spotify/tracks` with `{ "id" }` adds that track.
+`POST /api/music-dna/spotify/albums` with `{ "id" }` adds every track on the album.
+Albums with more than 500 tracks are refused and import nothing. A repeated add of the
+same Spotify track URL is a duplicate, not a second profile. Search does not follow
+URLs returned by Spotify. The client sends a Spotify id, never an access token or a URL.
+
 **This import does not download Spotify audio**, measure BPM, determine song key,
 separate stems, identify instruments, or invent timed sections. Metadata must not
 be falsely labeled as a complete Music DNA analysis. For deeper AX evidence-first

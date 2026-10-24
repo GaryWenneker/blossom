@@ -77,7 +77,7 @@ const panels=(p,assets,state)=>{
  '</div>'+
  field("Exclude styles / instruments",'<input id="studio-excludes" value="'+safeList(params.excludeStyles||[])+'">')+
  '<div class="studio-control-grid">'+
- field("Lyrics language",choose("studio-language",[["auto","Artist / article language"],["en","English"],["nl","Dutch"],["es","Spanish"],["fr","French"],["de","German"]],params.lyricLanguage||"auto"))+
+ field("Lyrics language",choose("studio-language",[["auto","Artist / article language"],["en","English"],["nl","Dutch"],["de","German"],["fr","French"],["es","Spanish"],["it","Italian"],["pt","Portuguese"]],params.lyricLanguage||"auto"))+
  field("Vocal gender",choose("studio-gender",[["male","Male"],["female","Female"],["auto","Auto"]],params.vocalGender))+
  field("Playlist intent / length",choose("studio-duration-preset",Object.keys(presetNames).map(k=>[k,presetNames[k]]),params.durationPreset))+'</div>'+
  '<div class="studio-duration"><div><label for="studio-duration">Target duration</label><output id="studio-duration-value">'+formatTime(params.targetSeconds)+'</output></div><input id="studio-duration" type="range" min="35" max="900" step="5" value="'+params.targetSeconds+'"><div class="studio-duration-note">30 seconds is Spotify’s counted-play threshold, not an editorial playlist qualification. Suno duration is a target, never guaranteed.</div></div>'+
@@ -146,17 +146,53 @@ export function pasteStartsLyrics(field,text){
  }
  return field==="article"&&value.length>=80;
 }
+export function nextChatGptPercent(current,incoming){
+ const value=Math.max(0,Math.min(100,Math.round(Number(incoming)||0)));
+ return value<current?current:value;
+}
+export function chatGptProgressMarkup(status){
+ const percent=Math.max(0,Math.min(100,Math.round(Number(status?.percent)||0)));
+ const label=esc(status?.label||"Working with ChatGPT");
+ return '<div class="studio-chatgpt-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+percent+'" aria-label="'+label+'"><span>'+label+'</span><div class="studio-chatgpt-progress-track"><div class="studio-chatgpt-progress-fill" style="width:'+percent+'%"></div></div></div>';
+}
+function paintChatGptProgress(status){
+ if(typeof document==="undefined"||!document.querySelector||!status||typeof status!=="object")return;
+ const incoming=Math.max(0,Math.min(100,Math.round(Number(status.percent)||0)));
+ const percent=nextChatGptPercent(work.chatgptPercent||0,incoming);
+ if(percent!==incoming)return;
+ work.chatgptPercent=percent;
+ const markup=chatGptProgressMarkup({...status,percent});
+ const existing=document.querySelector(".studio-chatgpt-progress");
+ if(existing&&typeof existing.outerHTML==="string"){existing.outerHTML=markup;return;}
+ const host=document.querySelector(".studio-panel-bottom");
+ if(!host||typeof host.insertAdjacentHTML!=="function")return;
+ host.insertAdjacentHTML("afterbegin",markup);
+}
+function clearChatGptProgress(){
+ work.chatgptPercent=0;
+ const existing=typeof document!=="undefined"&&document.querySelector?.(".studio-chatgpt-progress");
+ if(existing&&typeof existing.remove==="function")existing.remove();
+}
 async function generateChatGpt(state,api,refresh,message){
  message("ChatGPT is writing the lyrics…");
  const project=await save(state,api);
- try{await api("studio/projects/"+project.id+"/chatgpt-lyrics",{});}
+ work.chatgptPercent=0;
+ paintChatGptProgress({percent:8,label:"Opening your ChatGPT tab"});
+ const paint=()=>api("studio/chatgpt-lyrics/status").then(paintChatGptProgress).catch(()=>{});
+ paint();
+ if(work.chatgptPoll)clearInterval(work.chatgptPoll);
+ work.chatgptPoll=setInterval(paint,800);
+ try{await api("studio/projects/"+project.id+"/chatgpt-lyrics",{});
+  paintChatGptProgress({percent:100,label:"Song brief placed in Blossom"});}
  catch(error){
+  clearChatGptProgress();
   if(error.code==="chatgpt_login_required"){
    message(error.message||"Sign in to ChatGPT in the opened Safari window, then generate again.",true);
    return;
   }
   throw error;
  }
+ finally{if(work.chatgptPoll){clearInterval(work.chatgptPoll);work.chatgptPoll=null;}}
  await refresh();
  message("Song brief saved: lyrics, style, titles, and artwork prompts.");
 }

@@ -26,6 +26,9 @@ input:focus,textarea:focus,select:focus{border-color:#9adb6e}.primary{background
 .studio-article{display:flex;flex-direction:column}
 #studio-article{flex:1;min-height:255px;line-height:1.6;font-size:11px;resize:vertical;background:#121416}
 .studio-panel-bottom{margin-top:auto;display:grid;gap:12px;padding-top:12px}.studio-panel-bottom small{color:#87928a;font-size:10px}
+.studio-chatgpt-progress{display:grid;gap:6px;color:#d7e6cf;font-size:11px}
+.studio-chatgpt-progress-track{height:8px;border-radius:99px;background:#1c2820;overflow:hidden}
+.studio-chatgpt-progress-fill{height:100%;width:0;background:var(--lime);transition:width .35s ease}
 .studio-concept{border:1px solid #34393b;border-radius:8px;background:#111314;padding:11px;font-size:11px;line-height:1.6;min-height:78px;white-space:pre-line}
 .studio-chiprow{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;min-height:30px}.studio-chip{border-radius:30px;background:#25292c;border:1px solid #323a3b;color:#c7ccc9;padding:5px 8px;font-size:9px}
 .studio-muted{color:#747e78;font-size:11px}.studio-ideas{display:grid;gap:3px}.studio-ideas>div{background:#1c1f21;padding:6px 8px;border-radius:6px;display:flex;justify-content:space-between;align-items:center;font-size:10px;gap:6px}

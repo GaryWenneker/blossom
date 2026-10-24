@@ -46,7 +46,7 @@ async function harness(t,{preinstalled=false, changedPlist=false, dropAfterBoots
     throw Error("unexpected launchctl command: "+verb);
   };
   const opts={root,agentDir,logsDir,nodePath,searchPath:"/usr/bin:/bin",uid:502,
-    launch,health:async()=>false,sleep:async()=>{}};
+    launch,health:async()=>false,occupied:async()=>false,sleep:async()=>{}};
   return {root,agentDir,logsDir,envFile,calls,loaded,opts};
 }
 

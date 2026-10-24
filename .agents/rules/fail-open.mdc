@@ -1,0 +1,19 @@
+---
+id: fail-open
+level: CRITICAL
+alwaysApply: true
+globs: []
+triggers: []
+tags: []
+priority: 50
+enabled: true
+status: approved
+scope: project
+group: integrations
+description: Ax integration failure must not terminate Pi execution.
+---
+
+Ax integration failure must not terminate Pi execution unless a future strict mode is explicitly enabled.
+
+seed: ax-bootstrap
+seedVersion: 2.0.0
