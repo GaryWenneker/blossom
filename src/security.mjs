@@ -60,6 +60,23 @@ export class Sessions {
   saveOAuth(state,sessionHash,encryptedVerifier) {
     this.db.prepare("INSERT INTO oauth_pending VALUES (?,?,?,?)").run(digest(state),sessionHash,encryptedVerifier,Date.now()+10*60*1000);
   }
+  /**
+   * Public HTTPS callbacks cannot read a 127.0.0.1 session cookie. The
+   * cryptographically random PKCE state instead identifies an existing OAuth
+   * transaction that MUST have been initiated while a valid local admin
+   * session was active. Atomically consume it once, and refuse expired or
+   * logged-out sessions. Never return the admin session hash to the caller.
+   */
+  consumeSpotifyPublicOAuth(state) {
+    if(typeof state!=="string"||!/^[-_a-zA-Z0-9]{20,100}$/.test(state))return null;
+    const now=Date.now();
+    const row=this.db.prepare(`DELETE FROM oauth_pending
+      WHERE state_hash=? AND expires_at>?
+        AND EXISTS (SELECT 1 FROM web_sessions
+          WHERE token_hash=oauth_pending.session_hash AND expires_at>?)
+      RETURNING verifier_cipher`).get(digest(state),now,now);
+    return row?.verifier_cipher||null;
+  }
   consumeOAuth(state,sessionHash) {
     const transaction=this.db.transaction ? this.db.transaction.bind(this.db) : null;
     // DELETE first makes callbacks one-time, including token-exchange failures.

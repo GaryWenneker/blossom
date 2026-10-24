@@ -69,6 +69,17 @@ try {
     if (path === "/" && page.response.status !== 200)
       console.warn("WARN: Public homepage is not available. The gateway route may not be deployed or published by Cloudflare.");
   }
+  step = "public Spotify callback route";
+  const spotifyCallback = await call("/callback");
+  if (spotifyCallback.response.status === 200 &&
+      spotifyCallback.contentType.includes("text/html") &&
+      spotifyCallback.body.includes("Spotify-callback is actief")) {
+    console.log("PASS Public Spotify HTTPS callback is reachable and waiting for a valid PKCE state");
+  } else {
+    console.warn("WARN Public Spotify callback not deployed or Cloudflare Access blocks /callback: HTTP " +
+      spotifyCallback.response.status + " (expected public HTML landing). "+
+      "Keep the public admin locked down and deploy the updated Blossom server/tunnel.");
+  }
   step = "live MCP tool-version discovery";
   const health=await call("/healthz");
   expectStatus(health,200);

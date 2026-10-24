@@ -193,7 +193,7 @@ function connections(){
  '<button type="submit" class="secondary">Save Client ID</button></form>'+
  (hasSpotifyApp?'<a class="secondary" href="/auth/spotify/start?choose=1">Connect Spotify · Choose Facebook (API authorization) ↗</a>':"")+
  (c.spotify_refresh_token?.configured?'<p class="small">OAuth authorized: '+e(c.spotify_refresh_token.label)+'</p><button type="button" class="secondary" data-action="verify-spotify">Verify Spotify API</button><button type="button" class="danger" data-action="remove-spotify">Revoke stored Spotify token</button>':"")+
- '<p class="small">Callback: <code>'+e(location.origin)+'/auth/spotify/callback</code></p></section>'+
+ '<p class="small">Spotify Redirect URI: <code>'+e(c.spotifyRedirectUri||location.origin+"/auth/spotify/callback")+'</code>. Register this exact HTTPS URI in the Spotify Developer Dashboard.</p></section>'+
  '<section><h3>OpenAI API (optional)</h3><p class="hint">Your ChatGPT subscription and cookies do not authorize automated OpenAI API calls. API access needs its own key and billing.</p>'+
  '<form id="openai-connection-form" class="stack"><div class="field"><label for="openai-key">OpenAI API key</label><input id="openai-key" name="apiKey" type="password" autocomplete="off" placeholder="Only for automatic Blossom AI generation" required></div>'+
  '<button class="secondary" type="submit" '+(!c.vaultReady?"disabled":"")+'>Save encrypted key</button></form>'+

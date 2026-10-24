@@ -37,6 +37,24 @@ async function body(req) {
   try {return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
   catch {throw new DomainError("Invalid JSON body");}
 }
+function spotifyCallbackPage(res,status,title,description) {
+  // Only fixed, server-authored text is ever rendered; never echo an OAuth
+  // code, state, Spotify token, or user-provided URL into an HTML response.
+  res.writeHead(status,{
+    "Content-Type":"text/html; charset=utf-8",
+    "Cache-Control":"no-store, private",
+    "Referrer-Policy":"no-referrer",
+    "X-Content-Type-Options":"nosniff",
+    "X-Frame-Options":"DENY",
+    "Content-Security-Policy":"default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    "X-Robots-Tag":"noindex, nofollow"
+  });
+  res.end('<!doctype html><html lang="nl"><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width, initial-scale=1">'+
+    '<meta name="robots" content="noindex,nofollow"><title>'+title+'</title>'+
+    '<h1>'+title+'</h1><p>'+description+'</p>'+
+    '<p>Ga terug naar je lokale Blossom-app om verder te gaan.</p></html>');
+}
 function required(store,id,type) {
   const value=type==="release"?store.release(id):type==="track"?store.track(id):store.artist(id);
   if(!value)throw new DomainError(type+" not found",404);return value;
@@ -56,7 +74,8 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const mcpOAuth=new BlossomMcpOAuth(store.db,{publicUrl:mcpOrigin,
     authenticate:(user,pass,ip)=>sessions.authenticate(user,pass,ip)});
   const vault=new Vault(store.db,vaultKey);
-  const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,fetcher:spotifyFetcher});
+  const spotify=new SpotifyOAuth({vault,sessions,baseUrl:publicUrl,
+    publicCallbackOrigin:mcpOAuth.origin,fetcher:spotifyFetcher});
   const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
   const studioApi=new StudioAPI({store,vault,composer,localComposer,...(articleImporter?{articleImporter}:{}),draw,
     sunoBrowser:sunoBrowser||browserAccounts.suno,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
@@ -87,8 +106,11 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     // MCP/OAuth ONLY. Studio and administrator APIs must remain on loopback.
     const gatewayHost=!!publicHost&&
       String(req.headers.host||"").split(":")[0].toLowerCase()===publicHost;
+    const spotifyPublicCallback = gatewayHost && path==="/callback";
+    // Spotify's registered redirect URI must stay reachable without a
+    // Cloudflare Access browser session. ONLY this path is exempted.
     if(gatewayHost && publicUiEnabled && path!=="/mcp" && !oauthPath &&
-        path!=="/healthz") {
+        path!=="/healthz" && !spotifyPublicCallback) {
       if(!await access.verifyRequest(req))
         return reply(res,403,{error:"Valid Cloudflare Access login required"});
     }
@@ -102,7 +124,30 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       }
       if(req.method==="GET"&&path==="/healthz")
         return reply(res,200,mcpHealth);
-      if(path!=="/mcp"&&!oauthPath)return reply(res,404,{error:"Not found"});
+      if(path!=="/mcp"&&!oauthPath&&!spotifyPublicCallback)
+        return reply(res,404,{error:"Not found"});
+    }
+    if(spotifyPublicCallback) {
+      if(req.method!=="GET")return reply(res,405,{error:"Spotify callback requires GET"});
+      if(!parsedUrl.searchParams.has("code")&&!parsedUrl.searchParams.has("error")) {
+        return spotifyCallbackPage(res,200,"Spotify-callback is actief",
+          "Start de Spotify-verbinding vanuit Blossom → Music DNA of Connections. Een bezoek aan deze URL op zichzelf koppelt geen account.");
+      }
+      if(parsedUrl.searchParams.has("error")) {
+        return spotifyCallbackPage(res,400,"Spotify-toestemming niet verleend",
+          "Spotify heeft de autorisatie geannuleerd of geweigerd. Start opnieuw vanuit Blossom.");
+      }
+      try {
+        await spotify.completePublic(parsedUrl.searchParams.get("state"),
+          parsedUrl.searchParams.get("code"));
+        return spotifyCallbackPage(res,200,"Spotify verbonden",
+          "Spotify heeft de toegang bevestigd. De koppeling is beveiligd opgeslagen in Blossom. Je kunt nu je gelikete nummers importeren.");
+      } catch(error) {
+        const expired=error instanceof DomainError && error.status===409;
+        return spotifyCallbackPage(res,expired?409:400,"Spotify-koppeling niet voltooid",
+          expired?"De aanvraag is verlopen, opnieuw gebruikt of je lokale Blossom-sessie is verlopen. Start opnieuw vanuit Blossom.":
+          "Spotify kon de autorisatie niet afronden. Controleer de Client ID, de exacte Redirect URI en begin opnieuw vanuit Blossom.");
+      }
     }
     if(oauthPath) {
       try {return await mcpOAuth.handle(req,res,path,parsedUrl);}
@@ -220,7 +265,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         if(path==="/api/watches")return reply(res,200,{sources:WATCH_URLS,records:store.watches()});
         if(path==="/api/integrations")return reply(res,200,{suno:"manual blueprint only",labelgrid:provider.available()?"token configured":"not configured",liveDistributionEnabled:allowLive,monitorEnabled:!!timer});
         if(path==="/api/genres")return reply(res,200,GENRES);
-        if(path==="/api/connections")return reply(res,200,vault.list());
+        if(path==="/api/connections")return reply(res,200,{...vault.list(),spotifyRedirectUri:spotify.redirectUri});
         if(path==="/api/connections/spotify/profile")return reply(res,200,await spotify.profile());
         let match=path.match(/^\/api\/tracks\/([a-z0-9-]+)\/blueprint$/i);
         if(match) {

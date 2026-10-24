@@ -31,16 +31,27 @@ an audio analysis.
 3. Go to **Connections → Spotify Web API** and enter a Spotify developer app Client ID.
    If you have no Spotify developer app, create one at
    `https://developer.spotify.com/dashboard` and register **exactly**
-   `http://127.0.0.1:8787/auth/spotify/callback` as a redirect URI.
-4. Go to **Music DNA → Spotify · Liked Songs** and choose
+   `https://blossom.wenneker.dev/callback` as the Spotify Redirect URI
+   (HTTPS, same case, no trailing slash). This URL is **not**
+   `https://blossom.wenneker.dev/mcp` and it is **not** the ChatGPT OAuth
+   callback. The developer Client ID (no Client Secret) is saved under
+   local Blossom Connections.
+4. Ensure your existing Cloudflare tunnel routes
+   `blossom.wenneker.dev` to the local Blossom service on port 8787.
+   `GET https://blossom.wenneker.dev/callback` must show
+   **Spotify-callback is actief** (without requiring an admin login).
+   If Cloudflare Zero Trust Access protects the full hostname, create a
+   **narrow bypass for GET /callback** so Spotify's browser redirect
+   reaches Blossom; do not open the admin site or other paths publicly.
+5. Go to **Music DNA → Spotify · Liked Songs** and choose
    **Connect / reauthorize Spotify Library**.
-5. Authorize access to saved content on **accounts.spotify.com**. You may use your
+6. Authorize access to saved content on **accounts.spotify.com**. You may use your
    existing Spotify account's supported sign-in method there. Blossom never asks
    for your Spotify password.
-6. Back in Music DNA, click **Import all Liked Songs into Music DNA**. The browser
+7. Back in Music DNA, click **Import all Liked Songs into Music DNA**. The browser
    invokes the authenticated local import endpoint page by page (50 items per
    request), shows progress, and preserves successful batches if later calls fail.
-7. If you've already connected Spotify **before** this release, **reauthorize**:
+8. If you've already connected Spotify **before** this release, **reauthorize**:
    the old token was issued for `user-read-private` only and cannot retrieve
    `/me/tracks` without `user-library-read`.
 
@@ -48,6 +59,36 @@ Spotify developer **Development Mode** restrictions since February/March 2026
 may require the Spotify app owner to have Premium and have no more than five app
 users. A `403` can also mean the old OAuth scope was never granted. Follow the
 server's error instead of injecting browser cookies.
+
+## Spotify public HTTPS callback: security
+
+The local Blossom admin at `http://127.0.0.1:8787` starts OAuth only after
+local administrator authentication and generates a one-time, random PKCE state.
+The Spotify authorize request contains the registered
+`redirect_uri=https://blossom.wenneker.dev/callback` and
+`user-library-read` scope. After login Spotify redirects to this public
+HTTPS URL with a `code` and `state`.
+
+The publicly accessible route uses that state to atomically redeem the
+stored encrypted PKCE verifier. It checks that the originating local admin
+session is still valid; it does **not** need the browser's localhost session
+cookie on the public domain. The app exchanges the authorization code
+server-side using the **same registered HTTPS redirect URI**, verifies the
+Spotify profile, and stores only the refresh token in the encrypted local
+credential vault. The route returns a simple token-free HTML result with
+`Cache-Control: no-store`, `Referrer-Policy: no-referrer` and a restrictive
+CSP. Replays, unknown states and expired sessions cannot issue fresh tokens.
+
+**Visiting `/callback` directly does not authorize Spotify.** It only
+reports that the endpoint exists. The local Connections UI shows the current
+server-configured Redirect URI so you can enter precisely the same string in
+Spotify's dashboard. In development **without** a public MCP hostname,
+Blossom retains its old loopback-only `/auth/spotify/callback` flow.
+
+**Never expose the local admin UI publicly solely for this callback.**
+The Cloudflare gateway keeps `/login`, `/api/*` and the Studio endpoints
+restricted. Spotify account authorization and ChatGPT/Blossom MCP OAuth are
+separate protocols and do not share tokens.
 
 ## ChatGPT ↔ Blossom MCP
 

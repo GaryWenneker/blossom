@@ -46,6 +46,11 @@ test("Public hostname serves only MCP gateway landing and status, not admin page
     mcp:{toolCount:musicDnaMcpToolNames().length,
       toolFingerprint:musicDnaMcpToolFingerprint,spotifyLikedSupported:true}
   });
+  const spotifyCallback=await req("/callback");
+  assert.equal(spotifyCallback.status,200);
+  assert.match(await spotifyCallback.text(),/Spotify-callback is actief/);
+  assert.equal(spotifyCallback.headers.get("cache-control"),"no-store, private");
+  assert.equal((await req("/callback?code=invalid&state=invalid")).status,400);
   assert.equal((await req("/login")).status,404);
   assert.equal((await req("/api/summary")).status,404);
   assert.equal((await req("/app.js")).status,404);
