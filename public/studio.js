@@ -152,6 +152,7 @@ const panels=(p,assets,state)=>{
  '<div class="studio-release-controls"><button type="button" class="primary" data-action="studio-suno-generate" '+
  (studioSunoReadiness(p).ready?'':'disabled')+'>'+
  (state.data.studioStatus?.sunoApiConfigured?'♫ Generate music in Suno':'♫ Prepare song in Suno ↗')+'</button>'+
+ '<button type="button" class="secondary" data-action="studio-suno-browser-download">Import selected Suno MP3</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-status"'+(p?.sunoJob?'':' disabled')+'>Check generation status</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-import"'+
  (p?.sunoJob?.status==="complete"&&!p?.sunoJob?.importedAssetId?'':' disabled')+
@@ -380,16 +381,6 @@ export async function studioAction(el,state,api,refresh,message){
     const submitted=await api("studio/projects/"+project.id+"/suno-browser/submit",{});
     await refresh();
     message(submitted.note||"Creation submitted on Suno. When the song finishes, select it in Suno and download the MP3 through Blossom.");
-    return;
-    const recipe=await api("studio/projects/"+project.id+"/recipe");
-    const dialog=document.querySelector("#recipe-dialog");
-    document.querySelector("#recipe-text").value=JSON.stringify(recipe,null,2);
-    dialog.showModal();
-    // Open the normal browser only; no automated login or Generate click.
-    const native=state.data.browserAccounts?.nativeSafariAvailable &&
-      ["localhost","127.0.0.1"].includes(location.hostname);
-    if(native)await api("browser-accounts/suno/open-safari",{});
-    message("Suno opened. Review the blueprint and press Create in Suno. Import the MP3 into Blossom after generation.");
     return;
   }
   if(action==="studio-suno-status"){
