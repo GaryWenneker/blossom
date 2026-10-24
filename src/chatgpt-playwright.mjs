@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { mkdir, lstat, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DomainError } from "./domain.mjs";
 
 export const CHATGPT_URL = "https://chatgpt.com/";
@@ -96,6 +98,14 @@ export async function pageHasComposer(page) {
   return (await page.locator(COMPOSER).count()) > 0;
 }
 
+function targetClosed(error) {
+  return /has been closed|Target closed/i.test(String(error?.message || error));
+}
+
+function pageOpen(page) {
+  return typeof page?.isClosed !== "function" || !page.isClosed();
+}
+
 export async function submitChatGptPrompt(page, prompt) {
   const composer = page.locator(COMPOSER).first();
   await composer.click();
@@ -110,12 +120,17 @@ export async function submitChatGptPrompt(page, prompt) {
 
 export class ChatGptLyricsBrowser {
   constructor({ profileDir = process.env.BLOSSOM_CHATGPT_BROWSER_DIR || PROFILE,
-    loader = () => import("playwright-core"), channel = "chrome", launch = null, seenFile = null } = {}) {
+    loader = () => import("playwright-core"), channel = "chrome", launch = null, seenFile = null,
+    transport = "playwright", browserApp = "Safari",
+    runner = (script, args, options, callback) => execFile("/usr/bin/osascript", [script, ...args], options, callback) } = {}) {
     this.profileDir = resolve(profileDir);
     this.loader = loader;
     this.channel = channel;
     this.launch = launch;
     this.seenFile = seenFile || this.profileDir + ".seen";
+    this.transport = transport;
+    this.browserApp = browserApp;
+    this.runner = runner;
     this.busy = false;
     this.live = null;
   }
@@ -136,7 +151,11 @@ export class ChatGptLyricsBrowser {
 
   async open({ headless }) {
     if (this.live) {
-      if (headless) {
+      const still = typeof this.live.isOpen !== "function" || await this.live.isOpen();
+      if (!still) {
+        try { await this.live.close(); } catch { /* the window is already gone */ }
+        this.live = null;
+      } else if (headless) {
         await this.live.close();
         this.live = null;
       } else return this.live;
@@ -171,24 +190,73 @@ export class ChatGptLyricsBrowser {
       });
     } catch (error) {
       const details = String(error?.message || "");
-      if (/SingletonLock|ProcessSingleton|profile.*in use|user data directory is already in use/i.test(details))
-        throw fail("The ChatGPT Chrome profile is already open. Close that window, then try again. " + details.slice(0, 160), 409, "chatgpt_busy");
+      if (/SingletonLock|ProcessSingleton|profile.*in use|user data directory is already in use|has been closed/i.test(details))
+        throw fail("The ChatGPT Chrome window is already open, or it closed while starting. Quit that window and generate again.", 409, "chatgpt_busy");
       throw new DomainError("Cannot launch Google Chrome with Playwright. Install Chrome, then retry. " + details.slice(0, 180), 503);
     }
     context.on("close", () => { if (this.live?.context === context) this.live = null; });
-    const page = context.pages()[0] || await context.newPage();
+    let page = context.pages().find(pageOpen) || await context.newPage();
     await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    if (!pageOpen(page)) page = context.pages().find(pageOpen) || null;
+    if (!page) throw fail("The ChatGPT window closed before the page was ready. Generate again.", 409, "chatgpt_login_required");
     if (new URL(page.url()).origin !== "https://chatgpt.com") {
       await context.close();
       throw new DomainError("Refusing to automate a page outside ChatGPT", 502);
     }
+    const readyPage = async () => {
+      if (!pageOpen(page)) page = context.pages().find(pageOpen) || await context.newPage();
+      if (new URL(page.url()).origin !== "https://chatgpt.com")
+        await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      if (new URL(page.url()).origin !== "https://chatgpt.com") {
+        await context.close();
+        throw new DomainError("Refusing to automate a page outside ChatGPT", 502);
+      }
+      return page;
+    };
     return {
       context,
-      async hasComposer() { return pageHasComposer(page); },
-      async submit(prompt) { return submitChatGptPrompt(page, prompt); },
-      async bringToFront() { await page.bringToFront(); },
+      async isOpen() {
+        try {
+          if (context.pages().some(pageOpen)) return true;
+          const browser = typeof context.browser === "function" ? context.browser() : null;
+          return typeof browser?.isConnected === "function" ? browser.isConnected() : false;
+        } catch { return false; }
+      },
+      async hasComposer() { return pageHasComposer(await readyPage()); },
+      async submit(prompt) { return submitChatGptPrompt(await readyPage(), prompt); },
+      async bringToFront() { await (await readyPage()).bringToFront(); },
       async close() { await context.close(); }
     };
+  }
+
+  async generateInSystemBrowser(project) {
+    const prompt = buildChatGptLyricsPrompt(project);
+    const script = fileURLToPath(new URL("../scripts/chatgpt-safari-lyrics.applescript", import.meta.url));
+    let stdout = "";
+    try {
+      stdout = await new Promise((resolve, reject) => {
+        this.runner(script, [this.browserApp, JSON.stringify(prompt)],
+          { timeout: 130000, windowsHide: true, maxBuffer: 4_000_000 },
+          (error, out, err) => {
+            if (error) {
+              error.stderr = String(err || "");
+              reject(error);
+            } else resolve(String(out || ""));
+          });
+      });
+    } catch (error) {
+      const details = String(error?.stderr || error?.message || "");
+      if (/JavaScript.*Apple Events|AppleScript is uitgeschakeld|Allow JavaScript from Apple Events|uitgeschakeld/i.test(details))
+        throw fail("Your ChatGPT sign-in is in Safari. Turn on Safari Settings → Developer → Allow JavaScript from Apple Events, then generate again.", 409, "chatgpt_login_required");
+      throw new DomainError("Could not use the signed-in browser session. " + details.slice(0, 180), 503);
+    }
+    const text = stdout.trim();
+    if (text === "LOGIN" || text.startsWith("LOGIN"))
+      throw fail("Sign in to ChatGPT in the opened Safari window, then generate again.", 409, "chatgpt_login_required");
+    const split = text.indexOf("\n");
+    const reply = text.startsWith("REPLY") && split >= 0 ? text.slice(split + 1) : "";
+    if (!reply) throw fail("ChatGPT reply was not a song brief", 502, "chatgpt_reply_invalid");
+    return parseChatGptBrief(reply);
   }
 
   async generate(project) {
@@ -198,9 +266,23 @@ export class ChatGptLyricsBrowser {
     if (!article && !sourceUrl) throw fail("Add an article or a URL before generating lyrics", 400);
     this.busy = true;
     try {
+      if (this.transport === "system") return await this.generateInSystemBrowser(project);
       const seen = await this.composerWasSeen();
       let session = await this.open({ headless: seen });
-      if (!(await session.hasComposer())) {
+      let composer;
+      try { composer = await session.hasComposer(); }
+      catch (error) {
+        if (!targetClosed(error)) throw error;
+        try { await session.close(); } catch { /* the window is already gone */ }
+        this.live = null;
+        session = await this.open({ headless: false });
+        try { composer = await session.hasComposer(); }
+        catch (again) {
+          if (!targetClosed(again)) throw again;
+          throw fail("The ChatGPT window closed before the page was ready. Generate again.", 409, "chatgpt_login_required");
+        }
+      }
+      if (!composer) {
         if (seen) {
           await session.close();
           await this.forgetSeen();

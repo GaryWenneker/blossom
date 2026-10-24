@@ -232,7 +232,7 @@ test("the Studio screen asks for ChatGPT and a URL paste imports before generati
   const html = studioView({ data: { studioProjects: [], studioAssets: [], studioStatus: {}, artists: [], genres: {}, musicDnaProfiles: [], studioReferences: [] } });
   assert.match(html, /Generate with ChatGPT/);
   assert.match(html, /Generate again/);
-  assert.match(html, /saved Chrome profile/);
+  assert.match(html, /signed-in Safari/);
   assert.doesNotMatch(html, /Genereer automatisch/);
   const values = {
     "#studio-source": { value: "https://example.com/molen" },
@@ -379,6 +379,59 @@ test("a held login window is closed before the next headless launch", async () =
   await writeFile(join(dir, "seen"), "seen\n");
   await assert.rejects(browser.generate(project()), error => error.code === "chatgpt_login_required");
   assert.deepEqual(events, ["launch:false", "close:false", "launch:true", "close:true", "launch:false"]);
+});
+
+test("generation uses the signed-in Safari session instead of a blank Chrome profile", async () => {
+  const calls = [];
+  const browser = new ChatGptLyricsBrowser({
+    transport: "system",
+    runner(_file, args, _options, callback) {
+      calls.push(args);
+      callback(null, "REPLY\n" + FENCED);
+    }
+  });
+  const brief = await browser.generate(project());
+  assert.equal(brief.lyrics, "[Chorus] Molen in de wind");
+  assert.equal(calls[0][0], "Safari");
+  assert.match(calls[0][1], /oude molen/);
+  assert.equal(JSON.stringify(calls).includes("chatgpt-playwright-profile"), false);
+  const blocked = new ChatGptLyricsBrowser({
+    transport: "system",
+    runner(_file, _args, _options, callback) {
+      const error = new Error("osascript");
+      callback(error, "", "Allow JavaScript from Apple Events is turned off");
+    }
+  });
+  await assert.rejects(blocked.generate(project()), error => {
+    assert.equal(error.code, "chatgpt_login_required");
+    assert.match(error.message, /Safari/);
+    assert.match(error.message, /Allow JavaScript from Apple Events/);
+    assert.equal(/Edge/.test(error.message), false);
+    return true;
+  });
+});
+
+test("a closed ChatGPT window opens again instead of an internal error", async () => {
+  let opens = 0;
+  const browser = new ChatGptLyricsBrowser({
+    async launch() {
+      opens += 1;
+      const dead = opens === 1;
+      return {
+        async isOpen() { return !dead; },
+        async hasComposer() {
+          if (dead) throw new Error("locator.count: Target page, context or browser has been closed");
+          return false;
+        },
+        async bringToFront() {},
+        async close() {}
+      };
+    }
+  });
+  const error = await browser.generate(project()).then(() => null, reason => reason);
+  assert.equal(error?.code, "chatgpt_login_required");
+  assert.equal(error?.status, 409);
+  assert.equal(opens, 2);
 });
 
 test("a signed-in Chrome profile submits the prompt and reads the brief", async () => {

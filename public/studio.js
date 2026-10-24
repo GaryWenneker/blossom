@@ -54,7 +54,7 @@ const panels=(p,assets,state)=>{
  '<textarea id="studio-article" placeholder="Paste a news story, your own writing, or an original song concept..." spellcheck="true">'+esc(p?.article||"")+'</textarea>'+
  field("Artikel-URL",'<input id="studio-source" type="url" placeholder="https://www.nu.nl/..." value="'+esc(p?.sourceUrl||"")+'">')+
  '<button type="button" class="secondary studio-import-button" data-action="studio-import-article">Haal artikel op</button>'+
- '<div class="studio-panel-bottom"><small>The first run opens Chrome so you can sign in to ChatGPT once. Later pastes run in the background.</small><button data-action="studio-chatgpt" class="primary">'+automaticLabel+'</button></div></section>'+
+ '<div class="studio-panel-bottom"><small>Uses the ChatGPT account already signed in to Safari.</small><button data-action="studio-chatgpt" class="primary">'+automaticLabel+'</button></div></section>'+
  '<section class="studio-panel studio-results"><div class="studio-panel-head"><h2>02 <span>AI extraction</span></h2><button class="secondary mini" data-action="studio-chatgpt">Generate again</button></div>'+
  '<div class="studio-label">Song concept</div><div class="studio-concept">'+esc(result.concept||"Importeer een artikel of vul een URL in en laat Blossom automatisch originele lyrics maken.")+'</div>'+
  '<div class="studio-label">Mood</div><div class="studio-chiprow">'+(tags(result.moods)||'<span class="studio-muted">AI will suggest emotions</span>')+'</div>'+
@@ -117,7 +117,7 @@ export function studioView(state){
  const project=stateOf(state),assets=state.data.studioAssets||[];
  const status=state.data.studioStatus||{};
  return '<div class="studio-workspace">'+panels(project,assets,state)+
- '<div class="studio-statusline"><span>● Lyrics: ChatGPT in a saved Chrome profile</span>'+
+ '<div class="studio-statusline"><span>● Lyrics: ChatGPT in your signed-in Safari</span>'+
  '<span>● Draw Things: '+(status.drawConfigured?"local image generation available":"image generation unavailable")+'</span>'+
  '<span>● Suno: authorized handoff, no browser automation</span></div></div>';
 }
@@ -142,7 +142,7 @@ async function generateChatGpt(state,api,refresh,message){
  try{await api("studio/projects/"+project.id+"/chatgpt-lyrics",{});}
  catch(error){
   if(error.code==="chatgpt_login_required"){
-   message("Sign in to ChatGPT in the opened Chrome window, then paste again.",true);
+   message(error.message||"Sign in to ChatGPT in the opened Safari window, then generate again.",true);
    return;
   }
   throw error;

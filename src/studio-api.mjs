@@ -42,7 +42,9 @@ export class StudioAPI{
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
     this.sunoBrowser=sunoBrowser||new VisibleBrowserSession("suno");
-    this.chatgptLyrics=chatgptLyrics||new ChatGptLyricsBrowser();
+    this.chatgptLyrics=chatgptLyrics||new ChatGptLyricsBrowser({
+      transport:process.platform==="darwin"?"system":"playwright"
+    });
   }
   async projectWithArticle(id) {
     const project=this.studio.require(id);
