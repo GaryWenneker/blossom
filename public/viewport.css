@@ -398,3 +398,9 @@ body[data-view="artists"] .artist-hero-content h3{
 
 /* Override the older compact release bar for the full Studio Release workflow. */
 .studio-workspace .studio-release{display:block;max-height:none;height:auto;min-height:0}
+
+/* Reports remain inside the existing bounded dialog surface. */
+#studio-report-text{width:100%;max-height:55dvh;min-height:160px;resize:vertical}
+.studio-library-tools{font-size:11px;margin:4px 0 8px}
+.studio-library-tools summary{cursor:pointer;color:var(--lime)}
+.studio-library-tools input{min-width:0;width:100%;margin:5px 0}

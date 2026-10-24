@@ -1,4 +1,5 @@
 import { DomainError } from "./domain.mjs";
+import { atomic,snapshot } from "./studio-integrity.mjs";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 function requiredProject(studio, projectId) {
@@ -83,15 +84,15 @@ export class StudioReferences {
       const profile = this.dna.get(item.profileId);
       if (!profile.analysisVersion) throw new DomainError("Analyze the reference before linking it", 409);
     }
-    this.db.exec("BEGIN IMMEDIATE");
-    try {
+    return atomic(this.db,()=>{
       this.db.prepare("DELETE FROM studio_music_dna_refs WHERE project_id=?").run(projectId);
       const insert = this.db.prepare("INSERT INTO studio_music_dna_refs VALUES(?,?,?,?)");
       normalized.forEach((item, ordinal) => insert.run(projectId, item.profileId, item.weight, ordinal));
-      this.db.exec("COMMIT");
-    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
-    this.store.audit("references_changed", "studio_project", projectId, { count: normalized.length });
-    return this.list(projectId);
+      this.db.prepare("UPDATE studio_projects SET revision=revision+1,updated_at=? WHERE id=?").run(new Date().toISOString(),projectId);
+      snapshot(this.studio,projectId,"references_changed");
+      this.store.audit("references_changed", "studio_project", projectId, { count: normalized.length });
+      return this.list(projectId);
+    });
   }
   generationContext(projectId) {
     return this.list(projectId).map(item => ({

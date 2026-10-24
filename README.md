@@ -254,3 +254,6 @@ The new Studio Artist field offers **Create / link artist**, preserving fictiona
 ### Playwright Suno browser workflow
 
 The Studio Release action can launch the dedicated visible Chrome Suno browser, fill unambiguous song fields and click Create after explicit confirmation. Sign in to Suno yourself. When generation finishes, open the specific newly created song and its MP3 download menu, then click **Import selected Suno MP3** in Blossom. The import uses Playwright's browser download event, validates the MP3 signature, and links the file to the Studio project. This browser workflow is distinct from Suno Platform API generation and does not yet automatically detect when a specific generated song finishes. It never uses internal endpoints or extracts browser cookies.
+## Studio data integrity
+
+Studio preserves project revisions, distinguishes historical track content from current edits, and provides project search/history and read-only catalog checks. See [Studio history and data checks](docs/studio-data-integrity.md) for migration behavior, API compatibility and production diagnosis. Run `npm run studio:check` for the repair regression checks and `npm run studio:diagnose -- --db /absolute/path/blossom.db` for a read-only inventory.
