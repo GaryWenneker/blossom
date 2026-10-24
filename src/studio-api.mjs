@@ -3,6 +3,7 @@ import { StudioReferences } from "./music-dna-studio.mjs";
 import { StudioStore, LENGTH_PRESETS, sunoRecipe } from "./studio.mjs";
 import { OpenAIComposer } from "./providers/openai.mjs";
 import { DrawThings } from "./drawthings.mjs";
+import { ChatGptImages } from "./chatgpt-images.mjs";
 import { DomainError } from "./domain.mjs";
 import { VisibleBrowserSession } from "./browser-connections.mjs";
 import { LocalComposer } from "./providers/local.mjs";
@@ -32,7 +33,7 @@ async function audioBuffer(req){
   return {bytes,mime:type==="audio/mpeg"?"audio/mpeg":"audio/wav",extension:type==="audio/mpeg"?"mp3":"wav"};
 }
 export class StudioAPI{
-  constructor({store,vault,composer,localComposer,articleImporter=importArticle,draw,sunoBrowser,chatgptLyrics=null,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
+  constructor({store,vault,composer,localComposer,articleImporter=importArticle,draw,chatgptImages,sunoBrowser,chatgptLyrics=null,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
     this.store=store;this.vault=vault;this.studio=new StudioStore(store);
     this.nativeChatgptOptions=nativeChatgptOptions;
     this.references=new StudioReferences(store,this.studio,new MusicDNA(store));
@@ -41,6 +42,7 @@ export class StudioAPI{
     this.articleImporter=articleImporter;
     this.draw=draw||new DrawThings({directory:assetDir});
     this.assetDir=assetDir;
+    this.chatgptImages=chatgptImages||new ChatGptImages({directory:assetDir});
     this.sunoBrowser=sunoBrowser||new VisibleBrowserSession("suno");
     this.chatgptLyrics=chatgptLyrics||new ChatGptLyricsBrowser({
       transport:process.platform==="darwin"?"system":"playwright"
@@ -65,7 +67,7 @@ export class StudioAPI{
       if(path==="/api/studio/status")return send(res,200,{
         openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY||this.composer.key),
         localAI:await this.localComposer.status(),
-        drawConfigured:this.draw.enabled(),generationMode:"Automatic local AI or optional OpenAI API; no browser automation",
+        drawConfigured:this.draw.enabled(),imageProvider:"chatgpt",generationMode:"ChatGPT in signed-in Safari; results saved automatically",
         sunoGeneration:"manual authorized handoff"});
       if(path==="/api/studio/artists/presets")
         return send(res,200,Object.fromEntries(this.store.artists().map(a=>[a.id,this.studio.preset(a.id)])));
@@ -111,7 +113,7 @@ export class StudioAPI{
     if(chatgptLyricsRoute){
       const project=await this.projectWithArticle(chatgptLyricsRoute[1]);
       const composed=await this.chatgptLyrics.generate({
-        ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
+        ...project,artistLanguage:this.store.artist(project.artistId)?.language||"",artistDna:this.store.artist(project.artistId)?.dna||"",
         referenceDna:this.references.generationContext(project.id)
       });
       return send(res,200,this.studio.setResult(project.id,composed));
@@ -160,7 +162,7 @@ export class StudioAPI{
       await this.localComposer.ask(data?.question,p));
     if(operation==="generate-art"){
       const kind=data?.kind,defaultPrompt=kind==="cover"?p.result?.coverPrompt:p.result?.artistPhotoPrompt;
-      const generated=await this.draw.generate({kind,prompt:data?.prompt||defaultPrompt,steps:data?.steps,seed:data?.seed});
+      const generated=await this.chatgptImages.generate({kind,prompt:data?.prompt||defaultPrompt});
       return send(res,201,this.studio.registerAsset(p.id,kind,generated.filename,generated.mime));
     }
     throw new DomainError("Not found",404);

@@ -9,7 +9,7 @@ export const LENGTH_PRESETS = Object.freeze({
   custom:{label:"Custom",seconds:210,min:35,max:900}
 });
 export const DEFAULT_PARAMETERS = Object.freeze({
-  sunoModel:"v6",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["imitated voices","unlicensed samples"],
+  sunoModel:"v6",lyricLanguage:"auto",genre:"Country Pop",additionalStyles:["Americana","Acoustic"],excludeStyles:["imitated voices","unlicensed samples"],
   vocalGender:"male",instrumental:false,maxMode:false,weirdness:22,styleInfluence:75,variety:40,
   personalize:false,durationPreset:"radio",targetSeconds:205,customInstructions:"",imagePrompt:"",artistPhotoPrompt:""
 });
@@ -26,6 +26,7 @@ export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
   for(const f of ["weirdness","styleInfluence","variety"])p[f]=int(p[f],0,100,f);
   for(const f of ["maxMode","instrumental","personalize"])if(typeof p[f]!=="boolean")throw new DomainError(f+" must be boolean");
   if(!["male","female","auto"].includes(p.vocalGender))throw new DomainError("Unsupported vocal gender");
+  p.lyricLanguage=clean(p.lyricLanguage||"auto",50);
   p.sunoModel=clean(p.sunoModel||"v6",50);
   p.genre=clean(p.genre,100);
   if(!p.genre)throw new DomainError("Genre required");
@@ -40,10 +41,10 @@ export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
 export function sunoRecipe(project, referenceStyles = "") {
   const p=project.parameters;
   return {provider:"suno",mode:"authorized-manual-handoff",model:project.parameters.sunoModel||"v6",
-    title:project.title||project.result?.titles?.[0]||"Untitled",
+    title:project.title && project.title!=="Untitled project" ? project.title : project.result?.titles?.[0]||"Untitled",
     lyrics:p.instrumental?"":project.result?.lyrics||"",
     style:[p.genre,...p.additionalStyles,project.result?.style||"",referenceStyles,p.customInstructions].filter(Boolean).join(", "),
-    exclude:[...p.excludeStyles].join(", "),vocalGender:p.instrumental?null:p.vocalGender,
+    exclude:[...new Set([...p.excludeStyles,...(project.result?.exclusions||[])])].join(", "),vocalGender:p.instrumental?null:p.vocalGender,
     instrumental:p.instrumental,maxMode:p.maxMode,weirdness:p.weirdness,styleInfluence:p.styleInfluence,
     variety:p.variety,personalize:p.personalize,targetDurationSeconds:p.targetSeconds,
     note:"Duration is an editorial target, not a guaranteed Suno output. These keys are a preparation sheet, not an undocumented API request."
@@ -98,9 +99,17 @@ export class StudioStore {
     return this.require(id);
   }
   setResult(id,result){
-    this.require(id);
+    const project=this.require(id);
     if(!result||typeof result!=="object"||typeof result.concept!=="string")throw new DomainError("Invalid AI response");
-    this.db.prepare("UPDATE studio_projects SET result=?,updated_at=? WHERE id=?").run(JSON.stringify(result),new Date().toISOString(),id);
+    // Validate the entire parameter patch before writing either field.
+    const allowed=["sunoModel","lyricLanguage","genre","additionalStyles","excludeStyles","vocalGender","instrumental","maxMode","weirdness","styleInfluence","variety","personalize","durationPreset","targetSeconds","customInstructions"];
+    const patch=result.generationParameters;
+    if(Object.hasOwn(result,"generationParameters") && (!patch || typeof patch!=="object" || Array.isArray(patch) || Object.keys(patch).some(k=>!allowed.includes(k))))
+      throw new DomainError("Invalid generation parameters");
+    const params=patch?normalizeParameters(patch,project.parameters):{...project.parameters};
+    if(result.coverPrompt && result.coverPrompt!==project.result?.coverPrompt)params.imagePrompt=result.coverPrompt;
+    if(result.artistPhotoPrompt && result.artistPhotoPrompt!==project.result?.artistPhotoPrompt)params.artistPhotoPrompt=result.artistPhotoPrompt;
+    this.db.prepare("UPDATE studio_projects SET result=?,params=?,updated_at=? WHERE id=?").run(JSON.stringify(result),JSON.stringify(params),new Date().toISOString(),id);
     this.store.audit("ai_extracted","studio_project",id,{title:result.titles?.[0]||""});
     return this.require(id);
   }
@@ -109,7 +118,7 @@ export class StudioStore {
     if(p.trackId)throw new DomainError("This project already has a linked track",409);
     if(!p.artistId)throw new DomainError("Choose an artist before creating a track",409);
     if(!p.result?.concept)throw new DomainError("Run AI extraction first",409);
-    const t=this.store.addTrack({artistId:p.artistId,title:p.title||p.result.titles?.[0]||"Untitled",
+    const t=this.store.addTrack({artistId:p.artistId,title:sunoRecipe(p).title,
       mode:p.parameters.instrumental?"instrumental":"vocal",concept:p.result.concept,
       lyrics:p.parameters.instrumental?"":p.result.lyrics||""});
     const track=this.store.progressTrack(t.id,"brief");
