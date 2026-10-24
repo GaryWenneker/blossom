@@ -53,7 +53,8 @@ export class MusicDnaAPI {
         return respond(res, 200, { results: this.dna.search(filters) });
       }
       if (path === "/api/music-dna/jobs") {
-        return respond(res, 200, { jobs: this.dna.jobs(searchParams.get("status") || "") });
+        return respond(res, 200, { jobs: this.dna.jobs(searchParams.get("status") || ""),
+          counts: this.dna.jobCounts(), hasMore: this.dna.jobCounts().total > 50 });
       }
       const profileMatch = path.match(/^\/api\/music-dna\/profiles\/([0-9a-f-]{36})(?:\/(versions))?$/i);
       if (profileMatch) return respond(res, 200,
