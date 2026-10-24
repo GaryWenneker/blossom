@@ -178,8 +178,12 @@ export class StudioAPI{
       const context={title:sunoRecipe(p).title,concept:p.result?.concept||"",lyrics:p.result?.lyrics||"",genre:p.parameters.genre,
         artistName:this.store.artist(p.artistId)?.name||"",artistDna:this.store.artist(p.artistId)?.dna||""};
       const generated=await this.chatgptImages.generate({kind,prompt,context});
-      return send(res,201,this.studio.registerAsset(p.id,kind,generated.filename,generated.mime,
-        {provider:"chatgpt",prompt,briefFingerprint:studioBriefFingerprint(p)}));
+      const asset=this.studio.registerAsset(p.id,kind,generated.filename,generated.mime,
+        {provider:"chatgpt",prompt,briefFingerprint:studioBriefFingerprint(p)});
+      // Show the first imported image immediately; preserve an existing selection.
+      if(!this.studio.assets(p.id).some(a=>a.kind===kind&&a.selected))
+        this.studio.selectAsset(p.id,asset.id,kind);
+      return send(res,201,this.studio.assets(p.id).find(a=>a.id===asset.id));
     }
     throw new DomainError("Not found",404);
   }

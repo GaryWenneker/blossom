@@ -363,7 +363,7 @@ export async function studioAction(el,state,api,refresh,message){
     const prompt=document.querySelector(kind==="cover"?"#studio-cover-prompt":"#studio-photo-prompt").value;
     message("ChatGPT is generating the image in Safari…");
     await api("studio/projects/"+p.id+"/generate-art",{kind,prompt});
-    await refresh();message("ChatGPT image saved. Select Use as cover or Use as artist photo below.");return;
+    await refresh();message("ChatGPT image imported. The first image is shown automatically; choose another version below.");return;
   }
   if(action==="studio-generate-all"){
     message("ChatGPT is preparing the song brief and both images…");
