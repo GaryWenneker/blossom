@@ -1,48 +1,47 @@
 const esc = value => String(value ?? "").replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const barStatus = { not_analyzed:"Awaiting audio analysis",
-  source_inferred:"Source-based interpretation",
-  audio_observed:"Audio observation" };
-function barLine(title, text) {
-  return text ? '<div class="dna-bar-field"><strong>'+esc(title)+'</strong> '+esc(text)+'</div>' : "";
+function initials(artist) {
+  const parts = String(artist || "").trim().split(/\s+/).filter(Boolean);
+  const chosen = parts.length > 1 ? parts.slice(0, 2) : parts.slice(0, 1);
+  return chosen.map(part => part[0]).join("").toUpperCase() || "?";
 }
-function barBlockMarkup(block) {
-  const name="Bars "+block.startBar+"–"+block.endBar;
-  const instruments=(block.instruments||[]).map(part=>{
-    const detail=[part.activity,part.role,part.technique,part.rhythm,
-      part.articulation,part.pitchRegister,part.timbre,
-      ...(part.effects||[])].filter(Boolean).join(" · ");
-    return barLine(part.name,detail);
-  }).join("");
-  const vocals=(block.vocals||[]).map(vocal=>{
-    const detail=[vocal.activity,vocal.delivery,vocal.phrasing,vocal.articulation,
-      vocal.register,vocal.dynamics,vocal.harmonies,
-      ...(vocal.effects||[])].filter(Boolean).join(" · ");
-    return barLine("Voice "+(vocal.singer||vocal.layer||""),detail);
-  }).join("");
-  const rhythmic=block.rhythm?Object.entries(block.rhythm).filter(([,value])=>value)
-    .map(([name,value])=>barLine(name,value)).join(""):"";
-  const harmony=block.harmony?
-    barLine("Harmony",[...(block.harmony.chords||[]),block.harmony.movement].filter(Boolean).join(" · ")):"";
-  const production=block.production?
-    barLine("Production",[block.production.dynamics,block.production.spatial,
-      block.production.transitions,...(block.production.processing||[])].filter(Boolean).join(" · ")):"";
-  const detail=instruments+vocals+rhythmic+harmony+production+barLine("Notes",block.notes);
-  return '<details class="dna-bar-block"><summary><span>'+esc(name)+'</span><span>'+
-    esc(block.section||"Section unresolved")+'</span><small>'+
-    esc(barStatus[block.status]||block.status)+'</small></summary><div>'+
-    (detail||'<p>No per-bar instrumental or vocal observations verified yet. Audio is required.</p>')+
-    '</div></details>';
+function statusClass(status) {
+  if (status === "audio_observed") return "dna-source-audio";
+  if (status === "human_verified") return "dna-source-human";
+  if (status === "source_inferred") return "dna-source-inferred";
+  return "dna-source-none";
 }
-function barBlocksMarkup(analysis) {
-  const blocks=analysis?.barBlocks||[];
-  if(!blocks.length)return "";
-  const observed=blocks.filter(b=>b.status==="audio_observed").length;
-  const source=blocks.filter(b=>b.status==="source_inferred").length;
-  return '<section class="dna-bar-blocks"><h4>Bar-by-bar Music DNA</h4><p>'+
-    observed+' audio-observed · '+source+' source-inferred · '+
-    (blocks.length-observed-source)+' awaiting analysis. Bar positions are not audio-aligned unless explicit timestamps are present.</p>'+
-    blocks.map(barBlockMarkup).join("")+'</section>';
+function evidenceKind(analysis) {
+  if (!analysis) return "not_analyzed";
+  if (analysis.analysisMethod === "human_verified") return "human_verified";
+  if (analysis.analysisMethod === "chatgpt-catalog" || analysis.measurements == null) return "source_inferred";
+  return "audio_observed";
+}
+function clock(ms) {
+  const total = Math.round(Number(ms) / 1000);
+  if (!Number.isFinite(total) || total < 0) return "";
+  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+}
+function fact(kind, label, value) {
+  const shown = value == null || value === "" ? "—" : value;
+  return '<div class="dna-fact ' + statusClass(kind) + '"><span>' + esc(label) +
+    "</span><strong>" + esc(shown) + "</strong></div>";
+}
+function joinList(items) {
+  return (items || []).filter(Boolean).join(", ");
+}
+function instrumentLine(item) {
+  if (!item?.name) return "";
+  return [item.name, item.role, item.technique, item.timbre,
+    item.confidence == null ? "" : String(item.confidence)].filter(Boolean).join(" · ");
+}
+function barStrip(analysis) {
+  const blocks = analysis?.barBlocks || [];
+  if (!blocks.length) return "";
+  return '<div class="dna-bar-strip" aria-label="Bar DNA">' + blocks.map(block =>
+    '<i class="dna-bar-cell ' + statusClass(block.status) + '" title="' +
+    esc("Bars " + block.startBar + "–" + block.endBar + (block.section ? " " + block.section : "")) +
+    '"></i>').join("") + "</div>";
 }
 let spotifyLikedImport = { running:false, offset:0, imported:0, duplicates:0, received:0,
   total:0, finished:false, status:"" };
@@ -128,20 +127,23 @@ function focusVersion(profile) {
   if (profile?.jobStatus === "failed") return "Analysis failed";
   return "Awaiting analysis";
 }
-function rowTraits(profile) {
-  if (profile.analysis?.genres?.length) return profile.analysis.genres.slice(0, 2).join(", ");
-  if (profile.analysis) return "Analyzed";
-  if (profile.jobStatus === "failed") return "Analysis failed";
-  return "Awaiting analysis";
+function rowTraitMarkup(profile) {
+  const genres = profile.analysis?.genres || [];
+  if (genres.length) return genres.slice(0, 2).map(genre => chip("genre", genre)).join("");
+  if (profile.analysis) return chip("genre", "Analyzed");
+  if (profile.jobStatus === "failed") return chip("failed", "Analysis failed");
+  return chip("awaiting", "Awaiting analysis");
+}
+function rowMeta(profile) {
+  const bits = [profile.releaseYear, profile.sourceKind].filter(value => value != null && value !== "");
+  return bits.length ? "<small>" + esc(bits.join(" · ")) + "</small>" : "";
 }
 function rowVersion(profile) {
   if (profile.analysisVersion) return "v" + profile.analysisVersion;
   if (profile.jobStatus === "failed") return "failed";
   return "—";
 }
-function focusMarkup(profile) {
-  if (!profile) return '<p class="dna-focus dna-focus-empty">Select a recording to inspect its DNA.</p>';
-  const analysis = profile.analysis;
+function sheetChips(analysis) {
   const chips = [];
   if (analysis?.bpm) chips.push(chip("bpm", analysis.bpm + " BPM"));
   if (analysis?.musicalKey) chips.push(chip("key", analysis.musicalKey));
@@ -151,30 +153,88 @@ function focusMarkup(profile) {
     if (instrument?.name) chips.push(chip("instrument", instrument.name));
   }
   if (analysis?.vocals?.type) chips.push(chip("vocal", analysis.vocals.type + " vocal"));
-  const version = focusVersion(profile);
-  const waiting = chips.length ? "" : profile.jobStatus === "failed"
-    ? chip("failed", "Analysis failed") : chip("awaiting", "Metadata only");
-  return '<section class="dna-focus" style="--dna-hue:' + dnaHue(profile.id) + '">' +
-    '<div class="dna-focus-main"><strong>' + esc(profile.artist) + " · " + esc(profile.title) +
-    "</strong><span>" + esc(version) + "</span></div>" +
-    '<div class="dna-chips">' + (chips.join("") || waiting) + "</div>" +
-    '<div class="dna-focus-actions"><label class="secondary mini music-dna-upload">Upload MP3/WAV<input type="file" hidden accept=".mp3,.wav,audio/mpeg,audio/wav" data-dna-upload="' +
-    esc(profile.id) + '"></label></div>' + barBlocksMarkup(analysis) +
-    '<details class="dna-raw"><summary>Raw DNA JSON</summary><pre>' +
-    esc(JSON.stringify(analysis || { status: "No verified analysis saved" }, null, 2)) + "</pre></details></section>";
+  return chips.join("");
+}
+function recordingSheet(profile) {
+  if (!profile) return "";
+  const analysis = profile.analysis;
+  const kind = evidenceKind(analysis);
+  const vocals = analysis?.vocals || {};
+  const production = analysis?.production || {};
+  const measurements = analysis?.measurements;
+  const measureText = measurements
+    ? [measurements.codec, measurements.sampleRate ? measurements.sampleRate + " Hz" : "",
+      measurements.channels ? measurements.channels + " ch" : ""].filter(Boolean).join(" · ")
+    : (analysis ? "none" : "");
+  const sections = (analysis?.sections || []).map(section =>
+    [section.label, clock(section.startMs) && clock(section.endMs)
+      ? clock(section.startMs) + "–" + clock(section.endMs) : ""].filter(Boolean).join(" ")
+  ).join(" · ");
+  const vocalText = [vocals.type, vocals.register, vocals.timbre, vocals.delivery, vocals.harmonies]
+    .filter(Boolean).join(" · ");
+  const productionText = [production.era, production.texture, production.stereo, production.dynamics,
+    joinList(production.effects)].filter(Boolean).join(" · ");
+  return '<dialog id="dna-recording-sheet" data-profile-id="' + esc(profile.id) +
+    '" style="--dna-hue:' + dnaHue(profile.id) + '"><div class="dna-sheet-grid">' +
+    '<div class="dna-sheet-side"><div class="dna-sheet-cover" aria-hidden="true">' + esc(initials(profile.artist)) +
+    '</div><p class="dna-sheet-lyrics">Lyrics are not stored for reference recordings.</p>' +
+    '<p class="dna-sheet-legend"><i class="dna-swatch dna-source-audio"></i> Audio observed ' +
+    '<i class="dna-swatch dna-source-human"></i> Human verified ' +
+    '<i class="dna-swatch dna-source-inferred"></i> Source inferred ' +
+    '<i class="dna-swatch dna-source-none"></i> Not analyzed</p>' +
+    '<label class="secondary mini music-dna-upload">Upload MP3/WAV<input type="file" hidden accept=".mp3,.wav,audio/mpeg,audio/wav" data-dna-upload="' +
+    esc(profile.id) + '"></label></div><div class="dna-sheet-main"><header class="dna-sheet-head"><h2>' +
+    esc(profile.artist) + " · " + esc(profile.title) + "</h2><span>" + esc(focusVersion(profile)) +
+    '</span><button type="button" class="secondary mini" data-action="dna-paste-open" data-id="' +
+    esc(profile.id) + '">Paste JSON</button><button type="button" class="secondary mini" data-action="dna-close-sheet" data-id="' +
+    esc(profile.id) + '">Close</button></header><div class="dna-chips">' + sheetChips(analysis) +
+    '</div><div class="dna-sheet-mosaic">' +
+    fact(kind, "Release year", profile.releaseYear) +
+    fact(kind, "Source", profile.sourceKind) +
+    fact(kind, "Job", profile.jobStatus) +
+    fact(kind, "BPM", analysis?.bpm) +
+    fact(kind, "Key", analysis?.musicalKey) +
+    fact(kind, "Time", analysis?.timeSignature) +
+    fact(kind, "Duration", analysis?.durationMs == null ? "" : clock(analysis.durationMs)) +
+    fact(kind, "Genres", joinList(analysis?.genres)) +
+    fact(kind, "Moods", joinList(analysis?.moods)) +
+    fact(kind, "Instruments", (analysis?.instruments || []).map(instrumentLine).filter(Boolean).join("; ")) +
+    fact(kind, "Vocals", vocalText) +
+    fact(kind, "Production", productionText) +
+    fact(kind, "Sections", sections) +
+    fact(kind, "Summary", analysis?.summary) +
+    fact(kind, "Method", analysis?.analysisMethod) +
+    fact(kind, "Analyzer", analysis?.analyzer) +
+    fact(kind, "Confidence", analysis?.confidence) +
+    fact(measurements ? "audio_observed" : kind, "Measurements", measureText) +
+    fact(kind, "Source URL", profile.sourceUrl) +
+    fact(kind, "Source note", profile.sourceNote) +
+    fact(kind, "Recording SHA-256", profile.recordingSha256) +
+    fact(kind, "Created", profile.createdAt) +
+    fact(kind, "Updated", profile.updatedAt) +
+    "</div>" + barStrip(analysis) + "</div></div></dialog>";
 }
 
+function canAnalyze(profile) {
+  return !!profile && !profile.analysisVersion;
+}
 function rowMarkup(profile, focus) {
   if (!profile) return '<div class="dna-row dna-row-pending" aria-hidden="true"><span></span><span></span><span></span><span></span></div>';
   const active = focus && focus.id === profile.id;
   const version = rowVersion(profile);
-  const traits = rowTraits(profile);
-  return '<button type="button" class="dna-row' + (active ? " is-selected" : "") + '"' +
-    (active ? ' style="--dna-hue:' + dnaHue(profile.id) + '"' : "") +
-    ' data-action="dna-details" data-id="' + esc(profile.id) + '"><span class="dna-row-title">' +
-    esc(profile.artist) + " · " + esc(profile.title) + '</span><span class="dna-row-bpm">' +
-    esc(profile.analysis?.bpm ?? "") + '</span><span class="dna-row-traits">' + esc(traits) +
-    '</span><span class="dna-row-version">' + esc(version) + "</span></button>";
+  const analyze = canAnalyze(profile)
+    ? '<button type="button" class="secondary mini" data-action="dna-analyze-one" data-id="' +
+      esc(profile.id) + '">Analyze</button>'
+    : esc(version);
+  const paste = '<button type="button" class="secondary mini" data-action="dna-paste-open" data-id="' +
+    esc(profile.id) + '">Paste JSON</button>';
+  return '<div class="dna-row' + (active ? " is-selected" : "") + '" data-id="' + esc(profile.id) +
+    '" style="--dna-hue:' + dnaHue(profile.id) + '">' +
+    '<button type="button" class="dna-row-open" data-action="dna-details" data-id="' + esc(profile.id) +
+    '"><span class="dna-row-title"><b>' + esc(profile.artist) + " · " + esc(profile.title) +
+    "</b>" + rowMeta(profile) + "</span><span class=\"dna-row-bpm\">" + esc(profile.analysis?.bpm ?? "") +
+    '</span><span class="dna-row-traits">' + rowTraitMarkup(profile) +
+    '</span></button><span class="dna-row-version">' + analyze + paste + "</span></div>";
 }
 
 function recordingLabel(total) {
@@ -242,7 +302,7 @@ export function musicDnaView(state) {
     ">Search Spotify</button>" +
     '<p class="dna-spotify-search-status" aria-live="polite">' + esc(spotifyCatalogStatus) + "</p>" +
     spotifySearchMarkup(spotifyCatalogResults) + "</section>" +
-    focusMarkup(cat.selected) +
+    recordingSheet(cat.selected) +
     '<div class="dna-cols"><span>Recording</span><span>BPM</span><span>DNA</span><span></span></div>' +
     '<div class="dna-catalog"><div class="dna-scroll"><div class="dna-span" style="height:' + window.span + 'px">' +
     '<div class="dna-window" data-start="' + window.start + '" data-end="' + window.end +
@@ -276,6 +336,12 @@ function jobActivity(job) {
     percent: jobPercent(job)
   };
 }
+function compareNewest(a, b) {
+  const aStamp = String(a?.createdAt || "");
+  const bStamp = String(b?.createdAt || "");
+  if (!aStamp && !bStamp) return 0;
+  return bStamp.localeCompare(aStamp);
+}
 export function musicDnaActivityItems(jobs, spotify = spotifyLikedImport) {
   const items = [];
   if (spotifyInProgress(spotify)) items.push({
@@ -283,12 +349,12 @@ export function musicDnaActivityItems(jobs, spotify = spotifyLikedImport) {
     status: spotify.running ? "Importing" : "Paused", percent: activityPercent(spotify)
   });
   const open = (jobs || []).filter(job => job?.status === "queued" || job?.status === "running");
-  open.sort((a, b) => (a.status === "running" ? 0 : 1) - (b.status === "running" ? 0 : 1));
+  open.sort(compareNewest);
   for (const job of open) {
     const activity = jobActivity(job);
     items.push({
       kind: "job", label: recordingName(job), profileId: job.profileId || "",
-      status: activity.status, percent: activity.percent
+      jobId: job.id || "", status: activity.status, percent: activity.percent
     });
   }
   return items;
@@ -303,15 +369,23 @@ function activitySummary(items) {
 }
 export function musicDnaActivityMarkup(jobs, spotify = spotifyLikedImport) {
   const items = musicDnaActivityItems(jobs, spotify);
-  const start = items.some(item => item.kind === "job" && item.status === "Queued")
-    ? '<button type="button" class="secondary mini" data-action="dna-start-analysis">Start analysis</button>'
+  const queued = items.some(item => item.kind === "job" && item.status === "Queued");
+  const start = queued
+    ? '<button type="button" class="secondary mini" data-action="dna-start-analysis">Start analysis</button>' +
+      '<button type="button" class="secondary mini" data-action="dna-clear-queue">Clear queue</button>'
     : "";
   const body = items.length
-    ? '<p class="dna-activity-summary">' + esc(activitySummary(items)) + start + '</p><ul class="dna-activity-list">' + items.map(item =>
-      '<li data-kind="' + item.kind + '"><span class="dna-activity-label">' + esc(item.label) +
+    ? '<p class="dna-activity-summary">' + esc(activitySummary(items)) + start + '</p><ul class="dna-activity-list">' + items.map(item => {
+      const analyze = item.kind === "job" && item.status === "Queued" && item.profileId
+        ? '<button type="button" class="secondary mini" data-action="dna-analyze-one" data-id="' +
+          esc(item.profileId) + '">Analyze</button>'
+        : "";
+      const key = item.kind === "spotify" ? "spotify" : (item.jobId || item.profileId);
+      return '<li data-kind="' + item.kind + '"><span class="dna-activity-label" data-key="' + esc(key) + '">' + esc(item.label) +
       "</span><strong>" + esc(item.status) + "</strong>" +
       (item.percent == null ? "" : '<span class="dna-activity-percent">' + item.percent + "%</span>") +
-      "</li>").join("") + "</ul>"
+      analyze + "</li>";
+    }).join("") + "</ul>"
     : '<p class="dna-activity-empty">Nothing in progress.</p>';
   return '<section id="dna-activity" class="dna-activity" aria-live="polite"><h2>In progress</h2>' + body + "</section>";
 }
@@ -323,11 +397,44 @@ function activitySpotify(state) {
   const data = state?.data || {};
   return Object.hasOwn(data, "musicDnaSpotify") ? data.musicDnaSpotify : spotifyLikedImport;
 }
+function activityRowKey(row) {
+  if (row?.dataset?.key) return row.dataset.key;
+  const nested = row?.querySelector?.("[data-key]");
+  return nested?.dataset?.key || "";
+}
+export function captureDnaActivityScroll() {
+  if (typeof document === "undefined") return null;
+  const list = document.querySelector("#dna-activity .dna-activity-list");
+  if (!list) return null;
+  const scrollTop = Number(list.scrollTop) || 0;
+  if (scrollTop <= 0) return { pinned: "top" };
+  const anchor = [...list.children].find(row => row.offsetTop + row.offsetHeight > scrollTop + 1);
+  return {
+    scrollTop,
+    key: activityRowKey(anchor),
+    offset: anchor ? anchor.offsetTop - scrollTop : 0
+  };
+}
+export function restoreDnaActivityScroll(anchor) {
+  if (!anchor || typeof document === "undefined") return;
+  const list = document.querySelector("#dna-activity .dna-activity-list");
+  if (!list) return;
+  if (anchor.pinned === "top") {
+    list.scrollTop = 0;
+    return;
+  }
+  const match = anchor.key
+    ? [...list.children].find(row => activityRowKey(row) === anchor.key)
+    : null;
+  list.scrollTop = match ? Math.max(0, match.offsetTop - anchor.offset) : anchor.scrollTop;
+}
 export function paintDnaActivity(state) {
   if (typeof document === "undefined") return;
   const node = document.querySelector("#dna-activity");
   if (!node) return;
+  const anchor = captureDnaActivityScroll();
   node.outerHTML = musicDnaActivityMarkup(activityJobs(state), activitySpotify(state));
+  restoreDnaActivityScroll(anchor);
 }
 export function musicDnaQueueMarkup(jobs) {
   if (!jobs?.length) return "<p>No analysis jobs yet.</p>";
@@ -358,9 +465,19 @@ export function musicDnaChrome(state) {
     ignoreScroll = previous;
   }
   if (scroller?.clientHeight && !state?.data?.musicDnaViewport) catalogViewport = scroller.clientHeight;
+  const dialog = document.querySelector("#dna-recording-sheet");
+  if (dialog && typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+  if (sheetReturnId && typeof document.querySelector === "function") {
+    const id = sheetReturnId;
+    sheetReturnId = "";
+    const safeId = globalThis.CSS?.escape ? CSS.escape(id) : id;
+    document.querySelector('.dna-row[data-id="' + safeId + '"] .dna-row-open')?.focus();
+  }
 }
 
 let bound = false;
+let sheetReturnId = "";
+let pasteBusy = false;
 export function bindMusicDna(state, api, render, message) {
   if (bound || typeof document === "undefined") return;
   bound = true;
@@ -398,6 +515,17 @@ export function bindMusicDna(state, api, render, message) {
         ignoreScroll = false;
       } catch (error) { message?.(error.message, true); }
     }, 80);
+  }, true);
+  document.addEventListener("click", event => {
+    if (event.target?.id !== "dna-recording-sheet" && event.target?.id !== "dna-paste-dialog") return;
+    event.target.close();
+  }, true);
+  document.addEventListener("close", event => {
+    if (event.target?.id !== "dna-recording-sheet") return;
+    sheetReturnId = event.target.dataset.profileId || "";
+    selected = null;
+    if (state?.data) delete state.data.musicDnaSelected;
+    render();
   }, true);
   document.addEventListener("keydown", event => {
     if (event.key !== "Enter" || event.repeat || event.isComposing ||
@@ -444,6 +572,12 @@ export async function reloadMusicDna(state, api) {
 
 export async function musicDnaAction(el, state, api, refresh, message) {
   const action = el.dataset.action;
+  if (action === "dna-close-sheet") {
+    sheetReturnId = el.dataset.id || "";
+    selected = null;
+    if (state?.data) delete state.data.musicDnaSelected;
+    return "render";
+  }
   if (action === "dna-details") {
     const profileId = el.dataset.id;
     if (!profileId) return;
@@ -458,6 +592,84 @@ export async function musicDnaAction(el, state, api, refresh, message) {
       message(result?.started
         ? "Analysis started. The percentage updates while ChatGPT works in the background."
         : "Analysis is already running.");
+    } catch (error) {
+      message(error.message || "Could not start analysis", true);
+    }
+    await refresh();
+    return;
+  }
+  if (action === "dna-clear-queue") {
+    if (!globalThis.confirm(
+      "Clear every queued recording? A recording that is already running keeps going. The recordings stay in the library."
+    )) return;
+    try {
+      const result = await api("music-dna/jobs/clear", {});
+      const cleared = Number(result?.cleared) || 0;
+      const running = Number(result?.running) || 0;
+      const noun = cleared === 1 ? "recording" : "recordings";
+      message(cleared
+        ? "Cleared " + cleared + " queued " + noun + "." +
+          (running ? " The one already running keeps going." : "")
+        : "The queue is already empty.");
+    } catch (error) {
+      message(error.message || "Could not clear the queue", true);
+    }
+    await refresh();
+    return;
+  }
+  if (action === "dna-paste-open") {
+    const profileId = el.dataset.id || "";
+    const dialog = document.querySelector("#dna-paste-dialog");
+    if (!dialog || !profileId) return;
+    dialog.dataset.profileId = profileId;
+    const box = document.querySelector("#dna-paste-json");
+    if (box) box.value = "";
+    const error = document.querySelector("#dna-paste-error");
+    if (error) { error.hidden = true; error.textContent = ""; }
+    if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+    return;
+  }
+  if (action === "dna-paste-cancel") {
+    document.querySelector("#dna-paste-dialog")?.close();
+    return;
+  }
+  if (action === "dna-paste-apply") {
+    if (pasteBusy) return;
+    const dialog = document.querySelector("#dna-paste-dialog");
+    const profileId = dialog?.dataset.profileId || "";
+    const text = document.querySelector("#dna-paste-json")?.value?.trim() || "";
+    const error = document.querySelector("#dna-paste-error");
+    const showError = note => {
+      if (error) { error.hidden = false; error.textContent = note; }
+      message(note, true);
+    };
+    if (!profileId || !text) {
+      showError("Paste the analysis JSON first.");
+      return;
+    }
+    pasteBusy = true;
+    try {
+      await api("music-dna/profiles/" + profileId + "/paste-analysis", { text });
+      dialog?.close();
+      const box = document.querySelector("#dna-paste-json");
+      if (box) box.value = "";
+      await refresh();
+      message("Analysis saved from pasted JSON.");
+    } catch (err) {
+      showError(err.message || "Could not save the pasted analysis");
+    } finally { pasteBusy = false; }
+    return;
+  }
+  if (action === "dna-analyze-one") {
+    const profileId = el.dataset.id;
+    if (!profileId) return;
+    try {
+      const result = await api("music-dna/profiles/" + profileId + "/analyze", {});
+      message(result?.started
+        ? "Analysis started for this recording."
+        : result?.status === "running"
+          ? "This recording is already being analyzed."
+          : "This recording is next. Another analysis is still finishing.");
     } catch (error) {
       message(error.message || "Could not start analysis", true);
     }

@@ -1,9 +1,12 @@
-import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
+import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna, captureDnaActivityScroll, restoreDnaActivityScroll } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=suno-playwright-v5";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioPaste,pasteStartsLyrics } from "./studio.js?v=suno-instrumental-v1";
+import { artistPage, artistSearchState, paintArtistSearch, applyArtistDraft, guardArtistDraftPick, artistDraftButtonEnabled, setArtistDraftMode, recordingChoiceMarkup, draftRecordingSearchPath, recordingChoicesForDraft, draftSelection } from "./artists.js";
+import { focusFromDrag, objectPosition, applyPhotoFocus } from "./artist-focus.js";
+import { acceptPastedImage, bannerPasteDestination, imageFileFromClipboard, imageFileFromClipboardItems, imagePasteShortcut, typingTarget, uploadImageFile, uploadMessage } from "./image-upload.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
-const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
+const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioArtwork:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
 const nextStage={idea:"brief",brief:"generated",generated:"review",review:"approved",rejected:"brief"};
 const releaseChecks={audioUploaded:"Audio at distributor",artworkUploaded:"Cover art at distributor",creditsVerified:"Credits verified",codesVerified:"ISRC/UPC verified",aiDisclosuresDone:"AI disclosure completed",distributorRightsConfirmed:"Rights and distribution terms verified"};
 const capitals=s=>s.replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());
@@ -28,9 +31,9 @@ async function api(path,data){
 }
 async function refresh(){
   const dnaRequest=musicDnaRequest(state);
-  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","studio/projects","studio/status","studio/presets","studio/artists/presets","studio/artists/banners","studio/artists/images"];
+  const names=["summary","artists","tracks","releases","events","watches","integrations","connections","browser-accounts","genres","countries","studio/projects","studio/status","studio/presets","studio/artists/presets","studio/artists/banners","studio/artists/covers","studio/artists/images","studio/artwork"];
   const results=await Promise.all(names.map(apiName=>api(apiName)));
-  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("studioartistsbanners","artistBanners").replace("studioartistsimages","artistImages").replace("browser-accounts","browserAccounts"),results[i]]));
+  state.data=Object.fromEntries(names.map((name,i)=>[name.replaceAll("/","").replace("studioprojects","studioProjects").replace("studiostatus","studioStatus").replace("studiopresets","studioPresets").replace("studioartistspresets","studioArtistPresets").replace("studioartistsbanners","artistBanners").replace("studioartistscovers","artistCovers").replace("studioartistsimages","artistImages").replace("studioartwork","studioArtwork").replace("browser-accounts","browserAccounts"),results[i]]));
   const id=studioActiveId(state);
   const [assets,dnaPage,dnaJobs,dnaReferences]=await Promise.all([
     id?api("studio/projects/"+id+"/assets"):Promise.resolve([]),
@@ -68,48 +71,7 @@ function overview(){
 }
 function artists(){
  return header("Artists","Every artist has separate creative DNA, a style, language and target territories.")+
- '<div class="panel"><div class="panel-header"><h2>Create artist</h2><span class="small">Identity verification required before publishing</span></div><form id="artist-form" class="fields">'+
- '<div class="field"><label for="artist-name">Artist name</label><input id="artist-name" name="name" required maxlength="80" placeholder="e.g. Mira Solenne"></div>'+
- '<div class="field"><label for="artist-genre">Primary genre</label><input list="genre-options" id="artist-genre" name="genre" required maxlength="100" placeholder="Select or type, e.g. Country Pop"><datalist id="genre-options">'+Object.values(state.data.genres).flat().map(g=>'<option value="'+e(g)+'"></option>').join("")+'</datalist></div>'+
- '<div class="field"><label for="artist-language">Language</label><input id="artist-language" name="language" value="en" required placeholder="en"></div>'+
- '<div class="field"><label for="artist-countries">Target countries (ISO codes)</label><input id="artist-countries" name="countries" placeholder="GB, US, NL"></div>'+
- '<div class="field"><label for="artist-voice">Voice</label><select id="artist-voice" name="voice"><option value="instrumental">Instrumental</option><option value="female">Female</option><option value="male">Male</option><option value="mixed">Mixed</option></select></div>'+
- '<div class="field full"><label for="artist-dna">Artist DNA</label><textarea id="artist-dna" name="dna" rows="3" required placeholder="Signature instruments, arrangement, sound, lyrical topics and things to avoid"></textarea></div>'+
- '<div class="field full"><button class="primary">Create artist</button></div></form></div>'+
- '<h2>Roster <span class="small">('+state.data.artists.length+')</span></h2>'+
- (state.data.artists.length?'<div class="artist-grid artist-banner-grid">'+state.data.artists.map(a=>{
-   const banner=state.data.artistBanners?.[a.id];
-   const images=state.data.artistImages?.[a.id]||[];
-   return '<article class="artist-card artist-banner-card">'+
-     '<div class="artist-hero">'+
-       (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" loading="lazy">':
-        '<div class="artist-hero-placeholder" aria-hidden="true">'+e(a.name.slice(0,1))+'</div>')+
-       '<div class="artist-hero-shade" aria-hidden="true"></div>'+
-       '<div class="artist-hero-content"><span class="artist-hero-eyebrow">BLOSSOM ARTIST</span>'+
-         '<h3>'+e(a.name)+'</h3><span class="artist-hero-genre">'+e(a.genre)+'</span></div>'+
-     '</div><div class="artist-banner-details">'+
-       '<div class="small">'+e(a.genre)+' · '+e(a.language)+' · '+e(a.voice)+'</div>'+
-       '<p>'+e(a.dna)+'</p>'+
-       '<div class="tagrow">'+a.countries.map(c=>'<span class="tag">'+e(c)+'</span>').join("")+
-         '<span class="tag">Name unverified</span></div>'+
-       '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(a.id)+'">✦ Generate artist banner</button>'+
-         '<details><summary>Custom photo prompt</summary><textarea id="artist-photo-prompt-'+e(a.id)+'" rows="2" placeholder="Optional: describe the location, clothing, light and artistic direction for a wide photo"></textarea></details></div>'+
-       (images.length?
-         '<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div>'+
-         '<div class="artist-media-list">'+images.map(image=>
-           '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
-           ' data-action="artist-image-select" data-artist-id="'+e(a.id)+'" data-image-id="'+e(image.id)+'"'+
-           ' title="'+e(image.selected?'Active artist background':'Use as artist background')+'"'+
-           ' aria-pressed="'+(image.selected?'true':'false')+'" '+(image.selected?'disabled':'')+'>'+
-           '<img src="'+e(image.url)+'" alt="Artist background option for '+e(a.name)+'" loading="lazy">'+
-           '<span>'+e(image.selected?'Current background':'Use background')+'</span></button>'+
-           '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete"'+
-           ' data-artist-id="'+e(a.id)+'" data-image-id="'+e(image.id)+'"'+
-           ' aria-label="Remove photo from '+e(a.name)+'">Remove</button></div>').join("")+
-         '</div></div>':
-         '<p class="artist-banner-hint">Generate a wide artist photo in News to Song with this artist selected. It will appear here automatically.</p>')+
-     '</div></article>';
- }).join("")+'</div>':'<div class="empty">No artists yet. Create one above or run npm run seed for eight proposed identities.</div>');
+  artistPage(state.data);
 }
 function tracks(){
  const artists=state.data.artists,tracks=state.data.tracks;
@@ -123,8 +85,8 @@ function tracks(){
  '<div class="field full"><button class="primary" '+(artists.length?"":"disabled")+'>Add to pipeline</button></div></form></div>'+
  '<section class="panel"><div class="panel-header"><h2>Track pipeline</h2><span class="small">'+tracks.length+' entries</span></div>'+
  (tracks.length?'<div class="tablewrap"><table><thead><tr><th>Track</th><th>Artist</th><th>Mode</th><th>Stage</th><th>Actions</th></tr></thead><tbody>'+tracks.map(t=>{
- const a=artists.find(a=>a.id===t.artistId),next=nextStage[t.stage];
- return '<tr><td><strong>'+e(t.title)+'</strong><div class="small">'+e(t.concept.slice(0,90))+'</div></td><td>'+e(a?.name||"Unknown")+'</td><td>'+e(t.mode)+'</td><td>'+badge(t.stage)+'</td><td><div class="actions"><button class="secondary" data-action="blueprint" data-id="'+e(t.id)+'">Blueprint</button>'+(next?'<button class="primary" data-action="advance" data-id="'+e(t.id)+'" data-target="'+e(next)+'">'+e(next==="approved"?"Rights review ✓":"Move to "+capitals(next))+'</button>':"")+'</div></td></tr>';
+ const a=artists.find(a=>a.id===t.artistId),next=nextStage[t.stage],art=state.data.studioArtwork?.[t.id];
+ return '<tr><td>'+(art?.trackArt?'<img class="track-thumb" src="'+e(art.trackArt)+'" alt="Track art for '+e(t.title)+'">':art?.albumArt?'<img class="track-thumb" src="'+e(art.albumArt)+'" alt="Album art for '+e(t.title)+'">':'')+'<strong>'+e(t.title)+'</strong><div class="small">'+e(t.concept.slice(0,90))+'</div></td><td>'+e(a?.name||"Unknown")+'</td><td>'+e(t.mode)+'</td><td>'+badge(t.stage)+'</td><td><div class="actions">'+(art?.projectId?'<label class="secondary studio-upload">Track art<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-image-upload="track-art" data-project-id="'+e(art.projectId)+'" hidden></label><label class="secondary studio-upload">Album art<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-image-upload="cover" data-project-id="'+e(art.projectId)+'" hidden></label>':'')+'<button class="secondary" data-action="blueprint" data-id="'+e(t.id)+'">Blueprint</button>'+(next?'<button class="primary" data-action="advance" data-id="'+e(t.id)+'" data-target="'+e(next)+'">'+e(next==="approved"?"Rights review ✓":"Move to "+capitals(next))+'</button>':"")+'</div></td></tr>';
  }).join("")+'</tbody></table></div>':'<div class="empty">No tracks yet.</div>')+'</section>';
 }
 function releases(){
@@ -258,15 +220,179 @@ function showBrowserLogin(provider) {
 }
 
 function render(){
+ const activityScroll=state.tab==="music-dna"?captureDnaActivityScroll():null;
  document.body.dataset.view=state.tab;
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
  view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
+ if(activityScroll)restoreDnaActivityScroll(activityScroll);
+ applyPhotoFocus(view);
+ if(state.tab==="artists")bindArtistPhotos();
  musicDnaChrome(state);
  watchOpenJobs();
 }
+function bindArtistPhotos(){
+ const dialog=document.querySelector("#artist-photos-dialog");
+ if(!dialog||dialog.dataset.bound)return;
+ dialog.dataset.bound="1";
+ dialog.addEventListener("close",()=>{
+  const details=dialog.querySelector(".artist-banner-details");
+  const card=document.querySelector('article[data-artist-id="'+CSS.escape(dialog.dataset.artistId||"")+'"]');
+  if(details&&card)card.append(details);
+ });
+}
+function openArtistPhotos(button){
+ const dialog=document.querySelector("#artist-photos-dialog");
+ const card=button.closest("article");
+ const details=card?.querySelector(".artist-banner-details");
+ if(!dialog||!details)return;
+ const artist=(state.data.artists||[]).find(item=>item.id===button.dataset.artistId);
+ document.getElementById("artist-photos-title").textContent="Photos — "+(artist?.name||"");
+ dialog.dataset.artistId=button.dataset.artistId||"";
+ dialog.querySelector("#artist-photos-body").append(details);
+ dialog.showModal();
+ document.getElementById("artist-photos-paste")?.focus();
+}
+function reopenArtistPhotos(artistId){
+ const button=document.querySelector('[data-action="artist-photos-open"][data-artist-id="'+CSS.escape(artistId)+'"]');
+ if(button)openArtistPhotos(button);
+}
+function paintArtistRoster(query){
+ const count=document.getElementById("artist-roster-count");
+ const empty=document.getElementById("artist-search-empty");
+ if(!count||!empty)return;
+ paintArtistSearch(document.querySelectorAll("article.artist-banner-card"),count,empty,
+  artistSearchState(state.data.artists||[],state.data.countries||[],query));
+}
+function resetArtistForm(){
+ const form=document.getElementById("artist-form");
+ if(!form)return;
+ form.reset();
+ delete form.dataset.lastArtistDraftDna;
+ if(form.elements.id)form.elements.id.value="";
+ const title=document.getElementById("artist-form-title");
+ if(title)title.textContent="Create artist";
+ const save=document.getElementById("artist-save");
+ if(save)save.textContent="Create artist";
+ const cancel=document.getElementById("artist-edit-cancel");
+ if(cancel)cancel.hidden=true;
+ setArtistDraftMode(form, "create");
+  const note=document.getElementById("artist-draft-note");
+  if(note)note.textContent="";
+  const results=document.getElementById("artist-draft-recording-results");
+  if(results)results.replaceChildren();
+  const search=document.getElementById("artist-draft-recording-search");
+  if(search)search.value="";
+  const draftButton=document.getElementById("artist-draft");
+  if(draftButton)draftButton.disabled=true;
+}
+function sizeFocusFrame(dialog){
+ const frame=dialog.querySelector(".artist-focus-frame");
+ const card=document.querySelector('[data-action="artist-focus-open"][data-image-id="'+dialog.dataset.imageId+'"]')?.closest(".artist-banner-card");
+ const hero=card?.querySelector(".artist-hero");
+ const ratio=hero&&hero.clientHeight>0?hero.clientWidth/hero.clientHeight:16/9;
+ const maxW=Math.max(280,Math.min((dialog.clientWidth||640)-36,880));
+ frame.style.width=maxW+"px";
+ frame.style.height=Math.max(140,Math.round(maxW/ratio))+"px";
+}
+function bindArtistFocusDrag(dialog){
+ const frame=dialog.querySelector(".artist-focus-frame");
+ if(frame.dataset.dragBound)return;
+ frame.dataset.dragBound="1";
+ const img=frame.querySelector("img");
+ let drag=null;
+ const geometry=()=>({
+  containerWidth:frame.clientWidth,containerHeight:frame.clientHeight,
+  naturalWidth:img.naturalWidth,naturalHeight:img.naturalHeight
+ });
+ frame.addEventListener("pointerdown",event=>{
+  if(event.button!==undefined&&event.button!==0)return;
+  event.preventDefault();
+  if(!img.naturalWidth)return;
+  drag={x:event.clientX,y:event.clientY,focusX:Number(dialog.dataset.focusX),focusY:Number(dialog.dataset.focusY),pointerId:event.pointerId};
+  frame.classList.add("is-dragging");
+  try{frame.setPointerCapture(event.pointerId)}catch{/* the pointer can already be gone */}
+ });
+ frame.addEventListener("pointermove",event=>{
+  if(!drag||event.pointerId!==drag.pointerId)return;
+  event.preventDefault();
+  const next=focusFromDrag({...geometry(),focusX:drag.focusX,focusY:drag.focusY,
+   dx:event.clientX-drag.x,dy:event.clientY-drag.y,round:false});
+  img.style.objectPosition=objectPosition(next.focusX,next.focusY);
+ });
+ const end=event=>{
+  if(!drag||event.pointerId!==drag.pointerId)return;
+  if(event.type==="pointerup"){
+   const next=focusFromDrag({...geometry(),focusX:drag.focusX,focusY:drag.focusY,
+    dx:event.clientX-drag.x,dy:event.clientY-drag.y});
+   dialog.dataset.focusX=String(next.focusX);
+   dialog.dataset.focusY=String(next.focusY);
+   img.style.objectPosition=objectPosition(next.focusX,next.focusY);
+  }else img.style.objectPosition=objectPosition(drag.focusX,drag.focusY);
+  frame.classList.remove("is-dragging");
+  drag=null;
+ };
+ frame.addEventListener("pointerup",end);
+ frame.addEventListener("pointercancel",end);
+}
+function openArtistFocus(button){
+ const dialog=document.querySelector("#artist-focus-dialog");
+ if(!dialog)return;
+ dialog.dataset.artistId=button.dataset.artistId;
+ dialog.dataset.imageId=button.dataset.imageId;
+ dialog.dataset.focusX=button.dataset.focusX;
+ dialog.dataset.focusY=button.dataset.focusY;
+ const img=dialog.querySelector("img");
+ img.style.objectPosition=objectPosition(Number(button.dataset.focusX),Number(button.dataset.focusY));
+ img.src=button.dataset.imageUrl;
+ dialog.showModal();
+ sizeFocusFrame(dialog);
+ bindArtistFocusDrag(dialog);
+}
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
+ if(act==="artist-create-open"){resetArtistForm();document.querySelector("#artist-create-dialog")?.showModal();return}
+ if(act==="artist-draft"){
+  await fillArtistDraft(document.getElementById("artist-form"));
+  return;
+ }
+ if(act==="artist-create-close"){resetArtistForm();el.closest("dialog")?.close();return}
+ if(act==="artist-focus-cancel"||act==="artist-photos-close"){el.closest("dialog")?.close();return}
+ if(act==="artist-photos-open"){openArtistPhotos(el);return}
+ if(act==="artist-focus-open"){openArtistFocus(el);return}
+ if(act==="artist-focus-save"){
+   const dialog=document.querySelector("#artist-focus-dialog");
+   await api("studio/artists/"+dialog.dataset.artistId+"/images/"+dialog.dataset.imageId+"/focus",{
+     focusX:Number(dialog.dataset.focusX),focusY:Number(dialog.dataset.focusY)});
+   dialog.close();
+   await refresh();
+   message("Photo focus saved");
+   return;
+ }
+ if(act==="artist-edit"){
+   const artist=(state.data.artists||[]).find(item=>item.id===el.dataset.artistId);
+   const form=document.getElementById("artist-form");
+   if(!artist||!form)return;
+   form.elements.id.value=artist.id;
+   form.elements.name.value=artist.name;
+   form.elements.genre.value=artist.genre;
+   form.elements.language.value=artist.language;
+   form.elements.voice.value=artist.voice;
+   form.elements.dna.value=artist.dna;
+   form.elements.identityVerified.checked=!!artist.identityVerified;
+   for(const box of form.querySelectorAll('input[name="countries"]'))box.checked=artist.countries.includes(box.value);
+   document.getElementById("artist-form-title").textContent="Edit artist";
+   document.getElementById("artist-save").textContent="Save artist";
+   document.getElementById("artist-edit-cancel").hidden=false;
+   setArtistDraftMode(form, "edit");
+   document.querySelector("#artist-create-dialog")?.showModal();
+   return;
+ }
+ if(act==="artist-edit-cancel"){
+   resetArtistForm();
+   document.querySelector("#artist-create-dialog")?.close();
+   return;
+ }
  if(act==="artist-image-generate"){
    const artistId=el.dataset.artistId;
    const prompt=document.getElementById("artist-photo-prompt-"+artistId)?.value?.trim()||"";
@@ -451,6 +577,8 @@ window.addEventListener("hashchange",()=>{
  render();
 });
 document.addEventListener("click",async event=>{
+ if(event.target.id==="artist-create-dialog"){resetArtistForm();event.target.close();return}
+ if(event.target.id==="artist-focus-dialog"||event.target.id==="artist-photos-dialog"){event.target.close();return}
  const tab=event.target.closest("[data-tab]");
  const route=routeFromClick({tab:tab?.dataset.tab,action:tab?.dataset.action});
  if(route){
@@ -462,31 +590,180 @@ document.addEventListener("click",async event=>{
  const btn=event.target.closest("[data-action]");
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
-document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-"))studioInput(e,state,refresh);});
+document.addEventListener("input",event=>{
+ if(event.target.id?.startsWith("studio-"))studioInput(event,state,refresh,api,message);
+ if(event.target.id==="artist-search")paintArtistRoster(event.target.value);
+ if(event.target.id==="artist-photos-paste")event.target.textContent="Paste a copied PNG or JPEG to add it.";
+});
+function imagePasteContext(){
+ const dialog=document.querySelector("#artist-photos-dialog");
+ const photosArtistId=dialog?.open?dialog.dataset.artistId||"":"";
+ const focusedArtistId=document.activeElement?.closest?.("[data-artist-id]")?.dataset.artistId||"";
+ const visible=state.tab==="artists"
+  ?[...document.querySelectorAll("article.artist-banner-card")].filter(card=>!card.hidden):[];
+ const soleArtistId=visible.length===1?visible[0].dataset.artistId||"":"";
+ const project=state.tab==="studio"
+  ?(state.data.studioProjects||[]).find(item=>item.id===studioActiveId(state)):null;
+ return {photosArtistId,focusedArtistId,soleArtistId,projectId:project?.id||"",projectArtistId:project?.artistId||""};
+}
+let clipboardReadTimer=0;
+async function finishPastedImage(file,context){
+ const result=await acceptPastedImage(file,context,uploadImageFile);
+ if(!result.handled){
+  message("Copy a PNG or JPEG, then paste it again.",true);
+  return;
+ }
+ if(result.missingTarget){
+  message("Open an artist's photos, or a Studio project that has an artist, then paste the image again.",true);
+  return;
+ }
+ const artistId=context.photosArtistId;
+ await refresh();
+ if(artistId)reopenArtistPhotos(artistId);
+ message(uploadMessage(result.kind,result.data));
+}
+async function readClipboardImage(context){
+ if(!navigator.clipboard?.read){
+  message("Copy a PNG or JPEG, then paste it again.",true);
+  return;
+ }
+ try{
+  const file=await imageFileFromClipboardItems(await navigator.clipboard.read());
+  if(!file){
+   message("Copy a PNG or JPEG, then paste it again.",true);
+   return;
+  }
+  await finishPastedImage(file,context);
+ }catch{
+  message("Copy a PNG or JPEG, then paste it again.",true);
+ }
+}
+document.addEventListener("keydown",event=>{
+ if(!imagePasteShortcut(event)||typingTarget(event.target))return;
+ const context=imagePasteContext();
+ if(!bannerPasteDestination(context))return;
+ clearTimeout(clipboardReadTimer);
+ clipboardReadTimer=setTimeout(()=>{
+  clipboardReadTimer=0;
+  void readClipboardImage(context);
+ },50);
+});
+document.addEventListener("beforeinput",event=>{
+ if(event.target?.id==="artist-photos-paste"&&event.inputType!=="insertFromPaste")event.preventDefault();
+});
 document.addEventListener("paste",event=>{
+ const file=imageFileFromClipboard(event.clipboardData);
+ if(file){
+  clearTimeout(clipboardReadTimer);
+  clipboardReadTimer=0;
+  event.preventDefault();
+  void finishPastedImage(file,imagePasteContext()).catch(error=>message(error.message,true));
+  return;
+ }
+ if(event.target?.id==="artist-photos-paste")event.preventDefault();
  const field=event.target?.id==="studio-source"?"url":event.target?.id==="studio-article"?"article":"";
  if(!field)return;
  const text=event.clipboardData?.getData("text")??"";
  if(!pasteStartsLyrics(field,text))return;
  setTimeout(()=>{void studioPaste(field,state,api,refresh,message).catch(error=>message(error.message,true));},0);
 });
+let recordingSearchTimer=0;
+document.addEventListener("keydown",event=>{
+ if(event.target?.id==="artist-draft-recording-search"&&event.key==="Enter")event.preventDefault();
+});
+document.addEventListener("input",event=>{
+ if(event.target?.id!=="artist-draft-recording-search")return;
+ const query=event.target.value;
+ clearTimeout(recordingSearchTimer);
+ recordingSearchTimer=setTimeout(()=>{
+  recordingSearchTimer=0;
+  void searchDraftRecordings(query);
+ },250);
+});
+async function fillArtistDraft(form){
+ const selection=draftSelection(form);
+ if(!selection)return;
+ const draft=await api("artists/draft",{artistIds:selection.artistIds,recordingIds:selection.recordingIds});
+ applyArtistDraft(form,draft);
+ const note=document.getElementById("artist-draft-note");
+ if(note)note.textContent=draft.countriesTruncated?"Only the first 12 countries were kept.":"";
+}
+async function searchDraftRecordings(query){
+ const box=document.getElementById("artist-draft-recording-results");
+ const note=document.getElementById("artist-draft-note");
+ const form=document.getElementById("artist-form");
+ if(!form||!box)return;
+ const path=draftRecordingSearchPath(query);
+ const selected=[...form.querySelectorAll('input[name="draftRecording"]:checked')].map(item=>({
+  id:item.value,label:item.parentElement?.textContent?.trim()||""
+ }));
+ if(!path){
+  box.innerHTML=recordingChoiceMarkup(selected,selected.map(item=>item.id));
+  return;
+ }
+ try{
+  const payload=await api(path);
+  const result=recordingChoicesForDraft(payload,query,selected);
+  box.innerHTML=recordingChoiceMarkup(result.choices,selected.map(item=>item.id));
+  if(result.choices.length)box.querySelector("label")?.scrollIntoView({block:"nearest"});
+  if(note&&result.note)note.textContent=result.note;
+  else if(note&&note.textContent==="No analyzed recording for that search.")note.textContent="";
+  const boxes=form.querySelectorAll('input[name="draftArtist"], input[name="draftRecording"]');
+  const button=document.getElementById("artist-draft");
+  if(button)button.disabled=!artistDraftButtonEnabled(boxes);
+ }catch(error){message(error.message,true);}
+}
 document.addEventListener("change",async e=>{
- if(e.target.id==="studio-project-picker")studioInput(e,state,refresh);
+ if(e.target.name==="draftArtist"||e.target.name==="draftRecording"){
+  const form=e.target.form;
+  const boxes=form.querySelectorAll('input[name="draftArtist"], input[name="draftRecording"]');
+  const warning=guardArtistDraftPick(e.target,boxes);
+  const note=document.getElementById("artist-draft-note");
+  const button=document.getElementById("artist-draft");
+  if(button)button.disabled=!artistDraftButtonEnabled(boxes);
+  if(artistDraftButtonEnabled(boxes)){
+   try{await fillArtistDraft(form);}catch(error){message(error.message,true);}
+  }
+  if(note&&warning)note.textContent=warning;
+ }
+ if(e.target.id==="studio-project-picker")studioInput(e,state,refresh,api,message);
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
+ if(e.target.dataset.imageUpload||e.target.dataset.artistBanner){
+  const input=e.target,file=input.files?.[0];
+  input.value="";
+  if(!file)return;
+  try{
+   const kind=input.dataset.artistBanner?"artist-photo":input.dataset.imageUpload;
+   const projectId=input.dataset.projectId||studioActiveId(state);
+   if(!input.dataset.artistBanner&&!projectId){message("Save a project before uploading artwork",true);return;}
+   const data=await uploadImageFile(file,input.dataset.artistBanner
+    ?"/api/studio/artists/"+input.dataset.artistBanner+"/upload-banner"
+    :"/api/studio/projects/"+projectId+"/upload-image/"+kind);
+   await refresh();
+   message(uploadMessage(kind,data));
+  }catch(error){message(error.message,true);}
+ }
  if(e.target.matches("[data-dna-upload]")){
    try{await musicDnaUpload(e.target,refresh,message);}catch(error){message(error.message,true);}
  }
 });
 document.addEventListener("submit",async event=>{
- if(!["artist-form","track-form","release-form","suno-connection-form","spotify-connection-form","openai-connection-form","dna-reference-form"].includes(event.target.id))return;
+ const formId=event.target.getAttribute?.("id");
+ if(!["artist-form","track-form","release-form","suno-connection-form","spotify-connection-form","openai-connection-form","dna-reference-form"].includes(formId))return;
  event.preventDefault();const button=event.target.querySelector("button[type=submit],button:not([type])");
  if(button)button.disabled=true;
  try{
   const data=Object.fromEntries(new FormData(event.target).entries());
-  if(event.target.id==="dna-reference-form"){await musicDnaCreate(event.target,api,refresh,message);return;}
-  if(event.target.id==="artist-form"){
-   data.countries=data.countries.split(",").map(x=>x.trim().toUpperCase()).filter(Boolean);
-   await api("artists",data);
+  if(formId==="dna-reference-form"){await musicDnaCreate(event.target,api,refresh,message);return;}
+  if(formId==="artist-form"){
+   const formData=new FormData(event.target);
+   data.countries=formData.getAll("countries");
+   data.identityVerified=formData.get("identityVerified")==="true";
+   const id=formData.get("id");
+   if(id)await api("artists/"+id,data);
+   else await api("artists",data);
+   resetArtistForm();
+   document.querySelector("#artist-create-dialog")?.close();
   } else if(event.target.id==="track-form") await api("tracks",data);
   else if(event.target.id==="suno-connection-form"){await api("connections/suno",data);event.target.elements.apiKey.value="";}
   else if(event.target.id==="spotify-connection-form")await api("connections/spotify",data);

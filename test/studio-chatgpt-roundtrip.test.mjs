@@ -113,7 +113,27 @@ test('Studio generates and saves lyrics, Suno controls and both ChatGPT images w
     const response=await post('/api/studio/projects/'+p.id+'/generate-art',{kind});
     assert.equal(response.status,201);const imported=await response.json();assert.equal(imported.kind,kind);assert.equal(imported.selected,true);
   }
-  assert.deepEqual(imageCalls.map(x=>x.prompt),[brief.coverPrompt,brief.artistPhotoPrompt]);
+  assert.match(imageCalls[0].prompt,/A winter road in an Alpine valley/);
+  assert.match(imageCalls[0].prompt,/Dry acoustic instruments/);
+  assert.match(imageCalls[0].prompt,/quiet literary serif/);
+  assert.match(imageCalls[0].prompt,/Home Again/);
+  assert.match(imageCalls[0].prompt,/Do not place a small title centered along the top/);
+  const track=await post('/api/studio/projects/'+p.id+'/generate-art',{kind:'track-art'});
+  assert.equal(track.status,201);
+  const trackAsset=await track.json();
+  assert.equal(trackAsset.kind,'track-art');
+  assert.equal(trackAsset.selected,true);
+  const trackPrompt=imageCalls.at(-1).prompt;
+  assert.match(trackPrompt,/Square track sleeve for this one song/);
+  assert.match(trackPrompt,/Dry acoustic instruments/);
+  assert.match(trackPrompt,/quiet literary serif/);
+  assert.match(trackPrompt,/Do not place a small title centered along the top/);
+  const photoPrompt=imageCalls[1].prompt;
+  assert.equal(photoPrompt.startsWith(brief.artistPhotoPrompt),true);
+  assert.equal(photoPrompt.includes(brief.style),true);
+  assert.match(photoPrompt,/reflective/);
+  assert.match(photoPrompt,/Artist DNA/);
+  assert.match(photoPrompt,/must not look soft, sweet, innocent or acoustic/);
   const recipe=await (await fetch(base+'/api/studio/projects/'+p.id+'/recipe',{headers:{cookie}})).json();
   assert.equal(recipe.weirdness,17);assert.equal(recipe.targetDurationSeconds,215);
   assert.match(recipe.exclude,/EDM drops/);
@@ -126,7 +146,8 @@ test('ChatGPT chooses a catalog artist; persistence validates IDs and preserves 
     const b=store.addArtist({name:'Other Roads',genre:'Country Pop',language:'English',countries:[],voice:'male',dna:'Piano'});
     const studio=new StudioStore(store),p=studio.save({article:'A journey home'});
     const prompt=buildChatGptLyricsPrompt({...p,artistCandidates:store.artists()});
-    assert.match(prompt,/Quiet Roads/);assert.match(prompt,/readable typography/);
+    assert.match(prompt,/Quiet Roads/);assert.match(prompt,/typeface, scale, and placement/);
+    assert.match(prompt,/Do not place the title at the top/);
     const parsed=parseChatGptBrief(JSON.stringify({...brief,artistId:a.id}));
     assert.equal(studio.setResult(p.id,parsed).artistId,a.id);
     assert.equal(studio.setResult(p.id,{...brief,artistId:b.id}).artistId,a.id);

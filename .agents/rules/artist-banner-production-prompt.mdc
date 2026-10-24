@@ -1,0 +1,20 @@
+---
+id: artist-banner-production-prompt
+level: CRITICAL
+alwaysApply: false
+globs: ["src/studio-api.mjs","src/artist-banner-prompt.mjs","src/chatgpt-images.mjs"]
+triggers: ["artist banner","artist-photo","generate-photo","Artist DNA"]
+tags: ["blossom","artist-media"]
+priority: 80
+enabled: true
+status: approved
+scope: project
+---
+
+Artist banner image prompts must include Artist DNA and the production of the music being made, and the pictured look must match that production.
+
+- Include the artist's genre, voice, and Artist DNA text in the visual brief sent to image generation.
+- Include the production of the songs being made: genre, additional styles, style, moods, and suggested genre. A banner generated from one Studio project uses that project only. An artist-screen banner uses at most the three newest projects for that artist.
+- Include analyzed Music DNA style for recordings stored under that artist name, and the current project's reference production style when generating from a project. Do not copy reference-recording artist names, lyrics, or melodies into the prompt.
+- Club, house, techno, or aggressive electronic production must not be pictured as soft, sweet, innocent, or acoustic. Intimate acoustic, folk, or singer-songwriter production must not be pictured as a club or rave. Voice type chooses who may be pictured; it must not override the production look.
+- A caller-supplied prompt does not replace this block. Album covers are out of scope.

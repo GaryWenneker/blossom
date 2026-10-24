@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { DomainError } from "./domain.mjs";
+import { packSunoStyle } from "./suno-style-pack.mjs";
 
 export const LENGTH_PRESETS = Object.freeze({
   radio:{label:"Radio edit",seconds:205,min:165,max:240},
@@ -18,6 +19,11 @@ export const DEFAULT_PARAMETERS = Object.freeze({
 });
 const parse=(text,fallback)=>{try{return JSON.parse(text)}catch{return fallback}};
 const clean=(v,max=500)=>{if(typeof v!=="string")throw new DomainError("Expected text");return v.trim().slice(0,max)};
+function focusPercent(value){
+  if(typeof value!=="number"||!Number.isInteger(value)||value<0||value>100)
+    throw new DomainError("Focus point must be an integer from 0 to 100",400);
+  return value;
+}
 const uuid=()=>randomUUID();
 function int(v,min,max,label){if(!Number.isInteger(v)||v<min||v>max)throw new DomainError(label+" must be "+min+"-"+max);return v;}
 export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
@@ -41,14 +47,50 @@ export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
   for(const f of ["customInstructions","imagePrompt","artistPhotoPrompt"])p[f]=clean(p[f],1200);
   return p;
 }
+function storedResult(existing, input) {
+  const base = existing?.result && typeof existing.result === "object" && !Array.isArray(existing.result) ? existing.result : null;
+  const incoming = input?.result;
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return base || {};
+  if (!base) {
+    const created = { ...incoming };
+    if (typeof created.lyrics === "string") created.lyrics = clean(created.lyrics, 15000);
+    return created;
+  }
+  const next = { ...base };
+  if (typeof incoming.lyrics === "string") next.lyrics = clean(incoming.lyrics, 15000);
+  return next;
+}
+function adoptedTitle(title, result) {
+  const stored = clean(title || "Untitled project", 140) || "Untitled project";
+  if (stored !== "Untitled project") return stored;
+  const suggested = Array.isArray(result?.titles)
+    ? result.titles.find(item => typeof item === "string" && item.trim() && item.trim() !== "Untitled")
+    : "";
+  return suggested ? clean(suggested, 140) : stored;
+}
+export function songIsInstrumental(project){
+  if(project?.parameters?.instrumental)return true;
+  if(String(project?.result?.lyrics||"").trim())return false;
+  const prose=[project?.result?.concept,project?.result?.style,project?.result?.rationale,project?.parameters?.customInstructions].map(value=>String(value||"")).join("\n");
+  const excluded=[...(project?.parameters?.excludeStyles||[]),...(project?.result?.exclusions||[])].map(value=>String(value||"")).join("\n");
+  return /\binstrumental\b/i.test(prose)||/\bvocals?\b/i.test(excluded)||/\bspoken word\b/i.test(excluded);
+}
 export function sunoRecipe(project, referenceStyles = "") {
   const p=project.parameters;
+  const instrumental=songIsInstrumental(project);
   return {provider:"suno",mode:"authorized-manual-handoff",model:project.parameters.sunoModel||"v6",
     title:project.title && project.title!=="Untitled project" ? project.title : project.result?.titles?.[0]||"Untitled",
-    lyrics:p.instrumental?"":project.result?.lyrics||"",
-    style:[p.genre,...p.additionalStyles,project.result?.style||"",referenceStyles,p.customInstructions].filter(Boolean).join(", "),
-    exclude:[...new Set([...p.excludeStyles,...(project.result?.exclusions||[])])].join(", "),vocalGender:p.instrumental?null:p.vocalGender,
-    instrumental:p.instrumental,maxMode:p.maxMode,weirdness:p.weirdness,styleInfluence:p.styleInfluence,
+    lyrics:instrumental?"":project.result?.lyrics||"",
+    style:packSunoStyle({
+      genre:p.genre,
+      artistDna:String(project.artistDna||"").trim(),
+      additionalStyles:p.additionalStyles||[],
+      resultStyle:project.result?.style||"",
+      referenceStyles,
+      customInstructions:p.customInstructions||""
+    }),
+    exclude:[...new Set([...p.excludeStyles,...(project.result?.exclusions||[])])].join(", "),vocalGender:instrumental?null:p.vocalGender,
+    instrumental,maxMode:p.maxMode,weirdness:p.weirdness,styleInfluence:p.styleInfluence,
     variety:p.variety,personalize:p.personalize,targetDurationSeconds:p.targetSeconds,
     lyricLanguage:LYRIC_LANGUAGES[p.lyricLanguage]||LYRIC_LANGUAGES.en,
     note:"Duration is an editorial target, not a guaranteed Suno output. These keys are a preparation sheet, not an undocumented API request."
@@ -73,7 +115,7 @@ export class StudioStore {
         (artist_id TEXT PRIMARY KEY REFERENCES artists(id), params TEXT NOT NULL);
     `);
     const columns=new Set(this.db.prepare("PRAGMA table_info(studio_assets)").all().map(c=>c.name));
-    for(const [name,type] of Object.entries({provider:"TEXT NOT NULL DEFAULT 'unknown'",prompt:"TEXT NOT NULL DEFAULT ''",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",selected:"INTEGER NOT NULL DEFAULT 0",deleted_at:"TEXT"}))
+    for(const [name,type] of Object.entries({provider:"TEXT NOT NULL DEFAULT 'unknown'",prompt:"TEXT NOT NULL DEFAULT ''",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",selected:"INTEGER NOT NULL DEFAULT 0",deleted_at:"TEXT",artist_id:"TEXT NOT NULL DEFAULT ''"}))
       if(!columns.has(name))this.db.exec("ALTER TABLE studio_assets ADD COLUMN "+name+" "+type);
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS studio_asset_selection ON studio_assets(project_id,kind) WHERE selected=1 AND deleted_at IS NULL");
     // Artist media is durable, independent of any News-to-Song project's
@@ -83,17 +125,29 @@ export class StudioStore {
        source_asset_id TEXT UNIQUE REFERENCES studio_assets(id),
        filename TEXT NOT NULL, mime TEXT NOT NULL, provider TEXT NOT NULL,
        prompt TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
-       selected INTEGER NOT NULL DEFAULT 0, deleted_at TEXT);
+       selected INTEGER NOT NULL DEFAULT 0, deleted_at TEXT,
+       focus_x INTEGER NOT NULL DEFAULT 50, focus_y INTEGER NOT NULL DEFAULT 35);
       CREATE UNIQUE INDEX IF NOT EXISTS studio_artist_image_active
         ON studio_artist_images(artist_id) WHERE selected=1 AND deleted_at IS NULL;`);
+    const imageColumns=new Set(this.db.prepare("PRAGMA table_info(studio_artist_images)").all().map(c=>c.name));
+    for(const [name,type] of Object.entries({focus_x:"INTEGER NOT NULL DEFAULT 50",focus_y:"INTEGER NOT NULL DEFAULT 35"}))
+      if(!imageColumns.has(name))this.db.exec("ALTER TABLE studio_artist_images ADD COLUMN "+name+" "+type);
     this.migrateArtistImages();
+    this.adoptArtistCovers();
     this.db.exec(`CREATE TABLE IF NOT EXISTS studio_suno_jobs
       (project_id TEXT PRIMARY KEY REFERENCES studio_projects(id),
        job_id TEXT NOT NULL, status TEXT NOT NULL, audio_url TEXT,
-       imported_asset_id TEXT, submitted_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+       imported_asset_id TEXT, submitted_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS studio_suno_takes
+        (project_id TEXT NOT NULL, take_index INTEGER NOT NULL, track_id TEXT NOT NULL,
+         PRIMARY KEY(project_id, take_index));`);
 
   }
   projects() {return this.db.prepare("SELECT * FROM studio_projects ORDER BY updated_at DESC LIMIT 150").all().map(r=>this.convert(r));}
+  projectsForArtist(artistId){
+    if(typeof artistId!=="string"||!artistId)return [];
+    return this.db.prepare("SELECT * FROM studio_projects WHERE artist_id=? ORDER BY updated_at DESC").all(artistId).map(r=>this.convert(r));
+  }
   convert(r){return r&&{id:r.id,title:r.title,article:r.article,sourceUrl:r.source_url,
     artistId:r.artist_id||"",parameters:parse(r.params,DEFAULT_PARAMETERS),result:parse(r.result,{}),
     trackId:r.track_id||"",createdAt:r.created_at,updatedAt:r.updated_at};}
@@ -108,7 +162,7 @@ export class StudioStore {
     return p;
   }
   save(input={}){
-    const title=clean(input.title||"Untitled project",140)||"Untitled project";
+    let title=clean(input.title||"Untitled project",140)||"Untitled project";
     const article=clean(input.article||"",10000);
     const sourceUrl=clean(input.sourceUrl||"",1000);
     if(sourceUrl){let url;try{url=new URL(sourceUrl)}catch{throw new DomainError("Invalid article URL");}
@@ -117,11 +171,12 @@ export class StudioStore {
     if(artistId&&!this.store.artist(artistId))throw new DomainError("Artist not found",404);
     const existing=input.id?this.require(input.id):null;
     const params=normalizeParameters(input.parameters||existing?.parameters||this.preset(artistId)||DEFAULT_PARAMETERS);
-    const result=existing?.result||{};
+    const result=storedResult(existing,input);
+    title=adoptedTitle(title,result);
     const id=existing?.id||uuid(),createdAt=existing?.createdAt||new Date().toISOString(),updatedAt=new Date().toISOString();
     this.db.prepare(`INSERT INTO studio_projects VALUES(?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET title=excluded.title,article=excluded.article,source_url=excluded.source_url,
-      artist_id=excluded.artist_id,params=excluded.params,updated_at=excluded.updated_at`).run(
+      artist_id=excluded.artist_id,params=excluded.params,result=excluded.result,updated_at=excluded.updated_at`).run(
       id,title,article,sourceUrl,artistId||null,JSON.stringify(params),JSON.stringify(result),existing?.trackId||null,createdAt,updatedAt);
     if(artistId&&artistId!==existing?.artistId){
       // Associate legacy project-only artist photos when an artist is chosen
@@ -171,7 +226,8 @@ export class StudioStore {
     const params=patch?normalizeParameters(patch,project.parameters):{...project.parameters};
     if(result.coverPrompt && result.coverPrompt!==project.result?.coverPrompt)params.imagePrompt=result.coverPrompt;
     if(result.artistPhotoPrompt && result.artistPhotoPrompt!==project.result?.artistPhotoPrompt)params.artistPhotoPrompt=result.artistPhotoPrompt;
-    this.db.prepare("UPDATE studio_projects SET result=?,params=?,artist_id=?,updated_at=? WHERE id=?").run(JSON.stringify(result),JSON.stringify(params),artistId||null,new Date().toISOString(),id);
+    const title=adoptedTitle(project.title,result);
+    this.db.prepare("UPDATE studio_projects SET result=?,params=?,artist_id=?,title=?,updated_at=? WHERE id=?").run(JSON.stringify(result),JSON.stringify(params),artistId||null,title,new Date().toISOString(),id);
     this.store.audit("ai_extracted","studio_project",id,{title:result.titles?.[0]||""});
     return this.require(id);
   }
@@ -186,6 +242,40 @@ export class StudioStore {
     const track=this.store.progressTrack(t.id,"brief");
     this.db.prepare("UPDATE studio_projects SET track_id=?,updated_at=? WHERE id=?").run(t.id,new Date().toISOString(),id);
     this.store.audit("linked","studio_project",id,{trackId:t.id});return {project:this.require(id),track};
+  }
+
+  linkSunoTakes(projectId, assetIds = []) {
+    const project = this.require(projectId);
+    if (!project.artistId) throw new DomainError("Choose an artist before importing Suno songs", 409);
+    if (!project.result?.concept) throw new DomainError("Run AI extraction first", 409);
+    const existing = this.db.prepare(
+      "SELECT take_index AS takeIndex, track_id AS trackId FROM studio_suno_takes WHERE project_id=? ORDER BY take_index"
+    ).all(projectId);
+    if (existing.length >= 2) return existing.map(row => row.trackId);
+    const ids = existing.map(row => row.trackId);
+    if (!ids.length) {
+      const first = project.trackId || this.makeTrack(projectId).track.id;
+      this.db.prepare("INSERT INTO studio_suno_takes(project_id,take_index,track_id) VALUES(?,?,?)").run(projectId, 1, first);
+      ids.push(first);
+    }
+    if (ids.length < 2) {
+      const current = this.require(projectId);
+      const title = (sunoRecipe(current).title + " (2)").slice(0, 140);
+      const created = this.store.addTrack({
+        artistId: current.artistId, title,
+        mode: current.parameters.instrumental ? "instrumental" : "vocal",
+        concept: current.result.concept,
+        lyrics: current.parameters.instrumental ? "" : current.result.lyrics || ""
+      });
+      const second = this.store.progressTrack(created.id, "brief");
+      this.db.prepare("INSERT INTO studio_suno_takes(project_id,take_index,track_id) VALUES(?,?,?)").run(projectId, 2, second.id);
+      ids.push(second.id);
+    }
+    assetIds.slice(0, ids.length).forEach((assetId, index) => {
+      if (typeof assetId === "string" && /^[0-9a-f-]{36}$/.test(assetId))
+        this.db.prepare("UPDATE tracks SET audio_ref=? WHERE id=?").run("/api/studio/assets/" + assetId + "/content", ids[index]);
+    });
+    return ids;
   }
   sunoJob(projectId){
     this.require(projectId);
@@ -230,9 +320,27 @@ export class StudioStore {
     const project=this.require(projectId),fingerprint=studioBriefFingerprint(project);
     return this.db.prepare("SELECT * FROM studio_assets WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC,id DESC")
       .all(projectId).map(r=>({id:r.id,projectId:r.project_id,kind:r.kind,mime:r.mime,createdAt:r.created_at,
-        provider:r.provider,prompt:r.prompt,selected:!!r.selected,
+        provider:r.provider,prompt:r.prompt,selected:!!r.selected,artistId:r.artist_id||"",
         briefMatch:r.brief_fingerprint?(r.brief_fingerprint===fingerprint?"current":"earlier"):"unknown",
         url:"/api/studio/assets/"+r.id+"/content"}));
+  }
+  adoptArtistCovers(){
+    // An artist with no tagged cover takes the newest untagged cover on their
+    // current project. Older untagged covers stay unselected.
+    const projects=this.db.prepare(
+      "SELECT id, artist_id AS artistId FROM studio_projects WHERE artist_id IS NOT NULL AND artist_id!=''").all();
+    for(const project of projects){
+      const covers=this.db.prepare(`SELECT id, artist_id AS artistId, selected
+        FROM studio_assets WHERE project_id=? AND kind='cover' AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC`).all(project.id);
+      const owned=covers.filter(cover=>cover.artistId===project.artistId);
+      if(owned.length){
+        if(!owned.some(cover=>cover.selected))this.selectAsset(project.id,owned[0].id,"cover");
+        continue;
+      }
+      const newest=covers.find(cover=>!cover.artistId);
+      if(newest)this.selectAsset(project.id,newest.id,"cover");
+    }
   }
   migrateArtistImages(){
     // Preserve historical selected photos in the new artist-owned library.
@@ -250,10 +358,13 @@ export class StudioStore {
   artistImages(artistId){
     if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
     return this.db.prepare(`SELECT id,artist_id AS artistId,source_asset_id AS sourceAssetId,
-      provider,prompt,created_at AS createdAt,selected
+      provider,prompt,created_at AS createdAt,selected,focus_x AS focusX,focus_y AS focusY
       FROM studio_artist_images WHERE artist_id=? AND deleted_at IS NULL
       ORDER BY created_at DESC,id DESC`).all(artistId).map(row=>({
-      ...row,selected:!!row.selected,url:"/api/studio/artist-images/"+row.id+"/content"
+      ...row,selected:!!row.selected,
+      focusX:Number.isInteger(row.focusX)?row.focusX:50,
+      focusY:Number.isInteger(row.focusY)?row.focusY:35,
+      url:"/api/studio/artist-images/"+row.id+"/content"
     }));
   }
   allArtistImages(){
@@ -288,7 +399,7 @@ export class StudioStore {
   }
   registerArtistPhoto(artistId,{filename,mime,provider="chatgpt",prompt=""}){
     if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
-    if(!/^[0-9a-f-]{36}\.png$/.test(filename)||mime!=="image/png")
+    if(!/^[0-9a-f-]{36}\.(?:png|jpg)$/.test(filename)||!["image/png","image/jpeg"].includes(mime))
       throw new DomainError("Unsupported artist photo format",400);
     if(!["chatgpt","upload","draw-things"].includes(provider))
       throw new DomainError("Invalid artist image provider",400);
@@ -337,12 +448,58 @@ export class StudioStore {
     this.store.audit("artist_photo_selected","artist",artistId,{imageId});
     return this.artistImages(artistId);
   }
+  setArtistImageFocus(artistId,imageId,input){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    const image=this.artistImage(imageId);
+    if(!image||image.artist_id!==artistId)
+      throw new DomainError("Artist photo not found for this artist",404);
+    const focusX=focusPercent(input?.focusX),focusY=focusPercent(input?.focusY);
+    this.db.prepare("UPDATE studio_artist_images SET focus_x=?,focus_y=? WHERE id=?").run(focusX,focusY,imageId);
+    this.store.audit("artist_photo_focus","artist",artistId,{imageId,focusX,focusY});
+    return this.artistImages(artistId);
+  }
+  linkedArtwork(){
+    const projects=this.db.prepare(
+      "SELECT id, track_id AS trackId FROM studio_projects WHERE track_id IS NOT NULL AND track_id != ''").all();
+    const assets=this.db.prepare(`SELECT id, project_id AS projectId, kind FROM studio_assets
+      WHERE selected=1 AND deleted_at IS NULL AND kind IN ('cover','track-art')`).all();
+    const byProject=new Map();
+    for(const asset of assets){
+      if(!byProject.has(asset.projectId))byProject.set(asset.projectId,{});
+      byProject.get(asset.projectId)[asset.kind==="cover"?"albumArt":"trackArt"]=
+        "/api/studio/assets/"+asset.id+"/content";
+    }
+    const byTrack={};
+    const assign=(trackId, projectId)=>{
+      if(!trackId||byTrack[trackId])return;
+      const images=byProject.get(projectId)||{};
+      byTrack[trackId]={projectId,albumArt:images.albumArt||"",trackArt:images.trackArt||""};
+    };
+    for(const project of projects) assign(project.trackId, project.id);
+    for(const take of this.db.prepare("SELECT project_id AS projectId, track_id AS trackId FROM studio_suno_takes").all())
+      assign(take.trackId, take.projectId);
+    return byTrack;
+  }
+  artistCovers(){
+    const rows=this.db.prepare(`SELECT id, artist_id AS artistId, created_at AS createdAt
+      FROM studio_assets WHERE kind='cover' AND selected=1 AND deleted_at IS NULL AND artist_id!=''
+      ORDER BY created_at DESC, id DESC`).all();
+    const covers={};
+    for(const row of rows){
+      if(covers[row.artistId])continue;
+      covers[row.artistId]={assetId:row.id,url:"/api/studio/assets/"+row.id+"/content",createdAt:row.createdAt};
+    }
+    return covers;
+  }
   artistBanners(){
-    const rows=this.db.prepare(`SELECT id,artist_id AS artistId,created_at AS createdAt
+    const rows=this.db.prepare(`SELECT id,artist_id AS artistId,created_at AS createdAt,
+      focus_x AS focusX,focus_y AS focusY
       FROM studio_artist_images WHERE selected=1 AND deleted_at IS NULL`).all();
     return Object.fromEntries(rows.map(row=>[
       row.artistId,{assetId:row.id,url:"/api/studio/artist-images/"+row.id+"/content",
-        createdAt:row.createdAt}
+        createdAt:row.createdAt,
+        focusX:Number.isInteger(row.focusX)?row.focusX:50,
+        focusY:Number.isInteger(row.focusY)?row.focusY:35}
     ]));
   }
   asset(id){return this.db.prepare("SELECT * FROM studio_assets WHERE id=? AND deleted_at IS NULL").get(id);}
@@ -355,10 +512,16 @@ export class StudioStore {
   selectAsset(projectId,id,kind){
     const asset=this.requireAsset(projectId,id);
     const role=kind||asset.kind;
-    if(!["cover","artist-photo","audio"].includes(role) || (asset.kind==="audio")!==(role==="audio"))
+    if(!["cover","track-art","artist-photo","audio"].includes(role) || (asset.kind==="audio")!==(role==="audio"))
       throw new DomainError("Unsupported asset role",400);
+    const project=this.require(projectId);
+    const owner=asset.artist_id||"";
+    if(role==="cover"&&owner&&project.artistId&&owner!==project.artistId)
+      throw new DomainError("This cover belongs to another artist",409);
     this.db.exec("BEGIN IMMEDIATE");
     try{
+      if(role==="cover"&&project.artistId&&!owner)
+        this.db.prepare("UPDATE studio_assets SET artist_id=? WHERE id=?").run(project.artistId,id);
       this.db.prepare("UPDATE studio_assets SET selected=0 WHERE project_id=? AND kind=?").run(projectId,role);
       this.db.prepare("UPDATE studio_assets SET selected=1,kind=? WHERE id=?").run(role,id);
       this.db.exec("COMMIT");
@@ -370,6 +533,27 @@ export class StudioStore {
     this.store.audit("asset_selected","studio_project",projectId,{assetId:id,kind:role});
     return this.assets(projectId);
   }
+  deleteProject(id){
+    const project=this.require(id);
+    const assets=this.db.prepare("SELECT id,filename FROM studio_assets WHERE project_id=?").all(id);
+    this.db.exec("BEGIN IMMEDIATE");
+    try{
+      for(const asset of assets)
+        this.db.prepare("UPDATE studio_artist_images SET source_asset_id=NULL WHERE source_asset_id=?").run(asset.id);
+      this.db.prepare("DELETE FROM studio_music_dna_refs WHERE project_id=?").run(id);
+      this.db.prepare("DELETE FROM studio_suno_jobs WHERE project_id=?").run(id);
+      this.db.prepare("DELETE FROM studio_assets WHERE project_id=?").run(id);
+      this.db.prepare("DELETE FROM studio_projects WHERE id=?").run(id);
+      this.db.exec("COMMIT");
+    }catch(error){this.db.exec("ROLLBACK");throw error;}
+    this.store.audit("deleted","studio_project",id,{title:project.title});
+    const removedFiles=assets.filter(asset=>{
+      const kept=this.db.prepare("SELECT 1 FROM studio_artist_images WHERE filename=? AND deleted_at IS NULL").get(asset.filename)
+        ||this.db.prepare("SELECT 1 FROM studio_assets WHERE filename=?").get(asset.filename);
+      return !kept;
+    }).map(asset=>asset.filename);
+    return {id,removedFiles};
+  }
   deleteAsset(projectId,id){
     this.requireAsset(projectId,id);
     // Remove from the project without destroying the original file.
@@ -377,14 +561,15 @@ export class StudioStore {
     this.store.audit("asset_removed","studio_project",projectId,{assetId:id});
     return this.assets(projectId);
   }
-  registerAsset(projectId,kind,filename,mime,{provider="unknown",prompt="",briefFingerprint=""}={}){
+  registerAsset(projectId,kind,filename,mime,{provider="unknown",prompt="",briefFingerprint="",artistId=""}={}){
     this.require(projectId);
-    if(!["cover","artist-photo","audio"].includes(kind))throw new DomainError("Invalid asset type");
-    if(!/^[0-9a-f-]{36}\.(?:png|wav|mp3)$/.test(filename))throw new DomainError("Invalid asset filename");
+    if(!["cover","track-art","artist-photo","audio"].includes(kind))throw new DomainError("Invalid asset type");
+    if(!/^[0-9a-f-]{36}\.(?:png|jpg|wav|mp3)$/.test(filename))throw new DomainError("Invalid asset filename");
     if(!["chatgpt","upload","draw-things","suno","unknown"].includes(provider))throw new DomainError("Invalid asset provider");
+    const owner=clean(artistId||"",80);
     const id=uuid(),createdAt=new Date().toISOString();
-    this.db.prepare("INSERT INTO studio_assets(id,project_id,kind,filename,mime,created_at,provider,prompt,brief_fingerprint) VALUES(?,?,?,?,?,?,?,?,?)")
-      .run(id,projectId,kind,filename,mime,createdAt,provider,clean(prompt,4000),clean(briefFingerprint,64));
+    this.db.prepare("INSERT INTO studio_assets(id,project_id,kind,filename,mime,created_at,provider,prompt,brief_fingerprint,artist_id) VALUES(?,?,?,?,?,?,?,?,?,?)")
+      .run(id,projectId,kind,filename,mime,createdAt,provider,clean(prompt,4000),clean(briefFingerprint,64),owner);
     this.store.audit("asset_added","studio_project",projectId,{assetId:id,kind,provider});
     return this.assets(projectId).find(a=>a.id===id);
   }

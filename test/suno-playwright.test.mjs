@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
 import { SunoBrowserHandoff, SUNO_CREATE_URL } from "../src/suno-playwright.mjs";
+import { SunoSystemBrowser } from "../src/suno-system-browser.mjs";
 import { createAppServer } from "../src/server.mjs";
 import { Store } from "../src/storage.mjs";
 
@@ -45,7 +46,7 @@ function fakeBrowser() {
     library: {chromium:{launchPersistentContext:async(_dir, options)=>{
       assert.equal(options.headless,false);
       assert.equal(options.channel,"chrome");
-      assert.equal(options.acceptDownloads,false);
+      assert.equal(options.acceptDownloads,true);
       return context;
     }}} };
 }
@@ -139,4 +140,52 @@ test("Signed-in Studio project can open and prepare Suno draft but unauthenticat
   assert.equal((await post(prefix+"prefill",{},cookie)).status,200);
   const missing=await post("/api/studio/projects/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa/suno-browser/open",{},cookie);
   assert.equal(missing.status,404);
+});
+
+test("A launch-option check is not reported as a missing Chrome install",async()=>{
+  const tmp=await mkdtemp(join(tmpdir(),"blossom-playwright-assert-"));
+  try{
+    const mismatch=new Error("Expected values to be strictly equal:\n\ntrue !== false");
+    mismatch.name="AssertionError";
+    mismatch.code="ERR_ASSERTION";
+    const bridge=new SunoBrowserHandoff({profileDir:join(tmp,"chrome"),loader:async()=>({
+      chromium:{launchPersistentContext:async()=>{throw mismatch;}}
+    })});
+    await assert.rejects(bridge.open(),error=>{
+      assert.equal(error.code,"ERR_ASSERTION");
+      assert.equal(error,mismatch);
+      assert.doesNotMatch(String(error.message),/Install Chrome/);
+      return true;
+    });
+    assert.equal(bridge.status().running,false);
+  } finally {await rm(tmp,{recursive:true,force:true});}
+});
+
+test("Studio Suno generate reports the normal Chrome handoff instead of an internal error",async t=>{
+  const store=new Store(":memory:");
+  const calls=[];
+  const sunoBrowser=new SunoSystemBrowser({platform:"darwin",launcher(cmd,args,_options,done){
+    calls.push([cmd,...args]);
+    done(null,"LOGIN","");
+  }});
+  const server=createAppServer({store,provider:{available:()=>false},password:"long-test-password",sunoBrowser});
+  server.listen(0,"127.0.0.1"); await once(server,"listening");
+  t.after(async()=>{await new Promise(done=>server.close(done));store.close();});
+  const base="http://127.0.0.1:"+server.address().port;
+  const post=(path,payload,cookie)=>fetch(base+path,{
+    method:"POST",headers:{"content-type":"application/json","x-blossom-request":"ui",
+      ...(cookie?{cookie}:{})},body:JSON.stringify(payload)
+  });
+  const login=await post("/auth/login",{username:"admin",password:"long-test-password"});
+  const cookie=login.headers.get("set-cookie").split(";")[0];
+  const profile=await post("/api/studio/projects",{title:"My original demo"},cookie);
+  assert.equal(profile.status,201);
+  const {id}=await profile.json();
+  const submitted=await post("/api/studio/projects/"+id+"/suno-browser/submit",{},cookie);
+  const body=await submitted.json();
+  assert.notEqual(body.error,"Internal error");
+  assert.equal(submitted.status,409);
+  assert.match(body.error,/Safari/);
+  assert.equal(calls[0][0],"/usr/bin/osascript");
+  assert.doesNotMatch(calls[0].join(" "),/--no-sandbox|--enable-automation/);
 });

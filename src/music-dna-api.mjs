@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateAudio, MAX_REFERENCE_AUDIO_BYTES } from "./music-audio.mjs";
 import { DomainError } from "./domain.mjs";
+import { analysisFromPaste } from "./music-dna.mjs";
 
 function respond(res, status, result) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -55,6 +56,11 @@ export class MusicDnaAPI {
             if (!/^\d+$/.test(value)) throw new DomainError("Invalid " + name);
             filters[name] = Number(value);
           }
+        }
+        for (const name of ["prefix", "analyzed"]) {
+          if (!searchParams.has(name)) continue;
+          if (searchParams.get(name) !== "1") throw new DomainError("Invalid " + name);
+          filters[name] = true;
         }
         return respond(res, 200, { results: this.dna.search(filters), total: this.dna.count(filters) });
       }
@@ -124,9 +130,19 @@ export class MusicDnaAPI {
       if (!this.spotifyCatalog) throw new DomainError("Spotify library integration unavailable",503);
       return respond(res, 200, await this.spotifyCatalog.importAlbum(body?.id));
     }
+    if (path === "/api/music-dna/jobs/clear")
+      return respond(res, 200, this.dna.clearQueuedJobs());
     if (path === "/api/music-dna/jobs/start") {
       if (!this.chatgpt) throw new DomainError("ChatGPT analysis is unavailable", 503);
       return respond(res, 202, this.chatgpt.start());
+    }
+    const paste = path.match(/^\/api\/music-dna\/profiles\/([0-9a-f-]{36})\/paste-analysis$/i);
+    if (paste) return respond(res, 201, this.dna.saveAnalysis(paste[1], analysisFromPaste(body?.text)));
+    const analyze = path.match(/^\/api\/music-dna\/profiles\/([0-9a-f-]{36})\/analyze$/i);
+    if (analyze) {
+      if (!this.chatgpt) throw new DomainError("ChatGPT analysis is unavailable", 503);
+      const queued = this.dna.queueProfile(analyze[1]);
+      return respond(res, 202, { ...queued, ...this.chatgpt.start(queued.profileId) });
     }
     if (path === "/api/music-dna/profiles") return respond(res, 201, this.dna.create(body));
     if (path === "/api/music-dna/import-batch")

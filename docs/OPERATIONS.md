@@ -47,7 +47,7 @@ For monitoring, set `BLOSSOM_MONITOR_ENABLED=true`; confirm changes by reviewing
 4. Open News to Song; choose artist, paste source article, select duration preset and configure the sound. Save project.
 5. Use Extract with AI to create lyrics/styles/prompts. Review, correct and save lyrics before using them commercially.
 6. Create linked track; copy Suno blueprint into the authorized Suno session (no unsupported automated Suno login).
-7. Generate cover/portrait locally or upload your obtained Suno audio as MP3/WAV. Confirm output belongs to the right project.
+7. Generate cover, track art, or an artist banner with ChatGPT, or upload your own PNG or JPEG (12 MB maximum). Upload Suno audio as MP3/WAV. Confirm output belongs to the right project.
 8. Before distributing, do originality, licensing, name/likeness and metadata reviews. Spotify playlist pitching is manual and not guaranteed.
 
 **Host caveat:** Draw Things executes on the server host, not the browser user's machine. For the Mac GPU to be used, run this Node app locally on that Mac. Limit file uploads to 40 MB; keep the local .data directory private and back it up.

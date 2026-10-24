@@ -7,11 +7,11 @@ import { mkdtemp,rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/storage.mjs";
-import { StudioStore, sunoRecipe } from "../src/studio.mjs";
+import { StudioStore, songIsInstrumental, sunoRecipe } from "../src/studio.mjs";
 import { createAppServer } from "../src/server.mjs";
 import { sunoReady, officialSunoRequest, trustedSunoAudioUrl,
   fetchSunoAudio, SunoPlatform } from "../src/providers/suno-platform.mjs";
-import { studioSunoReadiness, studioStepState, studioView } from "../public/studio.js";
+import { songIsInstrumental as studioSongIsInstrumental, studioSunoReadiness, studioStepState, studioView } from "../public/studio.js";
 
 const artist={name:"Fictional Singer",genre:"Country Pop",voice:"female",language:"en",
   countries:[],dna:"Acoustic guitars, soft harmonies"};
@@ -143,4 +143,39 @@ test("Studio Release UI contains five navigable steps and non-fake Suno action",
  assert.match(markup,/data-action="studio-suno-status"/);
  assert.match(markup,/id="studio-step-5"/);
  assert.match(markup,/Generate music in Suno/);
+});
+
+const instrumentalSong={
+ title:"A Little Warmth Remains",artistId:"artist",
+ parameters:{sunoModel:"v6",lyricLanguage:"auto",genre:"Neo-classical piano",
+  additionalStyles:["Solo felt piano"],excludeStyles:["Vocals","Spoken word"],
+  vocalGender:"male",instrumental:false,maxMode:false,weirdness:16,styleInfluence:88,
+  variety:25,personalize:false,durationPreset:"radio",targetSeconds:205,
+  customInstructions:"instrumental solo felt piano",imagePrompt:"",artistPhotoPrompt:""},
+ result:{concept:"An instrumental reflection on hardship",lyrics:"",
+  style:"Neo-classical solo felt piano",exclusions:["Vocals","Spoken word"],moods:["quiet"],
+  titles:["A Little Warmth Remains"],coverPrompt:"",artistPhotoPrompt:"",
+  suggestedGenre:"Neo-classical piano",rationale:"Piano only"}
+};
+
+test("An instrumental brief with no lyrics can generate in Safari without a Suno API key",()=>{
+ assert.equal(songIsInstrumental(instrumentalSong),true);
+ assert.equal(studioSongIsInstrumental(instrumentalSong),true);
+ assert.deepEqual(studioSunoReadiness(instrumentalSong).missing,[]);
+ const recipe=sunoRecipe(instrumentalSong);
+ assert.equal(recipe.instrumental,true);
+ assert.equal(recipe.lyrics,"");
+ assert.equal(recipe.vocalGender,null);
+ const vocal={...instrumentalSong,parameters:{...instrumentalSong.parameters,customInstructions:"close vocal",excludeStyles:["Auto-Tune"]},
+  result:{...instrumentalSong.result,concept:"A sung story",exclusions:["Auto-Tune"]}};
+ assert.equal(studioSunoReadiness(vocal).ready,false);
+ assert.deepEqual(studioSunoReadiness(vocal).missing,["Generate or write lyrics"]);
+ const state={data:{artists:[{id:"artist",name:"Velora Fields",genre:"Neo-classical piano"}],genres:{},
+  studioProjects:[instrumentalSong],studioAssets:[],studioStatus:{sunoApiConfigured:false},
+  studioReferences:[],musicDnaProfiles:[],studioPresets:{},studioArtistPresets:{}}};
+ const markup=studioView(state);
+ assert.match(markup,/Generate opens Safari, fills the song and clicks Create song/);
+ assert.doesNotMatch(markup,/No Suno Platform API key/);
+ assert.doesNotMatch(markup,/data-action="studio-suno-generate" disabled/);
+ assert.match(markup,/id="studio-instrumental" type="checkbox" checked/);
 });

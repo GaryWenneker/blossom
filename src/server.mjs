@@ -4,8 +4,10 @@ import { SpotifyOAuth } from "./spotify.mjs";
 import { SpotifyLikedImporter } from "./spotify-liked.mjs";
 import { SpotifyCatalog } from "./spotify-catalog.mjs";
 import { ConnectedBrowsers, providerBrowserUrl } from "./browser-connections.mjs";
+import { SunoSystemBrowser } from "./suno-system-browser.mjs";
 import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
+import { COUNTRIES } from "./countries.mjs";
 import { StudioAPI } from "./studio-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
@@ -19,9 +21,10 @@ import { Store } from "./storage.mjs";
 import { LabelGrid } from "./providers/labelgrid.mjs";
 import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "./domain.mjs";
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
+import { draftArtistFromRoster } from "./artist-draft.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
- "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
+ "/studio.js":"studio.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js","/artists.js":"artists.js","/artist-focus.js":"artist-focus.js","/image-upload.js":"image-upload.js",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {
@@ -80,7 +83,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     publicCallbackOrigin:mcpOAuth.origin,fetcher:spotifyFetcher});
   const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
   const studioApi=new StudioAPI({store,vault,composer,localComposer,...(articleImporter?{articleImporter}:{}),draw,chatgptImages,
-    sunoBrowser:sunoBrowser||browserAccounts.suno,sunoPlatform,sunoAudioFetcher,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
+    sunoBrowser:sunoBrowser||new SunoSystemBrowser(),sunoPlatform,sunoAudioFetcher,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
   const musicDna=new MusicDNA(store);
   const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
   const spotifyCatalog=new SpotifyCatalog(spotify,musicDna);
@@ -269,6 +272,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         if(path==="/api/watches")return reply(res,200,{sources:WATCH_URLS,records:store.watches()});
         if(path==="/api/integrations")return reply(res,200,{suno:"manual blueprint only",labelgrid:provider.available()?"token configured":"not configured",liveDistributionEnabled:allowLive,monitorEnabled:!!timer});
         if(path==="/api/genres")return reply(res,200,GENRES);
+        if(path==="/api/countries")return reply(res,200,COUNTRIES);
         if(path==="/api/connections")return reply(res,200,{...vault.list(),spotifyRedirectUri:spotify.redirectUri});
         if(path==="/api/connections/spotify/profile")return reply(res,200,await spotify.profile());
         let match=path.match(/^\/api\/tracks\/([a-z0-9-]+)\/blueprint$/i);
@@ -286,6 +290,27 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         throw new DomainError("Not found",404);
       }
       const incoming=await body(req);
+      if(path==="/api/artists/draft"){
+        const artistIds=incoming?.artistIds;
+        const recordingIds=incoming?.recordingIds;
+        const projects=[];
+        const recordings=[];
+        const rosterIds=artistIds==null?[]:artistIds;
+        const recordIds=recordingIds==null?[]:recordingIds;
+        if(Array.isArray(rosterIds)&&Array.isArray(recordIds)&&rosterIds.length+recordIds.length>=1&&rosterIds.length+recordIds.length<=3){
+          for(const id of rosterIds) projects.push(...studioApi.studio.projectsForArtist(id));
+          for(const id of recordIds){
+            try{recordings.push(musicDna.get(id));}
+            catch(error){
+              if(error instanceof DomainError&&error.status===404)recordings.push(null);
+              else throw error;
+            }
+          }
+        }
+        return reply(res,200,draftArtistFromRoster({artistIds,recordingIds,artists:store.artists(),projects,recordings}));
+      }
+      const artistEdit=path.match(/^\/api\/artists\/([a-f0-9-]{36})$/);
+      if(artistEdit)return reply(res,200,store.updateArtist(artistEdit[1],incoming));
       if(path==="/api/artists")return reply(res,201,store.addArtist(incoming));
       if(path==="/api/tracks")return reply(res,201,store.addTrack(incoming));
       if(path==="/api/releases")return reply(res,201,store.addRelease(incoming));

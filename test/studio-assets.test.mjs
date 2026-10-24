@@ -81,7 +81,9 @@ test('authenticated image generation records ChatGPT and context; select/delete 
   assert.equal(observed.context.concept,brief.concept);assert.equal(observed.context.lyrics,brief.lyrics);
   assert.equal(image.provider,'chatgpt');assert.equal(image.briefMatch,'current');assert.equal(image.selected,true);
   const variant=await (await post('/api/studio/projects/'+p.id+'/generate-art',{kind:'cover'})).json();
-  assert.equal(variant.selected,false,'new variants preserve the current cover');
+  assert.equal(variant.selected,true,'a new album cover replaces the selected cover');
+  assert.equal((await (await fetch(base+'/api/studio/projects/'+p.id+'/assets',{headers:{cookie}})).json())
+    .find(asset=>asset.id===image.id).selected,false);
   const route='/api/studio/projects/'+p.id+'/assets/'+image.id;
   const forbidden=await post(route+'/select',{kind:'cover'},{Origin:'https://evil.example'});assert.equal(forbidden.status,403);
   assert.equal((await post(route+'/select',{kind:'cover'})).status,200);

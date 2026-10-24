@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Store } from "../src/storage.mjs";
 import { MusicDNA } from "../src/music-dna.mjs";
+import { MusicDnaAPI } from "../src/music-dna-api.mjs";
 
 const sourceAnalysis = {
   analysisMethod:"Evidence-based published recording credits, no audio decoded",
@@ -83,5 +84,82 @@ test("Attached and authorized audio remains pending even after a separate source
     assert.equal(dna.jobCounts().queued,0);
     assert.equal(dna.jobCounts().completed,1);
     assert.equal(dna.get(job.profileId).analysisVersion,2);
+  }finally{store.close();}
+});
+
+test("Clearing the queue drops waiting jobs and keeps a live run, a failure, and saved DNA",()=>{
+  const store=new Store(":memory:"),dna=new MusicDNA(store);
+  try {
+    const [audited]=dna.importBatch([reference(1)]);
+    const saved=dna.saveAnalysis(audited.profileId,sourceAnalysis);
+    const waiting=dna.importBatch([reference(21),reference(22),reference(23)]);
+    const [live]=dna.importBatch([reference(24)]);
+    const claimed=dna.claimJob("chatgpt",{metadataOnly:true,profileId:live.profileId});
+    assert.equal(claimed.profile.id,live.profileId);
+    const [broken]=dna.importBatch([reference(25)]);
+    const failedClaim=dna.claimJob("chatgpt",{metadataOnly:true,profileId:broken.profileId});
+    dna.completeJob(failedClaim.jobId,null,"boom");
+    const [stale]=dna.importBatch([reference(26)]);
+    const staleClaim=dna.claimJob("chatgpt",{metadataOnly:true,profileId:stale.profileId});
+    store.db.prepare("UPDATE music_dna_jobs SET leased_until=? WHERE id=?")
+      .run("2000-01-01T00:00:00.000Z",staleClaim.jobId);
+
+    const cleared=dna.clearQueuedJobs();
+    assert.deepEqual(cleared,{cleared:4,running:1});
+    assert.equal(dna.jobCounts().queued,0);
+    assert.equal(dna.jobCounts().running,1);
+    assert.equal(dna.jobCounts().failed,1);
+    assert.equal(dna.jobCounts().completed,1);
+    assert.equal(dna.get(audited.profileId).analysisVersion,saved.analysisVersion);
+    assert.equal(dna.get(waiting[0].profileId).title,"Liked Song 21");
+    assert.equal(dna.jobs("running")[0].id,live.jobId);
+    assert.deepEqual(dna.clearQueuedJobs(),{cleared:0,running:1});
+
+    const again=dna.queueProfile(waiting[0].profileId);
+    assert.equal(again.status,"queued");
+    const next=dna.claimJob("chatgpt",{metadataOnly:true,profileId:waiting[0].profileId});
+    assert.equal(next.profile.id,waiting[0].profileId);
+    assert.equal(dna.jobCounts().queued,0);
+  }finally{store.close();}
+});
+
+test("Analyze again after three failures queues the recording instead of locking it", () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  try {
+    const [job] = dna.importBatch([reference(41)]);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const claimed = dna.claimJob("chatgpt", { metadataOnly: true, profileId: job.profileId });
+      dna.completeJob(claimed.jobId, null, "ChatGPT reply was not a music analysis");
+      if (attempt < 2) dna.queueProfile(job.profileId);
+    }
+    assert.equal(dna.jobCounts().failed, 1);
+    assert.equal(dna.jobs("failed")[0].attempts, 3);
+    const again = dna.queueProfile(job.profileId);
+    assert.equal(again.status, "queued");
+    const claimed = dna.claimJob("chatgpt", { metadataOnly: true, profileId: job.profileId });
+    assert.equal(claimed.profile.id, job.profileId);
+    assert.equal(dna.jobCounts().running, 1);
+  } finally { store.close(); }
+});
+
+test("POST /api/music-dna/jobs/clear removes queued jobs", async () => {
+  const store=new Store(":memory:"),dna=new MusicDNA(store),api=new MusicDnaAPI(dna);
+  try {
+    dna.importBatch([reference(31),reference(32)]);
+    const res={
+      writeHead(status,headers){this.status=status;this.headers=headers;},
+      end(body){this.body=body;}
+    };
+    const req={
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      async *[Symbol.asyncIterator](){yield Buffer.from("{}");}
+    };
+    await api.handle(req,res,"/api/music-dna/jobs/clear",new URLSearchParams());
+    assert.equal(res.status,200);
+    assert.equal(res.headers["Content-Type"],"application/json; charset=utf-8");
+    assert.deepEqual(JSON.parse(res.body),{cleared:2,running:0});
+    assert.equal(dna.jobCounts().queued,0);
+    assert.equal(dna.jobCounts().total,0);
   }finally{store.close();}
 });

@@ -243,15 +243,17 @@ function searchable(profile, analysis) {
       ...b.vocals.flatMap(v=>[v.singer,v.layer,v.activity,v.delivery,v.phrasing,v.harmonies])])]
     .filter(Boolean).join(" ");
 }
-function fullTextTerms(value) {
+function fullTextTerms(value, { prefix = false } = {}) {
   const words = text(value, "Search query", 180).toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
-  return words.slice(0, 12).map(word => '"' + word + '"').join(" AND ");
+  const mark = prefix ? "*" : "";
+  return words.slice(0, 12).map(word => '"' + word + '"' + mark).join(" AND ");
 }
 function searchClauses(options) {
   checkShape(options, "search options");
   const clauses = [], bindings = [];
-  const term = fullTextTerms(options.q || "");
+  const term = fullTextTerms(options.q || "", { prefix: options.prefix === true });
   if (term) { clauses.push("music_dna_fts MATCH ?"); bindings.push(term); }
+  if (options.analyzed === true) clauses.push("p.current_analysis_id IS NOT NULL");
   for (const [kind, value] of [["genre", options.genre], ["mood", options.mood],
     ["instrument", options.instrument], ["vocal", options.vocal]]) {
     if (value) {
@@ -260,6 +262,34 @@ function searchClauses(options) {
     }
   }
   return { clauses, bindings, term };
+}
+
+export function analysisFromPaste(text) {
+  if (typeof text !== "string") throw new DomainError("Paste the analysis JSON first", 400);
+  const raw = text.trim();
+  if (!raw) throw new DomainError("Paste the analysis JSON first", 400);
+  if (raw.length > 120_000) throw new DomainError("Pasted analysis is too large", 413);
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fenced ? fenced[1] : raw).trim();
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new DomainError("Pasted text was not analysis JSON", 400);
+  let parsed;
+  try { parsed = JSON.parse(body.slice(start, end + 1)); }
+  catch { throw new DomainError("Pasted text was not analysis JSON", 400); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new DomainError("Pasted text was not analysis JSON", 400);
+  const markers = ["analysisMethod", "analyzer", "bpm", "genres", "moods", "instruments",
+    "summary", "sections", "barBlocks", "vocals", "production", "musicalKey"];
+  const looksLikeAnalysis = markers.some(key => parsed[key] != null);
+  const source = !looksLikeAnalysis && parsed.analysis && typeof parsed.analysis === "object" &&
+    !Array.isArray(parsed.analysis) ? parsed.analysis : parsed;
+  const analysis = { ...source };
+  if (typeof analysis.analysisMethod !== "string" || !analysis.analysisMethod.trim())
+    analysis.analysisMethod = "human_verified";
+  if (typeof analysis.analyzer !== "string" || !analysis.analyzer.trim())
+    analysis.analyzer = "pasted-json";
+  return analysisInput(analysis);
 }
 
 export class MusicDNA {
@@ -413,6 +443,14 @@ export class MusicDNA {
       jobStatus: row.job_status || ""
     }));
   }
+  profilesForArtist(name, limit = 3) {
+    const artist = text(name, "Artist", 180, true);
+    const count = optionalNumber(limit, "limit", 1, 3);
+    if (!Number.isInteger(count)) throw new DomainError("Invalid artist DNA limit");
+    return this.db.prepare(
+      "SELECT id FROM music_dna_profiles WHERE lower(artist)=lower(?) AND current_analysis_id IS NOT NULL ORDER BY updated_at DESC LIMIT ?"
+    ).all(artist, count).map(row => this.get(row.id));
+  }
   count(options = {}) {
     const { clauses, bindings } = searchClauses(options);
     const sql = "SELECT COUNT(*) AS n FROM music_dna_profiles p " +
@@ -439,6 +477,7 @@ export class MusicDNA {
     return result;
   }
   jobCounts() {
+    this.recoverExpiredJobs();
     const result={total:0,queued:0,running:0,completed:0,failed:0,
       waitingForEvidence:0,readyForAudio:0};
     for(const row of this.db.prepare(
@@ -458,7 +497,61 @@ export class MusicDNA {
     result.readyForAudio=queue.readyForAudio;
     return result;
   }
+
+  clearQueuedJobs() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.recoverExpiredJobs();
+      const cleared = this.db.prepare("DELETE FROM music_dna_jobs WHERE status='queued'").run().changes;
+      const running = this.db.prepare(
+        "SELECT COUNT(*) AS n FROM music_dna_jobs WHERE status='running'"
+      ).get().n;
+      this.db.exec("COMMIT");
+      return { cleared, running };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  recoverExpiredJobs() {
+    const now = timestamp();
+    return this.db.prepare(
+      "UPDATE music_dna_jobs SET status='queued',worker='',progress=0,leased_until=NULL,updated_at=? " +
+      "WHERE status='running' AND (leased_until IS NULL OR leased_until < ?)"
+    ).run(now, now).changes;
+  }
+  queueProfile(profileId) {
+    this.recoverExpiredJobs();
+    const profile = this.get(profileId);
+    const now = timestamp();
+    const open = this.db.prepare(
+      "SELECT id,status,attempts FROM music_dna_jobs WHERE profile_id=? ORDER BY updated_at DESC, rowid DESC LIMIT 1"
+    ).get(profileId);
+    if (open?.status === "running") return { profileId, jobId: open.id, status: "running" };
+    if (open?.status === "queued") return { profileId, jobId: open.id, status: "queued" };
+    if (open?.status === "failed" && open.attempts >= 3) {
+      this.db.prepare(
+        "UPDATE music_dna_jobs SET status='queued',worker='',attempts=0,error='',progress=0,leased_until=NULL,updated_at=? WHERE id=?"
+      ).run(now, open.id);
+      return { profileId, jobId: open.id, status: "queued" };
+    }
+    if (open?.status === "completed" && profile.analysisVersion)
+      throw new DomainError("This recording already has an analysis", 409);
+    if (open) {
+      this.db.prepare(
+        "UPDATE music_dna_jobs SET status='queued',worker='',error='',progress=0,leased_until=NULL,updated_at=? WHERE id=?"
+      ).run(now, open.id);
+      return { profileId, jobId: open.id, status: "queued" };
+    }
+    if (profile.analysisVersion)
+      throw new DomainError("This recording already has an analysis", 409);
+    const jobId = randomUUID();
+    this.db.prepare("INSERT INTO music_dna_jobs(id,profile_id,status,created_at,updated_at) VALUES(?,?,?,?,?)")
+      .run(jobId, profileId, "queued", now, now);
+    return { profileId, jobId, status: "queued" };
+  }
   jobs(status = "", limit = 50) {
+    this.recoverExpiredJobs();
     if (status && !["queued", "running", "completed", "failed"].includes(status))
       throw new DomainError("Invalid job status");
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new DomainError("Invalid limit");
@@ -515,17 +608,22 @@ export class MusicDNA {
     this.store.audit("audio_attached", "music_dna_reference", profileId, { sha256, byteSize: info.byteSize });
     return this.audioForProfile(profileId);
   }
-  claimJob(worker = "blossom-local", { audioOnly = false, metadataOnly = false } = {}) {
+  claimJob(worker = "blossom-local", { audioOnly = false, metadataOnly = false, profileId = "" } = {}) {
     worker = text(worker, "Worker", 100, true);
+    const preferred = text(profileId, "Profile", 80);
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const queued = this.db.prepare(
-        "SELECT j.id,j.profile_id FROM music_dna_jobs j " +
+      const sql = "SELECT j.id,j.profile_id FROM music_dna_jobs j " +
         (audioOnly ? "JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
         (metadataOnly && !audioOnly ? "LEFT JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
         "WHERE (j.status='queued' OR (j.status='running' AND j.leased_until < ?)) " +
         (metadataOnly && !audioOnly ? "AND audio.profile_id IS NULL " : "") +
-        "AND j.attempts < 3 ORDER BY j.created_at LIMIT 1").get(timestamp());
+        "AND j.attempts < 3";
+      const now = timestamp();
+      const preferredJob = preferred
+        ? this.db.prepare(sql + " AND j.profile_id=? ORDER BY j.created_at LIMIT 1").get(now, preferred)
+        : null;
+      const queued = preferredJob || this.db.prepare(sql + " ORDER BY j.created_at LIMIT 1").get(now);
       if (!queued) { this.db.exec("COMMIT"); return null; }
       const leased = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       this.db.prepare("UPDATE music_dna_jobs SET status='running',worker=?,attempts=attempts+1,leased_until=?,updated_at=? WHERE id=?")

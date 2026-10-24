@@ -22,6 +22,7 @@ GET /api/music-dna/profiles/{uuid}/versions
 GET /api/music-dna/jobs?status=queued
 POST /api/music-dna/profiles
 POST /api/music-dna/profiles/{uuid}/analyses
+POST /api/music-dna/profiles/{uuid}/paste-analysis
 POST /api/music-dna/import-batch
 POST /api/music-dna/jobs/claim
 POST /api/music-dna/jobs/{uuid}/complete
@@ -29,6 +30,8 @@ POST /api/music-dna/jobs/{uuid}/complete
 Create a reference using JSON with artist, title, optional releaseYear, sourceUrl, sourceKind (metadata, local-audio, licensed-audio, manual), recordingSha256 and sourceNote. A reference is only metadata until an analysis has actually been saved.
 
 An analysis requires analysisMethod and analyzer. Other keys: confidence, bpm, musicalKey, timeSignature, durationMs, genres, moods, instruments (array of objects with name, technique, timbre, role and optional confidence), vocals, production, sections (array with startMs, endMs, label, instruments, techniques, notes), summary. Do not manufacture measured values from bibliographic metadata.
+
+`POST /paste-analysis` accepts `{ "text": "..." }`. The text may be a JSON object or a fenced JSON block. Missing analysisMethod and analyzer become `human_verified` and `pasted-json`. Each save adds a version. It does not start ChatGPT.
 
 ## MCP over Cloudflare Tunnel
 

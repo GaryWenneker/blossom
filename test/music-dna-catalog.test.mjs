@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { musicDnaView } from "../public/music-dna.js";
+import { musicDnaView, musicDnaAction } from "../public/music-dna.js";
 
 const fixx = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -147,6 +147,7 @@ test("the music dna page lists only unfinished work and a percent when one is kn
   assert.match(html, />Running</);
   assert.match(html, /A &amp; B — &lt;x&gt;/);
   assert.match(html, /data-action="dna-start-analysis"/);
+  assert.match(html, /data-action="dna-clear-queue"/);
   assert.doesNotMatch(html, /Waiting for audio/);
   assert.doesNotMatch(html, /dna-add-audio/);
   assert.doesNotMatch(html, /Done — Already/);
@@ -185,6 +186,15 @@ test("the music dna page lists only unfinished work and a percent when one is kn
     musicDnaSpotify: { running: false, finished: true, received: 10, total: 10, status: "complete" }
   } });
   assert.match(done, /Nothing in progress/);
+  const onlyRunning = musicDnaView({ data: {
+    musicDnaProfiles: [],
+    musicDnaTotal: 0,
+    musicDnaOpenJobs: [
+      { id: "j1", profileId: "abcdef1234567890", artist: "The Fixx", title: "The Sign of Fire", status: "running", progress: 40 }
+    ]
+  } });
+  assert.doesNotMatch(onlyRunning, /dna-clear-queue/);
+  assert.doesNotMatch(onlyRunning, /dna-start-analysis/);
 });
 
 test("The library page offers Spotify search without removing Liked Songs", () => {
@@ -219,6 +229,55 @@ test("Start analysis asks the server to run ChatGPT in the background", async ()
     text => messages.push(text));
   assert.deepEqual(calls, [["music-dna/jobs/start", {}]]);
   assert.match(messages[0], /Analysis started/);
+});
+
+test("Clear queue asks first, then drops only the waiting recordings", async () => {
+  const { musicDnaAction } = await import("../public/music-dna.js");
+  const calls = [];
+  const messages = [];
+  const previous = globalThis.confirm;
+  try {
+    globalThis.confirm = () => false;
+    await musicDnaAction(
+      { dataset: { action: "dna-clear-queue" } },
+      { data: {} },
+      async (path, body) => { calls.push([path, body]); return { cleared: 47, running: 1 }; },
+      async () => {},
+      text => messages.push(text));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(messages, []);
+
+    globalThis.confirm = () => true;
+    await musicDnaAction(
+      { dataset: { action: "dna-clear-queue" } },
+      { data: {} },
+      async (path, body) => { calls.push([path, body]); return { cleared: 47, running: 1 }; },
+      async () => {},
+      text => messages.push(text));
+    assert.deepEqual(calls, [["music-dna/jobs/clear", {}]]);
+    assert.equal(messages[0], "Cleared 47 queued recordings. The one already running keeps going.");
+
+    messages.length = 0;
+    await musicDnaAction(
+      { dataset: { action: "dna-clear-queue" } },
+      { data: {} },
+      async () => ({ cleared: 1, running: 0 }),
+      async () => {},
+      text => messages.push(text));
+    assert.equal(messages[0], "Cleared 1 queued recording.");
+
+    messages.length = 0;
+    await musicDnaAction(
+      { dataset: { action: "dna-clear-queue" } },
+      { data: {} },
+      async () => ({ cleared: 0, running: 0 }),
+      async () => {},
+      text => messages.push(text));
+    assert.equal(messages[0], "The queue is already empty.");
+  } finally {
+    if (previous === undefined) delete globalThis.confirm;
+    else globalThis.confirm = previous;
+  }
 });
 
 test("Spotify search results escape names and offer add", async () => {
@@ -310,19 +369,35 @@ test("Enter in a search field runs that search", async () => {
   const listeners = {};
   const clicks = [];
   const previous = globalThis.document;
+  const state = { data: { musicDnaSelected: fixx } };
+  let rendered = 0;
+  let closed = 0;
   globalThis.document = {
-    addEventListener(type, fn) { listeners[type] = fn; },
-    querySelector(selector) { return { click() { clicks.push(selector); }, disabled: false }; }
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    querySelector(selector) {
+      if (selector === "#dna-recording-sheet") return null;
+      return { click() { clicks.push(selector); }, disabled: false, focus() { clicks.push("focus:" + selector); } };
+    }
   };
   try {
-    bindMusicDna({ data: {} }, async () => {}, () => {}, () => {});
+    bindMusicDna(state, async () => {}, () => { rendered += 1; }, () => {});
     const event = {
       key: "Enter", target: { id: "dna-spotify-query" },
       preventDefault() { this.defaultPrevented = true; }
     };
-    listeners.keydown(event);
+    listeners.keydown.at(-1)(event);
     assert.equal(event.defaultPrevented, true);
     assert.deepEqual(clicks, ['[data-action="dna-spotify-search"]']);
+    const dialog = {
+      id: "dna-recording-sheet", dataset: { profileId: fixx.id },
+      close() { closed += 1; }
+    };
+    listeners.click.at(-1)({ target: dialog });
+    assert.equal(closed, 1);
+    listeners.close.at(-1)({ target: dialog });
+    assert.equal(rendered, 1);
+    assert.equal(Object.hasOwn(state.data, "musicDnaSelected"), false);
+    assert.doesNotMatch(musicDnaView(state), /id="dna-recording-sheet"/);
   } finally {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;
@@ -403,6 +478,169 @@ test("search reloads the first page and the open recording", async () => {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;
   }
+});
+
+test("a recording without DNA offers its own Analyze action", async () => {
+  const waiting = {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    artist: "Bring Me The Horizon", title: "Dehumanized",
+    analysisVersion: 0, analysis: null, jobStatus: "queued"
+  };
+  const html = musicDnaView({ data: {
+    musicDnaProfiles: [waiting], musicDnaTotal: 1, musicDnaSelected: null
+  } });
+  assert.match(html, /data-action="dna-analyze-one" data-id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"/);
+  assert.match(html, /data-action="dna-details"/);
+  const analyzed = musicDnaView({ data: { musicDnaProfiles: [fixx], musicDnaTotal: 1 } });
+  assert.doesNotMatch(analyzed, /dna-analyze-one/);
+  const calls = [];
+  const messages = [];
+  await musicDnaAction(
+    { dataset: { action: "dna-analyze-one", id: waiting.id } },
+    { data: {} },
+    async (path, body) => { calls.push([path, body]); return { started: true, status: "queued" }; },
+    async () => {},
+    text => messages.push(text)
+  );
+  assert.deepEqual(calls, [["music-dna/profiles/" + waiting.id + "/analyze", {}]]);
+  assert.equal(messages[0], "Analysis started for this recording.");
+});
+
+test("a catalog row shows its hue, year, and source before it is opened", () => {
+  const profile = {
+    id: fixx.id, artist: "The Fixx", title: "The Sign of Fire",
+    releaseYear: 1983, sourceKind: "metadata", analysisVersion: 1,
+    analysis: {
+      bpm: 124, genres: ["New wave", "Funk"], moods: ["Driving"],
+      instruments: [{ name: "Electric bass" }]
+    }
+  };
+  const html = musicDnaView({ data: {
+    musicDnaProfiles: [profile], musicDnaTotal: 1, musicDnaSelected: null
+  } });
+  assert.match(html, /--dna-hue:\d+/);
+  assert.match(html, /1983/);
+  assert.match(html, /metadata/);
+  assert.match(html, /dna-chip genre/);
+  assert.match(html, /New wave/);
+  assert.doesNotMatch(html, /id="dna-recording-sheet"/);
+  assert.doesNotMatch(html, /Electric bass/);
+  const css = readFileSync(new URL("../public/music-dna.css", import.meta.url), "utf8");
+  assert.match(css, /\.dna-row \.dna-row-title b\{[^}]*color:\s*#f3f7f4/);
+  assert.match(css, /\.dna-row-open\{[^}]*text-align:\s*left/);
+  assert.match(css, /\.dna-row \.dna-row-title\{[^}]*text-align:\s*left/);
+  assert.match(css, /\.dna-row \.dna-row-title\{[^}]*align-items:\s*flex-start/);
+});
+
+test("the recording sheet is a glass dialog of stored DNA, with evidence color and no lyrics", () => {
+  const profile = {
+    id: fixx.id, artist: "The Fixx", title: "The Sign of Fire",
+    releaseYear: 1983, sourceKind: "metadata",
+    sourceUrl: "https://open.spotify.com/track/abc",
+    sourceNote: "Album: Reach the Beach.",
+    recordingSha256: "ab".repeat(32),
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-02T00:00:00.000Z",
+    analysisVersion: 1, jobStatus: "completed",
+    analysis: {
+      bpm: 124, musicalKey: "A minor", timeSignature: "4/4", durationMs: 180000,
+      genres: ["New wave"], moods: ["Driving"],
+      instruments: [{ name: "Electric bass", role: "groove", technique: "fingerstyle", timbre: "round", confidence: 0.4 }],
+      vocals: { type: "mixed", register: "mid", timbre: "bright", delivery: "spoken", harmonies: "none" },
+      production: { era: "1983", texture: "dry", stereo: "wide", dynamics: "loud", effects: ["reverb"] },
+      sections: [{ startMs: 0, endMs: 30000, label: "Intro" }],
+      barBlocks: [{ startBar: 1, endBar: 4, status: "audio_observed", section: "Intro" }],
+      summary: "A driving new wave track.",
+      analysisMethod: "chatgpt-catalog", analyzer: "chatgpt", confidence: 0.4,
+      measurements: null
+    }
+  };
+  const html = musicDnaView({ data: {
+    musicDnaProfiles: [profile], musicDnaTotal: 1, musicDnaSelected: profile
+  } });
+  const start = html.indexOf('<dialog id="dna-recording-sheet"');
+  const dialog = html.slice(start, html.indexOf("</dialog>", start) + 9);
+  assert.ok(start >= 0);
+  assert.match(dialog, /The Fixx/);
+  assert.match(dialog, /The Sign of Fire/);
+  assert.match(dialog, />TF</);
+  assert.match(dialog, /1983/);
+  assert.match(dialog, /metadata/);
+  assert.match(dialog, /https:\/\/open\.spotify\.com\/track\/abc/);
+  assert.match(dialog, /Reach the Beach/);
+  assert.match(dialog, /abababababababababababababababababababababababababababababababab/);
+  assert.match(dialog, /2026-01-01T00:00:00.000Z/);
+  assert.match(dialog, /2026-01-02T00:00:00.000Z/);
+  assert.match(dialog, /DNA v1/);
+  assert.match(dialog, /completed/);
+  assert.match(dialog, /124/);
+  assert.match(dialog, /A minor/);
+  assert.match(dialog, /4\/4/);
+  assert.match(dialog, /3:00/);
+  assert.match(dialog, /Electric bass/);
+  assert.match(dialog, /fingerstyle/);
+  assert.match(dialog, /groove/);
+  assert.match(dialog, /round/);
+  assert.match(dialog, /spoken/);
+  assert.match(dialog, /reverb/);
+  assert.match(dialog, /Intro/);
+  assert.match(dialog, /A driving new wave track/);
+  assert.match(dialog, /chatgpt-catalog/);
+  assert.match(dialog, /Lyrics are not stored for reference recordings\./);
+  assert.match(dialog, /class="dna-fact dna-source-inferred"/);
+  assert.match(dialog, /class="dna-bar-cell dna-source-audio"/);
+  const verified = {
+    ...profile,
+    analysis: { ...profile.analysis, analysisMethod: "human_verified", measurements: { codec: "pcm" } }
+  };
+  const heard = {
+    ...profile,
+    analysis: { ...profile.analysis, analysisMethod: "audio", measurements: { codec: "pcm" }, barBlocks: [] }
+  };
+  assert.match(musicDnaView({ data: {
+    musicDnaProfiles: [verified], musicDnaTotal: 1, musicDnaSelected: verified
+  } }), /class="dna-fact dna-source-human"/);
+  assert.match(musicDnaView({ data: {
+    musicDnaProfiles: [heard], musicDnaTotal: 1, musicDnaSelected: heard
+  } }), /class="dna-fact dna-source-audio"/);
+  assert.doesNotMatch(dialog, /<details/);
+  assert.doesNotMatch(dialog, /<img[\s>]/);
+  assert.doesNotMatch(dialog, /dna-analyze-one/);
+  const css = readFileSync(new URL("../public/music-dna.css", import.meta.url), "utf8");
+  assert.match(css, /#dna-recording-sheet::backdrop\{[^}]*rgba\(8,\s*14,\s*12,\s*\.5\)/);
+  assert.match(css, /#dna-recording-sheet::backdrop\{[^}]*backdrop-filter:\s*blur\(10px\)/);
+  assert.match(css, /#dna-recording-sheet\{[^}]*rgba\(16,\s*22,\s*20,\s*\.5\)/);
+  assert.match(css, /\.dna-sheet-main\{[^}]*overflow:\s*auto/);
+});
+
+test("closing the recording sheet removes it, and Analyze stays outside the dialog", async () => {
+  const waiting = {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    artist: "Anne Clark", title: "Sleeper In Metropolis",
+    analysisVersion: 0, analysis: null, jobStatus: "queued"
+  };
+  const open = musicDnaView({ data: {
+    musicDnaProfiles: [waiting], musicDnaTotal: 1, musicDnaSelected: waiting
+  } });
+  assert.match(open, /class="dna-fact dna-source-none"/);
+  assert.match(open, /Lyrics are not stored for reference recordings\./);
+  const state = { data: {
+    musicDnaProfiles: [waiting], musicDnaTotal: 1, musicDnaSelected: waiting
+  } };
+  const result = await musicDnaAction(
+    { dataset: { action: "dna-close-sheet" } },
+    state, async () => {}, async () => {}, () => {});
+  assert.equal(result, "render");
+  assert.equal(Object.hasOwn(state.data, "musicDnaSelected"), false);
+  const closed = musicDnaView(state);
+  assert.doesNotMatch(closed, /id="dna-recording-sheet"/);
+  const analyze = musicDnaView({ data: {
+    musicDnaProfiles: [waiting], musicDnaTotal: 1, musicDnaSelected: waiting
+  } });
+  const sheetAt = analyze.indexOf('<dialog id="dna-recording-sheet"');
+  const sheet = analyze.slice(sheetAt, analyze.indexOf("</dialog>", sheetAt) + 9);
+  assert.doesNotMatch(sheet, /dna-analyze-one/);
+  assert.match(analyze, /data-action="dna-analyze-one"/);
 });
 
 test("top navigation holds the queue button and registration is a dialog", () => {

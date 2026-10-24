@@ -15,7 +15,7 @@ on run argv
   if browserName is not "Safari" then error "Unsupported browser"
   -- Attribute selectors stay unquoted so the JavaScript string does not end early.
   set fillJS to "(function(){var prompt=" & promptLiteral & ";var e=document.querySelector('#prompt-textarea, [data-testid=prompt-textarea], form [contenteditable=true][role=textbox], [contenteditable=true][role=textbox]');if(!e)return 'WAIT';var current=String(e.value||e.innerText||'').trim();var wanted=String(prompt).trim();var placed=current===wanted||(wanted.length>24&&current.indexOf(wanted.slice(0,24))===0);if(!placed){e.focus();if(e.tagName==='TEXTAREA'||e.tagName==='INPUT'){var set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(e,prompt);e.dispatchEvent(new Event('input',{bubbles:true}));}else{document.execCommand('selectAll',false,null);if(!document.execCommand('insertText',false,prompt))e.textContent=prompt;e.dispatchEvent(new Event('input',{bubbles:true}));}return 'WAIT';}var b=document.querySelector('button[data-testid=send-button], button[data-testid=composer-send-button], #composer-submit-button, button[aria-label=\"Send prompt\"], button[aria-label=\"Send message\"], button[aria-label=\"Verzenden\"], button[aria-label=\"Prompt verzenden\"], button[aria-label=\"Bericht verzenden\"]');if(!b){var f=e.closest&&e.closest('form');if(f)b=f.querySelector('button');}if(!b||b.disabled||b.getAttribute('aria-disabled')==='true')return 'WAIT';b.click();return 'SUBMITTED';})()"
-  set readJS to "(function(){var stop=document.querySelector('button[data-testid=stop-button], button[aria-label=\"Stop generating\"], button[aria-label=\"Stop met genereren\"], button[aria-label=Stoppen]');if(stop)return 'WAIT';function text(node){return ((node&&node.innerText)||'').trim();}function joined(list){return [].slice.call(list).map(text).filter(Boolean).join('\\n');}var root=document.querySelector('[data-thread-find-target=conversation]');var blob=text(root);var box=document.querySelector('[contenteditable=true][role=textbox]');var draft=text(box);if(draft)blob=blob.split(draft).join('\\n');if(blob.indexOf('{')<0||blob.indexOf('\"lyrics\"')<0)blob=joined(document.querySelectorAll('[data-message-author-role=assistant]'));if(blob.indexOf('{')<0||blob.indexOf('\"lyrics\"')<0)blob=joined(document.querySelectorAll('main .markdown, main article'));if(blob.indexOf('{')<0||blob.indexOf('\"lyrics\"')<0)return 'WAIT';return blob;})()"
+  set readJS to "(function(){var stop=document.querySelector('button[data-testid=stop-button], button[aria-label=\"Stop generating\"], button[aria-label=\"Stop met genereren\"], button[aria-label=Stoppen]');if(stop)return 'WAIT';function text(node){return ((node&&node.innerText)||'').trim();}function joined(list){return [].slice.call(list).map(text).filter(Boolean).join('\\n');}var root=document.querySelector('[data-thread-find-target=conversation]');var blob=text(root);var box=document.querySelector('[contenteditable=true][role=textbox]');var draft=text(box);if(draft)blob=blob.split(draft).join('\\n');if(blob.indexOf('{')<0||blob.indexOf('\"lyrics\"')<0||blob.indexOf('\"exclusions\"')<0)blob=joined(document.querySelectorAll('[data-message-author-role=assistant]'));if(blob.indexOf('{')<0||blob.indexOf('\"lyrics\"')<0||blob.indexOf('\"exclusions\"')<0)blob=joined(document.querySelectorAll('main .markdown, main article'));if(blob.indexOf('{')<0||blob.indexOf('\"lyrics\"')<0||blob.indexOf('\"exclusions\"')<0)return 'WAIT';return blob;})()"
   set roleJS to "(function(){try{return sessionStorage.getItem('blossom-role')==='dna'?'DNA':'OTHER';}catch(e){return 'OTHER';}})()"
   tell application "Safari"
     activate
@@ -35,8 +35,8 @@ on run argv
     -- Do not keep this document. Safari names it "Naamloos" until the title loads, and that reference then raises -1728.
     if foundChat is false then make new document with properties {URL:"https://chatgpt.com/"}
   end tell
-  -- A finished brief already on screen is copied. A blank chat falls through and receives the article.
-  set replyText to "WAIT"
+  -- A brief already on screen belongs to an earlier run. Remember its length and wait for a longer reply.
+  set previousLength to 0
   tell application "Safari"
     repeat with openDocument in documents
       try
@@ -47,8 +47,7 @@ on run argv
           else
             set resultText to (do JavaScript readJS in openDocument) as text
             if resultText is not "" and resultText is not "missing value" and resultText is not "WAIT" then
-              tell me to set replyText to resultText
-              exit repeat
+              if (length of resultText) > previousLength then set previousLength to (length of resultText)
             end if
           end if
         end if
@@ -57,10 +56,6 @@ on run argv
       end try
     end repeat
   end tell
-  if replyText is not "WAIT" and replyText is not missing value and replyText is not "" then
-    my writeProgress(progressPath, "90")
-    return "REPLY" & linefeed & replyText
-  end if
   my writeProgress(progressPath, "20")
   set submitted to false
   repeat with attempt from 1 to 25
@@ -94,7 +89,7 @@ on run argv
     end if
   end repeat
   if submitted is false then return "LOGIN"
-  repeat with attempt from 1 to 90
+  repeat with attempt from 1 to 240
     delay 1
     set pct to 40 + attempt
     if pct > 84 then set pct to 84
@@ -110,8 +105,10 @@ on run argv
             else
               set resultText to (do JavaScript readJS in openDocument) as text
               if resultText is not "" and resultText is not "missing value" and resultText is not "WAIT" then
-                tell me to set replyText to resultText
-                exit repeat
+                if (length of resultText) > previousLength then
+                  tell me to set replyText to resultText
+                  exit repeat
+                end if
               end if
             end if
           end if

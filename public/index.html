@@ -49,6 +49,13 @@
       <div class="actions"><button type="submit" class="primary">Add to library</button><button type="button" class="secondary" data-action="dna-close-register">Close</button></div>
     </form>
   </dialog>
+  <dialog id="dna-paste-dialog" aria-labelledby="dna-paste-title">
+    <div class="dialog-header"><strong id="dna-paste-title">Paste analysis JSON</strong><button type="button" data-action="dna-paste-cancel" class="icon-button" aria-label="Close">×</button></div>
+    <p class="hint">Paste the analysis JSON for this recording. A fenced JSON block is fine. Saving stores a new analysis version and does not start ChatGPT.</p>
+    <textarea id="dna-paste-json" rows="12" spellcheck="false" placeholder='{ "bpm": 120, "summary": "..." }'></textarea>
+    <p id="dna-paste-error" class="hint" hidden></p>
+    <div class="actions"><button type="button" class="primary" data-action="dna-paste-apply">Save analysis</button><button type="button" class="secondary" data-action="dna-paste-cancel">Cancel</button></div>
+  </dialog>
   <dialog id="dna-queue-dialog" aria-labelledby="dna-queue-title">
     <div class="dialog-header"><strong id="dna-queue-title">Analysis queue</strong><button type="button" data-action="dna-close-queue" class="icon-button" aria-label="Close">×</button></div>
     <p class="hint">Audio jobs are processed locally with FFmpeg when the DNA worker is running. Metadata-only jobs wait for actual audio or an analyst.</p>

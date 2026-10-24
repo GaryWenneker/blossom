@@ -110,6 +110,9 @@ test("Artist photo API is authenticated, can generate directly for artists and c
       assert.equal(input.kind,"artist-photo");
       assert.equal(input.context.artistName,artist.name);
       assert.match(input.prompt,/Blue Meadow Quartet/);
+      assert.match(input.prompt,/Multi-part harmonies and acoustic instruments/);
+      assert.match(input.prompt,/No finished song yet\. Use the artist genre and Artist DNA only\. Do not invent a conflicting scene\./);
+      assert.match(input.prompt,/must not look soft, sweet, innocent or acoustic/);
       return {filename:pngName,mime:"image/png",provider:"chatgpt"};
     }},
     localComposer:{status:async()=>({available:false})}});
@@ -160,7 +163,8 @@ test("Visual format: square album art and landscape artist banners, with respons
   assert.match(css,/grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css,/\.artist-hero-image\{object-fit:cover/);
   assert.match(css,/@media\(max-width:700px\)/);
-  const js=await readFile(new URL("../public/app.js",import.meta.url),"utf8");
+  const js=await readFile(new URL("../public/app.js",import.meta.url),"utf8")+
+    await readFile(new URL("../public/artists.js",import.meta.url),"utf8");
   assert.match(js,/artistBanners/);assert.match(js,/artist-hero-content/);
 });
 

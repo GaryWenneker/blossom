@@ -1,0 +1,14 @@
+---
+id: music-dna-title-align
+level: WARNING
+alwaysApply: false
+globs: ["public/music-dna.css","public/music-dna.js"]
+triggers: ["music dna","catalog title","left-aligned","dna-row","linkslijnend"]
+tags: ["captured","ui"]
+priority: 60
+enabled: true
+status: approved
+scope: project
+---
+
+Music DNA catalog recording titles stay left-aligned. That includes the artist and title line and the year and source line under it. Do not center those lines in the recording column. A row button inherits centered text from the browser; override that on the catalog row.

@@ -1,4 +1,5 @@
 import { DomainError } from "../domain.mjs";
+import { EXTRACTION_DIRECTION } from "../music-dna-studio.mjs";
 
 const t={type:"string"};
 const arr={type:"array",items:{type:"string"}};
@@ -24,7 +25,8 @@ export class OpenAIComposer {
     const key=overrideKey||this.key;
     if(!key)throw new DomainError("Connect an OpenAI API key in Settings first",503);
     if(!project.article||project.article.length<40)throw new DomainError("Paste at least 40 characters of article text",400);
-    const input=`Song project: ${JSON.stringify({title:project.title,artist:project.artistId,artistDna:project.artistDna||"",genre:project.parameters.genre,
+    const input=`${EXTRACTION_DIRECTION}
+Song project: ${JSON.stringify({title:project.title,artist:project.artistId,artistDna:project.artistDna||"",artistMusicDna:project.artistMusicDna||[],genre:project.parameters.genre,
       styles:project.parameters.additionalStyles,exclude:project.parameters.excludeStyles,
       gender:project.parameters.vocalGender,instrumental:project.parameters.instrumental,
       targetSeconds:project.parameters.targetSeconds,notes:project.parameters.customInstructions,

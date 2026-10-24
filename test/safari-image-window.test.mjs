@@ -14,7 +14,7 @@ test('image Safari target survives page title changes and stays in its own windo
   assert.equal((image.match(/URL of tab 1 of window id imageWindowId/g) || []).length, 2);
 });
 
-for (const kind of ['cover', 'artist-photo']) {
+for (const kind of ['cover', 'track-art', 'artist-photo']) {
   test(kind + ' exports and saves the returned ChatGPT PNG', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'blossom-image-target-'));
     const png = Buffer.alloc(32);
@@ -25,7 +25,8 @@ for (const kind of ['cover', 'artist-photo']) {
         runner(script, args, options, callback) {
           assert.match(script, /chatgpt-safari-lyrics.applescript$/);
           assert.equal(args.length, 4);
-          assert.match(args[1], kind === 'cover' ? /Square album cover/ : /fictional musician artist portrait/);
+          assert.match(args[1], kind === 'artist-photo' ? /fictional musician artist portrait/ : kind === 'track-art' ? /Square track sleeve/ : /Square album cover/);
+          if (kind !== 'artist-photo') assert.match(args[1], /Do not default to a small title centered along the top/);
           callback(null, 'REPLY\n' + 'data:image/png;base64,' + png.toString('base64'));
         }
       });

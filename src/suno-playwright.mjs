@@ -9,9 +9,15 @@ const BROWSER_PROFILE = ".data/suno-playwright-profile";
 /**
  * Supervised browser handoff for the *consumer* Suno website.
  * - Not the separate platform.suno.com developer API
- * - No automated authentication, bot creation, downloads, scraping or network interception
- * - The operator completes Google SSO and ultimately presses Generate
+ * - No automated Google sign-in, cookie copying, bot evasion, scraping, or private endpoints
+ * - An MP3 is accepted only from Suno's own download menu
+ * - The operator completes Google SSO in the visible Chrome window
  */
+function preserveCheckFailure(error) {
+  if (error instanceof DomainError) throw error;
+  if (error?.code === "ERR_ASSERTION" || error?.name === "AssertionError") throw error;
+}
+
 export class SunoBrowserHandoff {
   constructor({ profileDir = process.env.BLOSSOM_SUNO_BROWSER_DIR || BROWSER_PROFILE,
     loader = () => import("playwright-core"),
@@ -51,7 +57,8 @@ export class SunoBrowserHandoff {
         throw new DomainError("Unsafe Suno browser profile directory", 403);
       let library;
       try { library = await this.loader(); }
-      catch {
+      catch (error) {
+        preserveCheckFailure(error);
         throw new DomainError("Playwright Core is not installed. Run npm install in Blossom.", 503);
       }
       if (!library?.chromium?.launchPersistentContext)
@@ -62,6 +69,7 @@ export class SunoBrowserHandoff {
           acceptDownloads: true, serviceWorkers: "block"
         });
       } catch (error) {
+        preserveCheckFailure(error);
         const details = String(error.message || "");
         const profileConflict = /SingletonLock|ProcessSingleton|profile.*in use|user data directory is already in use|Target page, context or browser has been closed/i.test(details);
         if (profileConflict) throw new DomainError("Blossom Chrome profile is already in use or Chrome closed during startup. Close the other Blossom Chrome window, then retry. Do not delete profile files while Chrome is running. " + details.slice(0, 160), 409);

@@ -45,6 +45,17 @@ export function referenceTraits(profile) {
     // No source artist names, lyrics, recordings or copied melodies in generation prompts.
   };
 }
+export const EXTRACTION_DIRECTION =
+  "When artistDna or artistMusicDna is present, the style, vocal direction, tempo, instruments, arrangement and exclusions must follow that artist DNA. When referenceDna is present, apply those selected Music DNA inspirations at their weights. Transfer genre, instruments, tone and phrasing only. Do not copy lyrics, melodies, hooks, or put a source artist name in the song.";
+
+export function artistMusicTraits(profiles) {
+  return (profiles || []).map(referenceTraits).filter(Boolean).slice(0, 3);
+}
+
+export function artistMusicStyle(traits) {
+  return (traits || []).map(referenceStyle).filter(Boolean).join(", ").slice(0, 1200);
+}
+
 export function referenceStyle(traits) {
   const parts = [];
   if (traits.genres.length) parts.push(traits.genres.join(", "));

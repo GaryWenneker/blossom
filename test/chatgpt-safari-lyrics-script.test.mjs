@@ -60,12 +60,16 @@ test("Safari lyrics script reports phases and reads a finished brief from any Ch
   assert.match(source, /count of argv\) is not 3/);
   assert.match(source, /my writeProgress\(progressPath, "20"\)/);
   assert.match(source, /my writeProgress\(progressPath, pct as text\)/);
+  assert.match(source, /repeat with attempt from 1 to 240/);
   const readJS = appleString(source, source.indexOf("set readJS to ") + "set readJS to ".length).value;
   assert.match(readJS, /lyrics/);
   assert.match(readJS, /main \.markdown/);
   assert.match(source, /resultText is not "WAIT" then/);
   const fillAt = source.indexOf("set submitted to false");
   assert.match(source.slice(0, fillAt), /do JavaScript readJS in openDocument/);
+  assert.match(source.slice(0, fillAt), /previousLength/);
+  assert.doesNotMatch(source.slice(0, fillAt), /return "REPLY"/);
+  assert.match(source, /length of resultText\) > previousLength/);
 });
 
 test("the send button is pressed only after the prompt is already in the composer", async () => {

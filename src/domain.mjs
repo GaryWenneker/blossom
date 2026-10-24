@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { COUNTRY_CODES } from "./countries.mjs";
 
 export const TRACK_STAGES = ["idea", "brief", "generated", "review", "approved", "rejected"];
 export const RELEASE_STAGES = ["draft", "validated", "approved", "submitting", "submitted", "needs_reconciliation"];
@@ -26,11 +27,11 @@ export function artistInput(input) {
   const genre = requiredString(o.genre, "Genre", 100);
   const language = requiredString(o.language || "instrumental", "Language", 40);
   const countries = Array.isArray(o.countries) ? o.countries : [];
-  if (countries.length > 12 || countries.some(x => typeof x !== "string" || !/^[A-Z]{2}$/.test(x)))
-    throw new DomainError("Countries must be up to twelve ISO 3166-1 alpha-2 codes");
+  if (countries.length > 12 || countries.some(x => typeof x !== "string" || !COUNTRY_CODES.has(x)))
+    throw new DomainError("Choose up to twelve countries from the country list");
   const voice = ["male", "female", "mixed", "instrumental"].includes(o.voice) ? o.voice : "instrumental";
   const dna = requiredString(o.dna, "Artist DNA", 3000);
-  return { name, genre, language, countries, voice, dna, identityVerified: false };
+  return { name, genre, language, countries, voice, dna, identityVerified: o.identityVerified === true };
 }
 export function trackInput(input) {
   const o = input ?? {};

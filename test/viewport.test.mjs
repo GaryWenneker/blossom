@@ -30,7 +30,11 @@ test("Viewports use fixed application shell with bounded studio/data scrollers",
   assert.match(app,/document\.body\.dataset\.view=state\.tab/);
   assert.match(css,/html,body\{height:100%;width:100%;margin:0;overflow:hidden\}/);
   assert.match(css,/\.shell\{[^}]*height:100dvh/);
-  assert.match(css,/\.studio-workspace\{[^}]*grid-template-rows:/);
+  assert.match(css,/\.studio-workspace\{[^}]*grid-template-rows:auto auto minmax\(0,1fr\) auto minmax\(148px,32%\) auto/);
+  assert.match(css,/max-width:700px\)\{[\s\S]*?grid-template-rows:auto auto minmax\(160px,1fr\) minmax\(0,auto\) minmax\(110px,26%\) 0px/);
+  assert.match(css,/max-height:690px\)\{[\s\S]*?grid-template-rows:auto auto minmax\(120px,1fr\) minmax\(0,auto\) minmax\(110px,26%\) auto/);
+  assert.match(css,/max-width:700px\) and \(max-height:690px\)\{[\s\S]*?grid-template-rows:auto auto minmax\(120px,1fr\) minmax\(0,auto\) minmax\(90px,24%\) 0px/);
+  assert.match(css,/\.studio-workspace \.studio-release\{[^}]*margin:0[^}]*align-self:stretch[^}]*overflow:auto/);
   assert.match(css,/\.studio-columns\{[^}]*grid-template-columns:/);
   assert.match(css,/\.studio-bottom-pane\[hidden\]\{display:none!important\}/);
   assert.match(studio,/role="tablist"/);
@@ -44,16 +48,25 @@ function browserMeasure() {
     const shell=document.querySelector(".shell"),view=document.querySelector(".content");
     const cols=[...document.querySelectorAll(".studio-columns>.studio-panel")];
     const lower=document.querySelector(".studio-lower");
+    const release=document.querySelector(".studio-release");
     const rows=cols.length===0||cols.every(panel=>Math.abs(panel.getBoundingClientRect().top-cols[0].getBoundingClientRect().top)<2);
     const bounded=!lower||lower.getBoundingClientRect().bottom<=innerHeight+2;
+    const releaseBox=release?.getBoundingClientRect();
+    const lowerBox=lower?.getBoundingClientRect();
+    const releaseGap=releaseBox&&lowerBox?Math.round(lowerBox.top-releaseBox.bottom):null;
+    const releaseFlush=releaseGap===null||(releaseGap>=0&&releaseGap<=14);
+    const columns=document.querySelector(".studio-columns");
+    const columnsBox=columns?.getBoundingClientRect();
+    const panelsAboveRelease=!releaseBox||!columnsBox||columnsBox.bottom<=releaseBox.top+2;
     const safeScroll=document.documentElement.scrollHeight<=innerHeight+2&&document.body.scrollHeight<=innerHeight+2;
     const bodyLocked=getComputedStyle(document.body).overflowY==="hidden";
     const shellFits=Math.abs(shell.getBoundingClientRect().height-innerHeight)<3;
     const viewFits=view.getBoundingClientRect().bottom<=innerHeight+2;
     const result=document.querySelector("#viewport-result");
-    result.dataset.pass=String(rows&&bounded&&safeScroll&&bodyLocked&&shellFits&&viewFits);
+    result.dataset.pass=String(rows&&bounded&&safeScroll&&bodyLocked&&shellFits&&viewFits&&releaseFlush&&panelsAboveRelease);
     result.dataset.report=JSON.stringify({
-      rows,bounded,safeScroll,bodyLocked,shellFits,viewFits,
+      rows,bounded,safeScroll,bodyLocked,shellFits,viewFits,releaseFlush,panelsAboveRelease,releaseGap,
+      columnsBottom:Math.round(columnsBox?.bottom||0),
       viewport:innerWidth+"x"+innerHeight,bodyScroll:document.body.scrollHeight,
       shellHeight:shell.getBoundingClientRect().height,
       viewBottom:Math.round(view.getBoundingClientRect().bottom),

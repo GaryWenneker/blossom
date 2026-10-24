@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { Store } from "../src/storage.mjs";
 import { MusicDNA } from "../src/music-dna.mjs";
-import { MusicDnaChatGpt, analysisFromReply } from "../src/music-dna-chatgpt.mjs";
+import { MusicDnaChatGpt, analysisFromReply, analysisFromYoutube, chooseYoutubeRecording, youtubeResultsFromHtml } from "../src/music-dna-chatgpt.mjs";
 import { ChatGptLyricsBrowser } from "../src/chatgpt-playwright.mjs";
 
 const reply = {
@@ -27,6 +27,74 @@ test("a ChatGPT reply becomes catalog DNA and cannot claim an audio measurement"
   assert.equal(analysis.measurements, null);
   assert.equal(analysis.bpm, 120);
   assert.throws(() => analysisFromReply("no json here"), /not a music analysis/);
+});
+
+test("a YouTube search prefers the official video over a live clip and a lyrics upload", () => {
+  const html = "ytInitialData = " + JSON.stringify({
+    contents: [
+      { videoRenderer: { videoId: "livevideo01", title: { runs: [{ text: "Rammstein - Deutschland (Live in Mexico City)" }] }, ownerText: { runs: [{ text: "Rammstein Official" }] } } },
+      { videoRenderer: { videoId: "lyricsvid01", title: { runs: [{ text: "Rammstein - Deutschland (Lyrics)" }] }, ownerText: { runs: [{ text: "LyricFlow" }] } } },
+      { videoRenderer: { videoId: "officialv01", title: { runs: [{ text: "Rammstein - Deutschland (Official Video)" }] }, ownerText: { runs: [{ text: "Rammstein Official" }] } } }
+    ]
+  }) + ";";
+  const results = youtubeResultsFromHtml(html);
+  assert.equal(results.length, 3);
+  const chosen = chooseYoutubeRecording(results, "Rammstein", "Deutschland");
+  assert.equal(chosen.videoId, "officialv01");
+  const analysis = analysisFromYoutube(
+    { artist: "Rammstein", title: "Deutschland" }, chosen);
+  assert.equal(analysis.analysisMethod, "youtube-search");
+  assert.equal(analysis.analyzer, "youtube");
+  assert.equal(analysis.measurements, null);
+  assert.equal(analysis.genres.length, 0);
+  assert.match(analysis.summary, /https:\/\/www\.youtube\.com\/watch\?v=officialv01/);
+  assert.match(analysis.summary, /not a measured analysis/);
+  assert.equal(chooseYoutubeRecording(results, "Nobody", "Missing Song"), null);
+  const concert = youtubeResultsFromHtml("ytInitialData = " + JSON.stringify({
+    contents: [
+      { videoRenderer: { videoId: "parisvid001", title: { runs: [{ text: "Rammstein: Paris - Du Hast (Official Video)" }] }, ownerText: { runs: [{ text: "Rammstein Official" }] } } },
+      { videoRenderer: { videoId: "studioid001", title: { runs: [{ text: "Rammstein - Du Hast (Official Video)" }] }, ownerText: { runs: [{ text: "Rammstein Official" }] } } }
+    ]
+  }) + ";");
+  assert.equal(chooseYoutubeRecording(concert, "Rammstein", "Du hast").videoId, "studioid001");
+});
+
+test("an unreadable ChatGPT reply is saved from the YouTube search instead of failing again", async () => {
+  const library = dna();
+  const [job] = library.importBatch([{
+    artist: "Rammstein", title: "Deutschland", sourceKind: "metadata",
+    sourceUrl: "https://open.spotify.com/track/0123456789012345678901"
+  }]);
+  const searches = [];
+  const chat = new MusicDnaChatGpt(library, async () => "I cannot return JSON for this one.",
+    async profile => {
+      searches.push(profile.artist + " " + profile.title);
+      return { videoId: "officialv01", title: "Rammstein - Deutschland (Official Video)", channel: "Rammstein Official" };
+    });
+  chat.start();
+  await chat.done;
+  assert.deepEqual(searches, ["Rammstein Deutschland"]);
+  const saved = library.get(job.profileId);
+  assert.equal(saved.analysis.analysisMethod, "youtube-search");
+  assert.equal(saved.analysisVersion, 1);
+  assert.equal(library.jobCounts().failed, 0);
+  assert.equal(library.jobCounts().completed, 1);
+});
+
+test("a missing ChatGPT sign-in does not pretend a YouTube search analyzed the recording", async () => {
+  const library = dna();
+  library.importBatch([{ artist: "Rammstein", title: "Deutschland", sourceKind: "metadata", sourceUrl: "https://example.org/de" }]);
+  let searched = false;
+  const chat = new MusicDnaChatGpt(library, async () => {
+    const error = new Error("Sign in to ChatGPT in Safari, then start the analysis again.");
+    error.code = "chatgpt_login_required";
+    throw error;
+  }, async () => { searched = true; return { videoId: "officialv01", title: "x", channel: "y" }; });
+  chat.start();
+  await chat.done;
+  assert.equal(searched, false);
+  assert.equal(library.jobCounts().failed, 1);
+  assert.equal(library.get(library.jobs("failed")[0].profileId).analysisVersion, 0);
 });
 
 test("starting analysis reports callback percents and saves one metadata recording", async () => {
@@ -111,6 +179,56 @@ test("a failed catalog analysis is retried and then saved", async () => {
   assert.equal(library.get(stuck.profileId).analysis.summary, "A bright new-wave recording.");
   assert.equal(library.jobs("running").length, 0);
   assert.equal(library.jobs("failed").length, 0);
+});
+
+test("an expired running job returns to the queue when jobs are listed", () => {
+  const library = dna();
+  const created = library.importBatch([{
+    artist: "Bring Me The Horizon", title: "Dehumanized", sourceKind: "metadata",
+    sourceUrl: "https://example.org/dehumanized"
+  }])[0];
+  const job = library.claimJob("chatgpt", { metadataOnly: true });
+  library.setJobProgress(job.jobId, 80);
+  library.db.prepare("UPDATE music_dna_jobs SET leased_until=? WHERE id=?")
+    .run("2020-01-01T00:00:00.000Z", job.jobId);
+  assert.equal(library.jobs("running").length, 0);
+  const queued = library.jobs("queued");
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].profileId, created.profileId);
+  assert.equal(queued[0].progress, 0);
+});
+
+test("a live analysis lease stays running when jobs are listed", () => {
+  const library = dna();
+  library.importBatch([{
+    artist: "Live", title: "Lease", sourceKind: "metadata", sourceUrl: "https://example.org/live"
+  }]);
+  const job = library.claimJob("chatgpt", { metadataOnly: true });
+  library.setJobProgress(job.jobId, 40);
+  const running = library.jobs("running");
+  assert.equal(running.length, 1);
+  assert.equal(running[0].progress, 40);
+});
+
+test("starting one recording analyzes that recording before an older queued one", async () => {
+  const library = dna();
+  const older = library.importBatch([{
+    artist: "Older", title: "First", sourceKind: "metadata", sourceUrl: "https://example.org/older"
+  }])[0];
+  const chosen = library.importBatch([{
+    artist: "Bring Me The Horizon", title: "Dehumanized", sourceKind: "metadata",
+    sourceUrl: "https://example.org/chosen"
+  }])[0];
+  const seen = [];
+  const chat = new MusicDnaChatGpt(library, async prompt => {
+    seen.push(prompt);
+    return JSON.stringify(reply);
+  });
+  assert.equal(chat.start(chosen.profileId).started, true);
+  await chat.done;
+  assert.match(seen[0], /Bring Me The Horizon — Dehumanized/);
+  assert.match(seen[1], /Older — First/);
+  assert.equal(library.get(older.profileId).analysis.summary, reply.summary);
 });
 
 test("lyric generation stays available while a DNA analysis is running", async () => {

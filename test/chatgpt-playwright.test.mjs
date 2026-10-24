@@ -277,10 +277,34 @@ test("the Studio screen asks for ChatGPT and a URL paste imports before generati
   calls.length = 0;
   await studioPaste("article", { data: {} }, api, async () => {}, () => {});
   assert.equal(calls.length, 0);
+  values["#studio-article"].value = "x".repeat(400);
+  calls.length = 0;
+  await studioPaste("article", { data: {} }, api, async () => {}, () => {});
+  assert.equal(calls.length, 0);
+  assert.equal(values["#studio-article"].value.length, 400);
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
   }
+});
+
+test("a signed-in Safari tab that is still writing is a timeout, not a dead session", async () => {
+  let timeout = 0;
+  const browser = new ChatGptLyricsBrowser({
+    transport: "system",
+    runner(_script, _args, options, callback) {
+      timeout = options.timeout;
+      const error = new Error("ChatGPT did not finish a reply (-2700)");
+      error.stderr = "chatgpt-safari-lyrics.applescript:8291:8323: execution error: ChatGPT did not finish a reply (-2700)";
+      callback(error, "", error.stderr);
+    }
+  });
+  await assert.rejects(
+    () => browser.generate(project()),
+    error => error instanceof DomainError && error.status === 504 && error.code === "chatgpt_reply_timeout" &&
+      /signed in/i.test(error.message) && !/Could not use the signed-in browser session/.test(error.message)
+  );
+  assert.ok(timeout >= 300000);
 });
 
 test("Chrome error paths stay on chatgpt.com and reuse a visible window", async () => {

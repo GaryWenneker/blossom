@@ -74,9 +74,18 @@ export class Store {
   addArtist(input) {
     const a = { id:id(), ...artistInput(input), createdAt:now() };
     try { this.db.prepare("INSERT INTO artists VALUES(?,?,?,?,?,?,?,?,?)").run(
-      a.id,a.name,a.genre,a.language,JSON.stringify(a.countries),a.voice,a.dna,0,a.createdAt);
+      a.id,a.name,a.genre,a.language,JSON.stringify(a.countries),a.voice,a.dna,a.identityVerified?1:0,a.createdAt);
     } catch(e) { if(String(e).includes("UNIQUE")) throw new DomainError("Artist name already exists",409); throw e; }
     this.audit("created","artist",a.id,{name:a.name}); return a;
+  }
+  updateArtist(id, input) {
+    if (!this.artist(id)) throw new DomainError("Artist not found", 404);
+    const next = artistInput(input);
+    try { this.db.prepare("UPDATE artists SET name=?,genre=?,language=?,countries=?,voice=?,dna=?,identity_verified=? WHERE id=?").run(
+      next.name,next.genre,next.language,JSON.stringify(next.countries),next.voice,next.dna,next.identityVerified?1:0,id);
+    } catch(e) { if(String(e).includes("UNIQUE")) throw new DomainError("Artist name already exists",409); throw e; }
+    this.audit("updated","artist",id,{name:next.name});
+    return this.artist(id);
   }
   tracks() { return this.db.prepare("SELECT * FROM tracks ORDER BY created_at DESC").all().map(r => ({
     id:r.id,artistId:r.artist_id,title:r.title,mode:r.mode,concept:r.concept,lyrics:r.lyrics,
