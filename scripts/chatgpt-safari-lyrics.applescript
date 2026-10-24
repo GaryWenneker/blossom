@@ -6,7 +6,7 @@ on run argv
   set fillJS to item 2 of argv
   set readJS to item 3 of argv
   set maxAttempts to (item 4 of argv) as integer
-  if maxAttempts < 1 or maxAttempts > 360 then error "Invalid timeout"
+  if maxAttempts < 1 or maxAttempts > 600 then error "Invalid timeout"
   tell application "Safari"
     activate
     set chatDocument to make new document with properties {URL:"https://chatgpt.com/"}
@@ -34,3 +34,4 @@ on run argv
   end repeat
   error "ChatGPT did not finish a reply. The existing project has been preserved."
 end run
+
