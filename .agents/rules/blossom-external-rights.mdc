@@ -1,0 +1,22 @@
+---
+id: blossom-external-rights
+description: "Do not overstate streaming, legal rights or autonomous distribution"
+level: STANDARD
+alwaysApply: false
+priority: 90
+scope: project
+group: music
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["Spotify","YouTube","Suno","distribution","royalties","copyright"]
+tags: ["platforms","rights","distribution"]
+---
+
+# Do not overstate streaming, legal rights or autonomous distribution
+
+- Spotify/YouTube links do not provide audio bytes or a right to download; use official methods and licensing.
+- A Suno recipe/profile is not a rendered track, and a saved draft is not a distributed release. Report actual assets/receipts only.
+- Rights, credits, audio samples, master use, voice likeness, artwork, commercial usage and distributor submission require independent validation and explicit approval.
+- Catalog functional instrumental background music and artist pseudonyms as potential strategy only, not proven earnings, secret contracts or platform policy.
+- Avoid near-duplication of reference melodies/lyrics, and do not mimic specific performers' identifiable vocal likenesses without rights.

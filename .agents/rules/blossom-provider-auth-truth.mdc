@@ -1,0 +1,24 @@
+---
+id: blossom-provider-auth-truth
+description: "Separate browser website sessions from API and OAuth access"
+level: CRITICAL
+alwaysApply: true
+priority: 98
+scope: project
+group: security
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["Spotify","Facebook","Google","Suno login","ChatGPT","Safari","Playwright"]
+tags: ["auth","oauth","browser"]
+---
+
+# Separate browser website sessions from API and OAuth access
+
+- Consumer Safari/Chrome login DOES NOT give Blossom an OpenAI API key, Spotify Web API token, Suno Platform account, or ChatGPT MCP installation.
+- Never automate Google SSO in Playwright/stealth WebDriver, copy Safari cookies, spoof bot flags, or use private website endpoints as an unofficial API.
+- Open official login URLs in a normal native user browser; browser session reuse remains controlled by that browser.
+- Spotify Facebook login is only usable if supported by the existing account. Distinguish initial sign-in from Spotify Web Player.
+- A Blossom user_confirmed handoff means manual confirmation, NOT a verified live provider session or API connection. Browser close/login cannot be detected reliably without callback.
+- For background AI use an authorized developer API or a clearly labelled locally installed model; do not pretend that a ChatGPT website tab is a headless inference API.
+- Never weaken allowed-provider URLs, CSRF checks or local-only browser launcher permissions.

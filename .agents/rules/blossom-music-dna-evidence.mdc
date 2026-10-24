@@ -1,0 +1,24 @@
+---
+id: blossom-music-dna-evidence
+description: "Distinguish analyzed audio from inferred Music DNA"
+level: CRITICAL
+alwaysApply: true
+priority: 98
+scope: project
+group: music
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["MP3","music DNA","reference recording","analysis"]
+tags: ["music-dna","audio","evidence"]
+---
+
+# Distinguish analyzed audio from inferred Music DNA
+
+- Build independently addressable, versioned profiles linked to source identity and selected current analysis. Never destroy historical analysis.
+- Source metadata and third-party reviews do not prove audio-observed instruments, playing technique, bar timing or vocal phrasing.
+- Label observations as audio_observed, human_verified, source_inferred/editorial or not_analyzed. Express uncertainty explicitly.
+- Record track, artist, release/version, source URL/kind, recording SHA256 when bytes exist, notes, evidence, analyzer version and provenance.
+- Extract when grounded: instrument roles, playing technique, tone/timbre, vocals and harmonies, beat/BPM/meter, groove, musical form, harmony, buildup, production and dynamics, emotional arc and optional bar-level observations.
+- Do not pretend to hear YouTube/Spotify from a URL alone. Do not bypass streaming DRM or site access and do not reproduce copyrighted lyrics.
+- Consult src/music-dna.mjs, src/music-dna-api.mjs and tests before changing format or semantics.

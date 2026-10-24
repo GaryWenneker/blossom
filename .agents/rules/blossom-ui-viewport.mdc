@@ -1,0 +1,23 @@
+---
+id: blossom-ui-viewport
+description: "Maintain compact single-viewport Studio and accessible dialogs"
+level: STANDARD
+alwaysApply: false
+priority: 87
+scope: project
+group: design
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["mockup","scroll","Studio","Connections","mobile"]
+tags: ["ui","accessibility","viewport"]
+---
+
+# Maintain compact single-viewport Studio and accessible dialogs
+
+- Match Blossom's established professional dark audio UI and requested mockups; do not invent a separate generic AI design system.
+- Main Studio and Connections desktop workspaces fit vertically without page-level scrolling; allow bounded inner regions/dialogs where necessary so no critical controls are hidden.
+- Support mobile/narrow viewport, keyboard focus, labelled inputs, reduced-motion, clear error/loading/empty states and accessible modal close/Escape.
+- Actions must visibly update after one click and prevent accidental duplicate submissions; preserve the current project selection and unsaved edits.
+- Clearly label local AI vs OpenAI API, manual provider browser login vs verified authorization, Music DNA evidence and background job progress.
+- Verify rendered geometry and interaction with viewport and Playwright tests; do not use Playwright to automate Google's login flow.

@@ -1,0 +1,24 @@
+---
+id: blossom-data-catalog
+description: "Maintain scalable searchable Music DNA revisions"
+level: STANDARD
+alwaysApply: false
+priority: 91
+scope: project
+group: data
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["bulk","inverted index","FTS","deduplication"]
+tags: ["music-dna","database","indexing"]
+---
+
+# Maintain scalable searchable Music DNA revisions
+
+- Design for a very large Music DNA library: versioned profiles, source provenance, deduplication, bulk ingestion, resumable jobs, fast text and facet search.
+- Respect existing SQLite schema and FTS/inverted indexes in src/music-dna.mjs; benchmark before replacing a proven storage engine.
+- Use canonical source and recording checksums when available to dedupe, but preserve distinct live/studio/remaster versions.
+- Record observed vs inferred status and current revision; keep earlier profiles/revisions available.
+- Batch with bounded concurrency and idempotent upsert/transaction behavior; never re-download or reprocess unchanged assets unnecessarily.
+- Support indexed genre/mood/instrument/vocal text filters plus BPM/year/duration filtering when data is grounded.
+- Do not claim massive bulk analyses have been run unless actual jobs, profile counts and error metrics confirm it.
