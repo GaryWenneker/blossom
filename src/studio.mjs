@@ -118,8 +118,29 @@ export class StudioStore {
     const patch=result.generationParameters;
     if(Object.hasOwn(result,"generationParameters") && (!patch || typeof patch!=="object" || Array.isArray(patch) || Object.keys(patch).some(k=>!allowed.includes(k))))
       throw new DomainError("Invalid generation parameters");
-    const artistId=project.artistId||result.artistId||"";
-    if(artistId&&!this.store.artist(artistId))throw new DomainError("AI selected an unknown artist",400);
+    let artistId=project.artistId||"";
+    if(!artistId){
+      const proposedId=typeof result.artistId==="string"?result.artistId:"";
+      if(proposedId && this.store.artist(proposedId))artistId=proposedId;
+      else if(proposedId)throw new DomainError("AI selected an unknown artist",400);
+      if(!artistId && typeof result.artistName==="string" && result.artistName.trim()){
+        const name=result.artistName.trim();
+        if(name.length>80)throw new DomainError("Artist name exceeds 80 characters",400);
+        const existing=this.store.artists().find(a=>a.name.toLocaleLowerCase()===name.toLocaleLowerCase());
+        if(existing)artistId=existing.id;
+        else{
+          const genre=(result.suggestedGenre||project.parameters.genre||"Original").slice(0,100);
+          const voice=project.parameters.instrumental?"instrumental":project.parameters.vocalGender==="auto"?"mixed":project.parameters.vocalGender;
+          const language=project.parameters.lyricLanguage==="auto"?"en":project.parameters.lyricLanguage;
+          const artist=this.store.addArtist({name,genre,voice,language,countries:[],dna:("Fictional artist created by Studio. "+(result.style||genre)).slice(0,1500)});
+          artistId=artist.id;
+        }
+      }
+      if(!artistId){
+        const candidates=this.store.artists().filter(a=>a.genre.toLocaleLowerCase()===project.parameters.genre.toLocaleLowerCase() && (project.parameters.instrumental?a.voice==="instrumental":a.voice===project.parameters.vocalGender));
+        if(candidates.length===1)artistId=candidates[0].id;
+      }
+    }
     const params=patch?normalizeParameters(patch,project.parameters):{...project.parameters};
     if(result.coverPrompt && result.coverPrompt!==project.result?.coverPrompt)params.imagePrompt=result.coverPrompt;
     if(result.artistPhotoPrompt && result.artistPhotoPrompt!==project.result?.artistPhotoPrompt)params.artistPhotoPrompt=result.artistPhotoPrompt;
