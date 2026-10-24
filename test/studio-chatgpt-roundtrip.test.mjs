@@ -117,3 +117,20 @@ test('Studio generates and saves lyrics, Suno controls and both ChatGPT images w
   assert.equal(recipe.weirdness,17);assert.equal(recipe.targetDurationSeconds,215);
   assert.match(recipe.exclude,/EDM drops/);
 });
+
+test('ChatGPT chooses a catalog artist; persistence validates IDs and preserves manual selection',()=>{
+  const store=new Store(':memory:');
+  try {
+    const a=store.addArtist({name:'Quiet Roads',genre:'Country Pop',language:'English',countries:[],voice:'male',dna:'Dry acoustic guitar'});
+    const b=store.addArtist({name:'Other Roads',genre:'Country Pop',language:'English',countries:[],voice:'male',dna:'Piano'});
+    const studio=new StudioStore(store),p=studio.save({article:'A journey home'});
+    const prompt=buildChatGptLyricsPrompt({...p,artistCandidates:store.artists()});
+    assert.match(prompt,/Quiet Roads/);assert.match(prompt,/readable typography/);
+    const parsed=parseChatGptBrief(JSON.stringify({...brief,artistId:a.id}));
+    assert.equal(studio.setResult(p.id,parsed).artistId,a.id);
+    assert.equal(studio.setResult(p.id,{...brief,artistId:b.id}).artistId,a.id);
+    const empty=studio.save({article:'A second journey'});
+    assert.throws(()=>studio.setResult(empty.id,{...brief,artistId:'invented'}),/unknown artist/);
+    assert.equal(studio.require(empty.id).artistId,'');
+  }finally{store.close();}
+});

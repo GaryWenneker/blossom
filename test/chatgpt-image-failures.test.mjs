@@ -38,3 +38,22 @@ test('image reader exports an attachment beside the assistant text in the same t
   for(let i=0;i<3;i++)assert.equal(vm.runInContext(read,context),'WAIT');
   assert.equal(vm.runInContext(read,context),'data:image/png;base64,result');
 });
+
+test('tainted canvas falls back to transferring the rendered image and polls until ready',async()=>{
+  const img={complete:true,naturalWidth:1024,naturalHeight:1024,src:'https://example.test/generated.png'};
+  const node={closest:()=>({querySelectorAll:()=>[img]})};
+  const window={__blossomGeneration:{count:0,last:img.src,stable:3}};
+  let downloads=0,canvasCount=0;
+  const document={querySelectorAll:()=>[node],querySelector:()=>null,createElement(){
+    const first=++canvasCount===1;
+    return {getContext:()=>({drawImage(){}}),toDataURL(){if(first)throw Error('tainted');return 'data:image/png;base64,saved';}};
+  }};
+  const context=vm.createContext({window,document,fetch:async url=>{
+    assert.equal(url,img.src);downloads++;return {ok:true,blob:async()=>({type:'image/png',size:1200})};
+  },URL:{createObjectURL:()=> 'blob:copy',revokeObjectURL(){}},Image:class{naturalWidth=1024;naturalHeight=1024;set src(_){this.onload();}}});
+  const script=chatGptDomScripts('Cover',{image:true}).read;
+  assert.equal(vm.runInContext(script,context),'WAIT');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(window.__blossomGeneration.imageExport.data,'data:image/png;base64,saved');
+  assert.equal(downloads,1);
+});

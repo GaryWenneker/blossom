@@ -118,10 +118,12 @@ export class StudioStore {
     const patch=result.generationParameters;
     if(Object.hasOwn(result,"generationParameters") && (!patch || typeof patch!=="object" || Array.isArray(patch) || Object.keys(patch).some(k=>!allowed.includes(k))))
       throw new DomainError("Invalid generation parameters");
+    const artistId=project.artistId||result.artistId||"";
+    if(artistId&&!this.store.artist(artistId))throw new DomainError("AI selected an unknown artist",400);
     const params=patch?normalizeParameters(patch,project.parameters):{...project.parameters};
     if(result.coverPrompt && result.coverPrompt!==project.result?.coverPrompt)params.imagePrompt=result.coverPrompt;
     if(result.artistPhotoPrompt && result.artistPhotoPrompt!==project.result?.artistPhotoPrompt)params.artistPhotoPrompt=result.artistPhotoPrompt;
-    this.db.prepare("UPDATE studio_projects SET result=?,params=?,updated_at=? WHERE id=?").run(JSON.stringify(result),JSON.stringify(params),new Date().toISOString(),id);
+    this.db.prepare("UPDATE studio_projects SET result=?,params=?,artist_id=?,updated_at=? WHERE id=?").run(JSON.stringify(result),JSON.stringify(params),artistId||null,new Date().toISOString(),id);
     this.store.audit("ai_extracted","studio_project",id,{title:result.titles?.[0]||""});
     return this.require(id);
   }

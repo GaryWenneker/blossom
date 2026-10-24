@@ -28,7 +28,7 @@ export function chatGptDomScripts(prompt, { image = false } = {}) {
     if(!state||nodes.length<=state.count||document.querySelector('button[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop streaming"]'))return 'WAIT';
     var node=nodes[nodes.length-1];
     ${image ? `// Image attachments can be siblings of the assistant text container.
-    var scope=node.closest('article')||node;
+    var scope=node.closest('[data-testid^="conversation-turn"]')||node.closest('article')||node;
     var images=Array.from(scope.querySelectorAll('img')).filter(function(i){return i.complete&&i.naturalWidth>=256&&i.naturalHeight>=256});
     if(!images.length)return 'WAIT';
     var img=images[images.length-1],text=img.currentSrc||img.src;` : `var text=(node.innerText||'').trim();
@@ -40,7 +40,30 @@ export function chatGptDomScripts(prompt, { image = false } = {}) {
       if(canvas.width>4096||canvas.height>4096)return 'ERROR:Image exceeds supported dimensions';
       canvas.getContext('2d').drawImage(img,0,0);
       return canvas.toDataURL('image/png');
-    }catch(e){return 'ERROR:Browser could not export the generated image. Download it from ChatGPT and import it in Blossom.';}` : 'return text;'}
+    }catch(e){
+      // Export only the image URL already rendered in this assistant turn.
+      // Cross-origin images can taint a canvas; fetch a CORS-readable blob instead.
+      if(state.imageExport&&state.imageExport.url===text){
+        if(state.imageExport.data)return state.imageExport.data;
+        if(state.imageExport.error)return 'ERROR:Generated image could not be transferred to Blossom. Retry generation; the project is preserved.';
+        return 'WAIT';
+      }
+      var transfer=state.imageExport={url:text};
+      fetch(text).then(function(response){
+        if(!response.ok)throw new Error('Image download failed');
+        return response.blob();
+      }).then(function(blob){
+        if(!blob.type.startsWith('image/')||blob.size>20*1024*1024)throw new Error('Invalid image');
+        var objectUrl=URL.createObjectURL(blob),copy=new Image();
+        copy.onload=function(){try{
+          var out=document.createElement('canvas');out.width=copy.naturalWidth;out.height=copy.naturalHeight;
+          if(out.width>4096||out.height>4096)throw new Error('Image too large');
+          out.getContext('2d').drawImage(copy,0,0);transfer.data=out.toDataURL('image/png');
+        }catch(error){transfer.error=true;}finally{URL.revokeObjectURL(objectUrl);}};
+        copy.onerror=function(){transfer.error=true;URL.revokeObjectURL(objectUrl);};copy.src=objectUrl;
+      }).catch(function(){transfer.error=true;});
+      return 'WAIT';
+    }` : 'return text;'}
   })()`;
   return { fill, read };
 }

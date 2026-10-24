@@ -21,3 +21,6 @@ tags: ["studio","copyright","lyrics"]
 - Preserve Suno controls: sunoModel, genre, additionalStyles, excludeStyles, vocalGender, instrumental, maxMode, weirdness, styleInfluence, variety, personalize, durationPreset, targetSeconds, customInstructions and image prompts.
 - Respect the project's language, artist notes and selected Music DNA. Treat generated lyrics and style controls as independently editable.
 - A Suno blueprint is NOT a generated audio track; generation/submission must be confirmed by an authorized provider operation or a resulting file.
+- Album covers are finished record sleeves: include the exact song title and selected artist name in readable typography; vary art direction with the song, without invented credits or third-party logos. Artist photos are coherent fictional publicity portraits, not duplicate cover layouts.
+- When no artist is selected, ChatGPT may choose an ID from the supplied existing artist catalog. Validate the ID before persistence and preserve manual selections.
+- Generated images must be exported, saved and registered as Studio assets before reporting success. An image visible in ChatGPT alone is not an imported Blossom asset.
