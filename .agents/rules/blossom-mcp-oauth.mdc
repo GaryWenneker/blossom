@@ -1,0 +1,25 @@
+---
+id: blossom-mcp-oauth
+description: "Keep ChatGPT MCP OAuth scopes, PKCE and consent safe"
+level: CRITICAL
+alwaysApply: true
+priority: 99
+scope: project
+group: security
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["MCP","OAuth","consent_denied","token_issued","tools/list","ChatGPT connector"]
+tags: ["mcp","oauth","pkce"]
+---
+
+# Keep ChatGPT MCP OAuth scopes, PKCE and consent safe
+
+- Public issuer: https://blossom.wenneker.dev ; protected resource: https://blossom.wenneker.dev/mcp.
+- Maintain OAuth discovery, PKCE S256, dynamic registration with strict redirect_uri allowlist, state/issuer/resource checks, one-time authorization codes, expiring tokens and least privilege.
+- blossom:read is insufficient for writing Studio results or Music DNA; blossom:write must be requested and approved. A scope hint never grants privileges.
+- Keep credentials, auth code, state, PKCE verifier, access/refresh tokens and personal data out of logs and reports.
+- Distinguish stages: client_registered, consent_shown, consent_denied, consent_redirected, consent_repeated, token_rejected, token_issued, mcp_connected and tools_listed. History matters more than latestStage.
+- consent_redirected does not mean ChatGPT exchanged a code. token_issued does not mean tools listed; tools_listed does not mean ChatGPT plugin installed.
+- A repeated consent form must never mint another grant. Denied consent should be labelled denied, not approved.
+- Never bypass ChatGPT's plugin creation or external account restrictions.

@@ -1,0 +1,23 @@
+---
+id: blossom-releases-and-tests
+description: "Trunk-based merges with actual regression evidence"
+level: STANDARD
+alwaysApply: false
+priority: 91
+scope: project
+group: engineering
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["CI","merge","setup","installer","regression"]
+tags: ["ci","release","test"]
+---
+
+# Trunk-based merges with actual regression evidence
+
+- Work on branch from up-to-date main, small traceable changes, tests before merge; never force-push main or overwrite concurrent work.
+- Ensure npm run check, npm test, Node.js 22/24 CI, Rust Ratatui installer and relevant FFmpeg/MCP/OAuth/viewport regressions. Call out unavailable smoke checks.
+- Test one-use OAuth codes, public admin isolation, SSRF, browser login status and secure storage for changes that touch those areas.
+- Setup must preserve existing .env secrets, accounts, database and user choices. Make optional integrations discoverable, not mandatory if not needed.
+- Green CI does not prove Cloudflare tunnel or the user's Mac launchd daemon is running, the model is downloaded, Suno generated audio, or ChatGPT plugin installed.
+- Respect uncommitted local worktree files; avoid destructive reset. Separate macOS environment verification from repository test passes.

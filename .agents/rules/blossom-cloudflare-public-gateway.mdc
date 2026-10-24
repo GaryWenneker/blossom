@@ -1,0 +1,24 @@
+---
+id: blossom-cloudflare-public-gateway
+description: "Keep MCP public but the Blossom administrator private"
+level: CRITICAL
+alwaysApply: true
+priority: 99
+scope: project
+group: security
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["Cloudflare","blossom.wenneker.dev","tunnel","cloudflared"]
+tags: ["cloudflare","gateway","network"]
+---
+
+# Keep MCP public but the Blossom administrator private
+
+- blossom.wenneker.dev is the PUBLIC MCP/OAuth gateway, not a public Studio admin application.
+- Studio admin stays at http://127.0.0.1:8787/ unless the user explicitly authorizes a separately protected deployment.
+- Cloudflare Tunnel on the hosting Mac points at http://127.0.0.1:8787 and preserves the public Host header.
+- Public allowlist: minimal homepage/health, OAuth discovery/register/authorize/token and authenticated /mcp. Public /login, /api/*, Studio JS/admin/secrets must stay blocked.
+- Diagnose local server, Host routing, DNS/HTTPS, tunnel process, OAuth discovery 200, unauthenticated MCP 401 challenge, token exchange and tools/list separately.
+- Do not blindly disable WAF, expose admin via 0.0.0.0, recreate tunnel credentials or assert the public host is broken because ChatGPT displays Connecting.
+- An HTTP 200 discovery + HTTP 401 unauthenticated MCP challenge only proves routing and auth policy, not a completed connector.

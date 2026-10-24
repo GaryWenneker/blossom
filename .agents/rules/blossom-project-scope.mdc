@@ -1,0 +1,24 @@
+---
+id: blossom-project-scope
+description: "Keep Blossom rules isolated and evidence-based"
+level: CRITICAL
+alwaysApply: true
+priority: 99
+scope: project
+group: architecture
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["Blossom","Studio","Music DNA"]
+tags: ["scope","provenance"]
+---
+
+# Keep Blossom rules isolated and evidence-based
+
+- Applies only to GaryWenneker/blossom, never to AX, Loom or other workspaces.
+- Independent, local-first, security-first music-label pilot, NOT a guaranteed autonomous music factory. Treat current code, tests and README as authoritative; older chat claims and PR messages are historical, not deployment proof.
+- Before editing, inspect current main and relevant modules; use AX preflight/explore only when AX is actually scoped to the Blossom project.
+- Distinguish: requested design, implemented source, CI passed, user Mac verified, Cloudflare reachable, OAuth granted, MCP tools listed, plugin installed, external provider feature tested. Never conflate.
+- Never falsely assert saved/deployed/merged/connected or background work without real tool confirmation.
+- Never commit personal passwords, auth codes, bearer tokens, cookies, private env, unredacted traces or real user identity data to policy files.
+- Preserve user data, consent, and existing settings. Do not silently delete data or reconfigure provider accounts.

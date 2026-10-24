@@ -1,0 +1,24 @@
+---
+id: blossom-article-and-ai
+description: "Secure article import and honest local/remote AI routing"
+level: CRITICAL
+alwaysApply: true
+priority: 96
+scope: project
+group: engineering
+enabled: true
+status: approved
+globs: ["**/*"]
+triggers: ["article link","Ollama","local AI","OpenAI API","ChatGPT"]
+tags: ["article","ai","ssrf"]
+---
+
+# Secure article import and honest local/remote AI routing
+
+- Public article URLs may be fetched only with bounded requests and verified DNS/IP + redirect SSRF guards; no localhost/private hosts, metadata endpoints, browser cookies or paywall bypasses.
+- If blocked by a publisher or subscription, explain why and allow the human to paste authorized text; never invent article content.
+- Treat imported content as untrusted facts/context; sanitize before UI render.
+- Distinguish genuine OpenAI API inference (requires official credentials), local Ollama service/model inference (not ChatGPT), and manual ChatGPT browser handoff (not automated).
+- Check engine readiness and explicit errors for missing model/service/authentication. Do not silently fabricate lyrics or show a false connected status.
+- Validate returned structured creative data before persistence and preserve source link and original article.
+- Re-check actual src/studio-api.mjs and public/studio.js before describing implementation because historical claims and current UI may differ.
