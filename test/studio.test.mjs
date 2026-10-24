@@ -171,3 +171,22 @@ test("Draw Things without configured model uses CLI default model",async()=>{
    assert.equal(runArgs.includes("--model"),false);
  } finally {await rm(dir,{recursive:true,force:true});}
 });
+
+test("AI result creates or reuses a fictional artist and links it to the Studio project",()=>{
+ const db=new Store(":memory:"),studio=new StudioStore(db);
+ try{
+   const project=studio.save({title:"New original",article,parameters:DEFAULT_PARAMETERS});
+   const first=studio.setResult(project.id,{...result,artistId:"",artistName:"Evan Mercer"});
+   assert.ok(first.artistId);
+   assert.equal(db.artist(first.artistId).name,"Evan Mercer");
+   assert.equal(db.artists().length,1);
+   assert.equal(studio.makeTrack(project.id).track.artistId,first.artistId);
+   const another=studio.save({title:"Second original",article,parameters:DEFAULT_PARAMETERS});
+   const second=studio.setResult(another.id,{...result,artistName:"evan mercer"});
+   assert.equal(second.artistId,first.artistId);
+   assert.equal(db.artists().length,1);
+   const fixed=studio.save({title:"Selected artist",article,artistId:first.artistId,parameters:DEFAULT_PARAMETERS});
+   assert.equal(studio.setResult(fixed.id,{...result,artistName:"Some Other Fictional Artist"}).artistId,first.artistId);
+   assert.equal(db.artists().length,1);
+ }finally{db.close();}
+});
