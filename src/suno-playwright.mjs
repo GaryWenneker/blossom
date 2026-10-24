@@ -59,7 +59,7 @@ export class SunoBrowserHandoff {
       try {
         this.context = await library.chromium.launchPersistentContext(this.profileDir, {
           headless: false, channel: this.channel, viewport: { width: 1280, height: 880 },
-          acceptDownloads: false, serviceWorkers: "block"
+          acceptDownloads: true, serviceWorkers: "block"
         });
       } catch (error) {
         const details = String(error.message || "");
@@ -139,6 +139,37 @@ export class SunoBrowserHandoff {
         submitted: false
       };
     } finally { this.busy = false; }
+  }
+
+  async submit(recipe) {
+    const filled=await this.prefill(recipe);
+    if(filled.skipped.includes("lyrics") || filled.skipped.includes("styles") || filled.skipped.includes("title"))
+      throw new DomainError("Suno changed its form; required fields were not filled: "+filled.skipped.join(", "),409);
+    const page=this.page;
+    const buttons=[page.getByRole("button",{name:/^create$/i}),page.getByRole("button",{name:/^generate$/i})];
+    for(const button of buttons){
+      if(await button.count()!==1 || !await button.isVisible() || !await button.isEnabled())continue;
+      await button.click({timeout:10000});
+      return {submitted:true,filled:filled.filled,note:"Suno creation clicked in your signed-in browser. Check the resulting song in Suno."};
+    }
+    throw new DomainError("Suno Create button was not uniquely available; review the visible browser",409);
+  }
+
+  async downloadSelected(destination) {
+    if(!this.page||this.page.isClosed())throw new DomainError("Open Suno first",409);
+    const url=new URL(this.page.url());
+    if(url.origin!==SAFE_ORIGIN)throw new DomainError("Navigate to Suno to download audio",409);
+    const page=this.page;
+    const downloadButton=page.getByRole("menuitem",{name:/download.*(mp3|audio)|mp3/i});
+    if(await downloadButton.count()!==1 || !await downloadButton.isVisible())
+      throw new DomainError("Select exactly one new song in Suno and open its Download menu",409);
+    const pending=page.waitForEvent("download",{timeout:45000});
+    await downloadButton.click();
+    const download=await pending;
+    if(!/\.mp3$/i.test(download.suggestedFilename()))
+      throw new DomainError("Suno did not provide an MP3 download",409);
+    await download.saveAs(destination);
+    return {filename:destination,sourceName:download.suggestedFilename()};
   }
 
   async close() {
