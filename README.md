@@ -118,6 +118,10 @@ In Studio, complete the article, AI brief, selected artist, genre and Suno model
 
 ## Creative Studio (News to Song)
 
+Studio resolves the song artist from its structured ChatGPT brief (`artistId` or `artistName`): an existing roster artist is reused or a new fictional artist profile is created and linked to the project. The **Assigned artist** label displays this association. For older briefs without artist metadata, use **Create / link artist** and enter the intended artist name; a name printed on a cover image is not reliable structured identity metadata.
+
+
+
 The **News to Song** workspace combines the full label workflow in one authenticated, responsive dark interface. It uses original custom vector audio-wave branding, not screenshot backgrounds or mockups.
 
 - Paste a news article or original text, choose an existing artist, save a named project, and link the article URL for source attribution.
