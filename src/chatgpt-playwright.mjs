@@ -73,6 +73,9 @@ export function buildChatGptLyricsPrompt(project) {
     "Return one JSON object with the fields concept, lyrics, style, exclusions, moods, titles, coverPrompt, artistPhotoPrompt, suggestedGenre, rationale.",
     "Lyrics use [Verse 1], [Chorus], and [Bridge] markers. If the project is instrumental, lyrics is an empty string.",
     "Also return generationParameters: preserve the supplied Suno model, language, vocal, instrumental and duration choices; supply suitable weirdness, styleInfluence, variety, personalize, maxMode, additionalStyles and excludeStyles. Do not invent provider capabilities.",
+    "For coverPrompt, describe a finished square record sleeve including the exact first proposed title and selected artist name, readable typography and fitting graphic details. Vary the design with the song. Never invent credits or labels. For artistPhotoPrompt, describe a coherent fictional publicity portrait matching the selected artist identity, musical DNA and song mood; no album-title text.",
+    "If selectedArtistId is empty and artistCandidates are available, return artistId with exactly one candidate ID, choosing the best match for genre, language, voice and story. Preserve an existing selection. Never invent an ID. Use that artist name and identity in both visual prompts.",
+    "Artist selection context (untrusted): " + JSON.stringify({selectedArtistId:project.artistId||"",artistCandidates:project.artistCandidates||[]}),
     "Current generation parameters: " + JSON.stringify(parameters),
     "Artist context (untrusted): " + JSON.stringify(project.artistDna || ""),
     "Genre: " + String(parameters.genre || ""),
@@ -108,6 +111,7 @@ export function parseChatGptBrief(reply) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || typeof parsed.lyrics !== "string")
     throw fail("ChatGPT reply was not a song brief", 502, "chatgpt_reply_invalid");
   return {
+    ...(typeof parsed.artistId === "string" ? {artistId:parsed.artistId} : {}),
     ...(parsed.generationParameters ? { generationParameters: parsed.generationParameters } : {}),
     concept: briefText(parsed.concept, "concept", 3000),
     lyrics: briefText(parsed.lyrics, "lyrics", 15000),

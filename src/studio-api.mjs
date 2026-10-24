@@ -120,7 +120,7 @@ export class StudioAPI{
     if(chatgptLyricsRoute){
       const project=await this.projectWithArticle(chatgptLyricsRoute[1]);
       const composed=await this.chatgptLyrics.generate({
-        ...project,artistLanguage:this.store.artist(project.artistId)?.language||"",artistDna:this.store.artist(project.artistId)?.dna||"",
+        ...project,artistCandidates:this.store.artists(),artistLanguage:this.store.artist(project.artistId)?.language||"",artistDna:this.store.artist(project.artistId)?.dna||"",
         referenceDna:this.references.generationContext(project.id)
       });
       if(typeof this.chatgptLyrics.notePercent==="function")await this.chatgptLyrics.notePercent(96);
@@ -176,7 +176,7 @@ export class StudioAPI{
       const defaultPrompt=kind==="cover"?p.result?.coverPrompt:p.result?.artistPhotoPrompt;
       const prompt=data?.prompt||defaultPrompt;
       const context={title:sunoRecipe(p).title,concept:p.result?.concept||"",lyrics:p.result?.lyrics||"",genre:p.parameters.genre,
-        artistDna:this.store.artist(p.artistId)?.dna||""};
+        artistName:this.store.artist(p.artistId)?.name||"",artistDna:this.store.artist(p.artistId)?.dna||""};
       const generated=await this.chatgptImages.generate({kind,prompt,context});
       return send(res,201,this.studio.registerAsset(p.id,kind,generated.filename,generated.mime,
         {provider:"chatgpt",prompt,briefFingerprint:studioBriefFingerprint(p)}));
