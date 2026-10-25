@@ -46,6 +46,7 @@ Run `npm test` and `npm run check` before changes. For development, `npm run dev
 
 - Local responsive dashboard with artist, track, release, intelligence and compliance views.
 - Distinct artists with creative DNA, language, genre, target countries and voice profile.
+- Artist discographies with albums, EPs and singles, independent square covers, ordered songs and pinned recordings. See [Artist discography](docs/discography.md).
 - Persistent track workflow: `idea → brief → generated → review → approved`, plus rejection.
 - Versioned, copyable Suno **blueprints**, with explicit manual-generation mode until an authorized Suno API is verified.
 - Required per-track review of audio source, rights, provenance, originality and AI disclosures.

@@ -1,5 +1,6 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
+import { discographyView,discographyRefresh,discographyAction,bindDiscography } from "./discography.js";
 import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioConfigurePersistence,studioAutoSave,studioFlush,studioResumePersistence,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-partial-v1";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
@@ -50,6 +51,7 @@ async function refresh(){
   state.data.musicDnaJobCounts=dnaJobs.counts||null;
   state.data.studioReferences=dnaReferences.references;
   if(state.tab==="music-dna") await loadOpenJobs(false);
+  await discographyRefresh(state,api);
   render();studioResumePersistence();
 }
 function badge(value){return '<span class="pill '+(["needs_reconciliation","rejected"].includes(value)?"warning":value==="draft"?"neutral":"")+'">'+e(capitals(value))+"</span>";}
@@ -72,6 +74,7 @@ function overview(){
  '<div class="stack"><div><div class="metric-label">Music generation</div><strong>Manual Suno blueprint</strong></div><div><div class="metric-label">LabelGrid</div><strong>'+e(d.integrations.labelgrid)+'</strong></div><div><div class="metric-label">Live delivery</div><strong>'+e(d.integrations.liveDistributionEnabled?"Enabled with final confirmation":"Disabled by default")+'</strong></div><div><div class="metric-label">Legal watch holds</div><strong>'+e(d.summary.unresolvedChanges||0)+'</strong></div></div></section></div>';
 }
 function artists(){
+ const catalog=discographyView(state);if(catalog)return catalog;
  return header("Artists","Every artist has separate creative DNA, a style, language and target territories.")+
  '<div class="panel"><div class="panel-header"><h2>Create artist</h2><span class="small">Identity verification required before publishing</span></div><form id="artist-form" class="fields">'+
  '<div class="field"><label for="artist-name">Artist name</label><input id="artist-name" name="name" required maxlength="80" placeholder="e.g. Mira Solenne"></div>'+
@@ -97,6 +100,7 @@ function artists(){
        '<p>'+e(a.dna)+'</p>'+
        '<div class="tagrow">'+a.countries.map(c=>'<span class="tag">'+e(c)+'</span>').join("")+
          '<span class="tag">Name unverified</span></div>'+
+       '<div class="actions" style="margin-top:16px"><button type="button" class="primary" data-action="catalog-artist-open" data-artist-id="'+e(a.id)+'">Open discography</button></div>'+
        '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(a.id)+'">✦ Generate artist banner</button>'+
          '<details><summary>Custom photo prompt</summary><textarea id="artist-photo-prompt-'+e(a.id)+'" rows="2" placeholder="Optional: describe the location, clothing, light and artistic direction for a wide photo"></textarea></details></div>'+
        (images.length?
@@ -129,7 +133,7 @@ function tracks(){
  '<section class="panel"><div class="panel-header"><h2>Track pipeline</h2><span class="small">'+tracks.length+' entries</span></div>'+
  (tracks.length?'<div class="tablewrap"><table><thead><tr><th>Track</th><th>Artist</th><th>Mode</th><th>Stage</th><th>Actions</th></tr></thead><tbody>'+tracks.map(t=>{
  const a=artists.find(a=>a.id===t.artistId),next=nextStage[t.stage];
- return '<tr><td><strong>'+e(t.title)+'</strong><div class="small">'+e(t.concept.slice(0,90))+'</div></td><td>'+e(a?.name||"Unknown")+'</td><td>'+e(t.mode)+'</td><td>'+badge(t.stage)+'</td><td><div class="actions"><button class="secondary" data-action="blueprint" data-id="'+e(t.id)+'">Blueprint</button>'+(next?'<button class="primary" data-action="advance" data-id="'+e(t.id)+'" data-target="'+e(next)+'">'+e(next==="approved"?"Rights review ✓":"Move to "+capitals(next))+'</button>':"")+'</div></td></tr>';
+ return '<tr><td><strong>'+e(t.title)+'</strong><div class="small">'+e(t.concept.slice(0,90))+'</div></td><td>'+e(a?.name||"Unknown")+'</td><td>'+e(t.mode)+'</td><td>'+badge(t.stage)+'</td><td><div class="actions"><button class="secondary" data-action="blueprint" data-id="'+e(t.id)+'">Blueprint</button><button type="button" class="secondary" data-action="catalog-add-track" data-id="'+e(t.id)+'">Add to album</button>'+(next?'<button class="primary" data-action="advance" data-id="'+e(t.id)+'" data-target="'+e(next)+'">'+e(next==="approved"?"Rights review ✓":"Move to "+capitals(next))+'</button>':"")+'</div></td></tr>';
  }).join("")+'</tbody></table></div>':'<div class="empty">No tracks yet.</div>')+'</section>';
 }
 function releases(){
@@ -277,6 +281,7 @@ function showStudioReport(title,text){
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
+ if(act?.startsWith('catalog-')){await studioFlush();return discographyAction(el,state,api,refresh,message,render);}
  if(act==="studio-project-more"){
    const cursor=state.data.studioProjectPage?.nextCursor;if(!cursor)return;
    const page=await api("studio/projects/page?limit=150&cursor="+encodeURIComponent(cursor)+(state.projectQuery?"&q="+encodeURIComponent(state.projectQuery):""));
@@ -558,4 +563,5 @@ if(new URLSearchParams(location.search).get("spotify")==="connected"){
  state.tab="connections";history.replaceState(null,"","/");}
 studioConfigurePersistence(state,api,message);
 bindMusicDna(state,api,render,message);
+bindDiscography(state,api,refresh,message);
 refresh().catch(error=>{view.innerHTML='<div class="warning-banner">Could not load Blossom: '+e(error.message)+'. Check the server and credentials.</div>'});

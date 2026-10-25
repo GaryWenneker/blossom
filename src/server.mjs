@@ -7,6 +7,7 @@ import { ConnectedBrowsers, providerBrowserUrl } from "./browser-connections.mjs
 import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
 import { StudioAPI } from "./studio-api.mjs";
+import { DiscographyAPI } from "./discography-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
 import { MusicDnaChatGpt } from "./music-dna-chatgpt.mjs";
@@ -20,7 +21,7 @@ import { LabelGrid } from "./providers/labelgrid.mjs";
 import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "./domain.mjs";
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
-const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css",
+const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css","/discography.js":"discography.js","/discography.css":"discography.css",
  "/studio.js":"studio.js","/studio-persistence.js":"studio-persistence.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
@@ -81,6 +82,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const browserAccounts=connectedBrowsers||new ConnectedBrowsers({suno:sunoBrowser||undefined});
   const studioApi=new StudioAPI({store,vault,composer,localComposer,...(articleImporter?{articleImporter}:{}),draw,chatgptImages,
     sunoBrowser:sunoBrowser||browserAccounts.suno,sunoPlatform,sunoAudioFetcher,chatgptLyrics,nativeChatgptOptions:nativeBrowserOptions,assetDir});
+  const discographyApi=new DiscographyAPI(store,studioApi.studio,assetDir);
   const musicDna=new MusicDNA(store);
   const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
   const spotifyCatalog=new SpotifyCatalog(spotify,musicDna);
@@ -101,7 +103,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     res.setHeader("X-Content-Type-Options","nosniff");
     res.setHeader("X-Frame-Options","DENY");
     res.setHeader("Referrer-Policy","no-referrer");
-    res.setHeader("Content-Security-Policy","default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader("Content-Security-Policy","default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self' https:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     const parsedUrl=new URL(req.url||"/","http://localhost");
     const path=parsedUrl.pathname;
     const oauthPath=path.startsWith("/oauth/")||path.startsWith("/.well-known/oauth-");
@@ -255,6 +257,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         return reply(res,200,{...result,handoff:store.browserAccountStatus(providerName)});
       }
       if(!path.startsWith("/api/"))throw new DomainError("Not found",404);
+      if(path==="/api/albums"||path.startsWith("/api/albums/")||path.startsWith("/api/catalog/")){await discographyApi.handle(req,res,path,parsedUrl.searchParams);return;}
       if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path,parsedUrl.searchParams);return;}
       if(path.startsWith("/api/music-dna/")) {await musicDnaApi.handle(req,res,path,parsedUrl.searchParams);return;}
       const method=req.method;

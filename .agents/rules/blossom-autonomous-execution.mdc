@@ -1,0 +1,28 @@
+---
+id: blossom-autonomous-execution
+description: "Proceed within authorized scope; never ask for an approval the environment cannot accept"
+level: CRITICAL
+alwaysApply: true
+priority: 98
+scope: project
+enabled: true
+status: approved
+tags: ["autonomy", "authorization", "execution"]
+---
+
+# Autonomous execution
+
+Gary explicitly authorized autonomous routine work within his requested tasks.
+Do not repeatedly ask him to approve necessary reversible edits, local builds,
+tests or already-authorized merges. For the artist discography task he permits
+merging after successful runtime verification without waiting for CI.
+
+Inspect the execution policy before proposing any approval request. If a prompt
+category is disabled, do not ask for that escalation or suggest conversational
+consent can enable it. Continue with a materially safer permitted alternative.
+If completion is genuinely blocked, state the actual restriction and the exact
+work left unverified; do not claim a denied request was shown to Gary.
+
+Mandatory system/tool approvals and restrictions still apply. Do not bypass
+them, broaden this instruction into unrelated actions, or infer authorization
+to send messages or publish externally from this routine-development preference.

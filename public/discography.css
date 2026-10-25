@@ -1,0 +1,91 @@
+/* Discography uses Blossom's audio palette and a familiar record-library layout. */
+.catalog-workspace{max-width:1380px;margin:0 auto;padding:12px 18px 36px;color:var(--ink)}
+.catalog-workspace>button:first-child{margin-bottom:18px}
+.catalog-artist-hero{position:relative;min-height:300px;overflow:hidden;border-radius:12px;background:#25372d;isolation:isolate}
+.catalog-artist-hero>img,.catalog-artist-placeholder,.catalog-artist-shade{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 35%;z-index:-1}
+.catalog-artist-placeholder{display:grid;place-items:center;font-size:210px;font-weight:850;color:#759978;background:linear-gradient(125deg,#294337,#16201d)}
+.catalog-artist-shade{background:linear-gradient(0deg,#0d1413ed,transparent 100%)}
+.catalog-artist-heading{padding:95px 32px 28px;position:relative}
+.catalog-artist-heading h1{font-size:clamp(38px,5.7vw,76px);letter-spacing:-.055em;line-height:1.03;overflow-wrap:anywhere}
+.catalog-artist-heading p{color:#e0e8df;margin-bottom:0}
+.catalog-eyebrow{text-transform:uppercase;letter-spacing:1.8px;font-size:10px;font-weight:800;color:var(--lime)}
+.catalog-section-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:30px 0 16px;flex-wrap:wrap}
+.catalog-section-heading h2{font-size:23px;letter-spacing:-.6px;margin:0}
+.catalog-filters{display:flex;gap:8px;margin:0 0 20px;flex-wrap:wrap}
+.catalog-chip{border:1px solid var(--stroke);border-radius:50px;padding:8px 16px;background:#203029;color:#c9d6cb;font-size:12px}
+.catalog-chip[aria-pressed=true]{background:var(--ink);color:#112018;border-color:var(--ink)}
+.catalog-album-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:18px}
+.catalog-album-card{min-width:0;padding:12px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--ink);text-align:left;transition:background .15s}
+.catalog-album-card:hover{background:#213129}
+.catalog-album-card strong{display:block;margin-top:13px;font-size:14px;overflow-wrap:anywhere}
+.catalog-album-card small{display:block;margin-top:5px;color:var(--muted);font-size:11px}
+.catalog-cover{display:grid;place-items:center;aspect-ratio:1;min-width:0;overflow:hidden;border-radius:7px;background:linear-gradient(145deg,#395444,#1c2a23);box-shadow:0 10px 30px #0005}
+.catalog-cover>img{display:block;width:100%;height:100%;object-fit:cover}
+.catalog-cover>span{font-size:clamp(45px,6vw,80px);color:#a0b69d}
+.catalog-album-hero{display:grid;grid-template-columns:clamp(150px,20vw,240px) minmax(0,1fr);gap:28px;align-items:end;padding:28px;border-radius:12px;background:linear-gradient(140deg,#304b3e,#14221c)}
+.catalog-album-hero h1{font-size:clamp(30px,4.8vw,66px);line-height:1.05;letter-spacing:-.045em;overflow-wrap:anywhere}
+.catalog-album-hero p:not(.catalog-eyebrow){color:#c5d3c9;font-size:12px;margin:14px 0 22px}
+.catalog-cover-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:20px 0 25px}
+.catalog-upload{position:relative;display:inline-flex;align-items:center;overflow:hidden;cursor:pointer}
+.catalog-upload input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.catalog-song-row{display:grid;grid-template-columns:24px 42px minmax(130px,1fr) 180px 34px;align-items:center;gap:14px;padding:10px 12px;border-radius:6px;min-width:0}
+.catalog-track-row{display:grid;grid-template-columns:24px minmax(130px,1fr) 180px auto;align-items:center;gap:14px;padding:12px;border-bottom:1px solid var(--stroke);min-width:0}
+.catalog-track-row[draggable=true]{cursor:grab}
+.catalog-track-row:active{cursor:grabbing}
+.catalog-track-row:hover,.catalog-song-row:hover{background:#203029}
+.catalog-number{color:var(--muted);font-size:12px;text-align:center}
+.catalog-mini-cover{width:42px;box-shadow:none;border-radius:4px}
+.catalog-mini-cover>span{font-size:23px}
+.catalog-song-title{min-width:0;overflow-wrap:anywhere}
+.catalog-song-title strong{display:block;font-size:14px;font-weight:650}
+.catalog-song-title small{display:block;color:var(--muted);font-size:10px;margin-top:5px;line-height:1.4}
+.catalog-workspace audio{width:180px;height:30px;color-scheme:dark}
+.catalog-row-actions{display:flex;align-items:center;gap:5px}
+.catalog-round{width:32px;height:32px;display:inline-grid;place-items:center;flex-shrink:0;border:1px solid transparent;border-radius:50%;background:transparent;color:var(--ink);font-size:18px}
+.catalog-round:hover{border-color:var(--lime);background:#314736}
+.catalog-round:disabled{opacity:.3;cursor:default}
+.catalog-draft{font-size:11px;color:var(--muted)}
+.catalog-list-heading{display:grid;grid-template-columns:24px 1fr auto;gap:14px;padding:10px 12px;border-bottom:1px solid var(--stroke);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.4px}
+.catalog-empty{padding:36px 20px;text-align:center;border:1px dashed var(--stroke);border-radius:9px;color:var(--muted)}
+.catalog-empty h2,.catalog-empty h3{color:var(--ink)}
+.catalog-empty p,.catalog-note{font-size:12px;line-height:1.6;color:var(--muted)}
+.catalog-note{max-width:80ch;margin-top:18px}
+.catalog-dialog{max-width:680px;max-height:85dvh;overflow-y:auto;background:#16211b;border:1px solid var(--stroke)}
+.catalog-dialog::backdrop{background:#000b;backdrop-filter:blur(5px)}
+.catalog-form{display:grid;gap:18px;margin-top:22px}
+.catalog-form>label{display:grid;gap:8px}
+.catalog-picker-list{max-height:42dvh;overflow-y:auto;overscroll-behavior:contain}
+.catalog-picker-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,.9fr);align-items:center;gap:14px;padding:12px 4px;border-bottom:1px solid var(--stroke)}
+.catalog-picker-row[hidden]{display:none}
+.catalog-picker-row label{display:flex;align-items:center;gap:11px;min-width:0}
+.catalog-picker-row label span{min-width:0;overflow-wrap:anywhere}
+.catalog-picker-row small{display:block;font-size:10px;font-weight:400;color:var(--muted);margin-top:4px}
+#catalog-error{color:#f5bba1;font-size:12px;overflow-wrap:anywhere}
+.catalog-workspace button:focus-visible,.catalog-upload:focus-within{outline:2px solid var(--lime);outline-offset:3px}
+@media(max-width:1050px){
+ .catalog-track-row{grid-template-columns:24px minmax(0,1fr) auto}
+ .catalog-track-row audio,.catalog-track-row>.catalog-draft{grid-column:2;grid-row:2}
+ .catalog-row-actions{grid-column:3;grid-row:1 / span 2}
+}
+@media(max-width:600px){
+ .catalog-workspace{padding:4px 0 24px}
+ .catalog-artist-hero{min-height:235px}
+ .catalog-artist-heading{padding:100px 20px 24px}
+ .catalog-section-heading{margin-top:24px}
+ .catalog-album-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .catalog-album-card{padding:7px}
+ .catalog-album-hero{grid-template-columns:1fr;gap:20px;padding:22px;align-items:start}
+ .catalog-album-hero>.catalog-cover{width:min(200px,80%);justify-self:center}
+ .catalog-album-hero h1{font-size:32px}
+ .catalog-track-row{grid-template-columns:20px minmax(0,1fr);padding:13px 4px;gap:10px}
+ .catalog-row-actions{grid-column:2;grid-row:3;flex-wrap:wrap}
+ .catalog-song-row{grid-template-columns:18px 36px minmax(0,1fr) 30px;gap:8px;padding:12px 2px}
+ .catalog-song-row audio,.catalog-song-row>.catalog-draft{grid-column:3 / 5;grid-row:2}
+ .catalog-song-row>.catalog-round{grid-column:4;grid-row:1}
+ .catalog-mini-cover{width:36px}
+ .catalog-list-heading>span:last-child{display:none}
+ .catalog-picker-row{grid-template-columns:1fr;gap:10px}
+ .catalog-dialog{padding:18px}
+ .catalog-dialog .dialog-header strong{font-size:17px}
+}
+@media(prefers-reduced-motion:reduce){.catalog-album-card{transition:none}}
