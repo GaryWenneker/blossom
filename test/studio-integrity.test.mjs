@@ -227,3 +227,17 @@ test('legacy Suno jobs migrate before integrity initialization and survive resta
   new StudioStore(store);
   assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM studio_suno_takes WHERE job_id=?').get('legacy-job').n,1);
 });
+
+test('legacy takes and jobs upgrade together without losing recordings',t=>{
+  const store=new Store(':memory:');t.after(()=>store.close());
+  let studio=new StudioStore(store);const a=store.addArtist(artist),p=project(studio,a);
+  store.db.exec(`DROP TABLE studio_suno_takes; DROP TABLE studio_suno_jobs;
+    CREATE TABLE studio_suno_takes(job_id TEXT PRIMARY KEY,project_id TEXT,status TEXT,audio_url TEXT,imported_asset_id TEXT,created_at TEXT);
+    CREATE TABLE studio_suno_jobs(project_id TEXT PRIMARY KEY,job_id TEXT,status TEXT,audio_url TEXT,imported_asset_id TEXT,created_at TEXT,updated_at TEXT)`);
+  store.db.prepare('INSERT INTO studio_suno_takes VALUES(?,?,?,?,?,?)').run('old-take',p.id,'complete','https://example.invalid/take','take-asset','2026-01-01');
+  store.db.prepare('INSERT INTO studio_suno_jobs VALUES(?,?,?,?,?,?,?)').run(p.id,'old-job','complete','https://example.invalid/job','job-asset','2026-01-02','2026-01-03');
+  new StudioStore(store);new StudioStore(store);
+  const rows=store.db.prepare('SELECT * FROM studio_suno_takes ORDER BY job_id').all();
+  assert.equal(rows.length,2);assert.equal(rows[0].imported_asset_id,'job-asset');assert.equal(rows[1].imported_asset_id,'take-asset');
+  assert.equal(rows[1].submitted_at,'2026-01-01');assert.equal(rows[1].recipe,'{}');
+});
