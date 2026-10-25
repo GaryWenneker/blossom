@@ -17,6 +17,9 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  if(!chrome){if(process.env.BLOSSOM_REQUIRE_BROWSER==='true')assert.fail('Chromium required for runtime verification');return t.skip('Set CHROME_BIN for browser runtime verification');}
  const dir=mkdtempSync(join(tmpdir(),'blossom-album-browser-')),store=new Store(join(dir,'db')),studio=new StudioStore(store),catalog=new Discography(store,studio);
  const artist=store.addArtist({name:'Les Horizons',genre:'French alternative',language:'fr',voice:'mixed',dna:'Angular guitars and analogue synths'});
+ const artistPhotoName='33333333-3333-3333-3333-333333333333.png';
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC1cAAAAASUVORK5CYII=','base64');
+ writeFileSync(join(dir,artistPhotoName),png);studio.registerArtistPhoto(artist.id,{filename:artistPhotoName,mime:'image/png',provider:'upload'});
  const a=studio.save({title:'Première lumière',artistId:artist.id}),b=studio.save({title:'Après la pluie',artistId:artist.id});
  // A valid one-second silent WAV makes playback observable without a provider.
  const wav=Buffer.alloc(16044);wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(16000,40);
@@ -46,6 +49,17 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  await page.getByRole('button',{name:'Manage photos',exact:true}).click();
  assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),true);
  assert.ok(await page.getByRole('button',{name:/Generate artist banner/}).count());
+ await page.getByRole('button',{name:'Set focus point',exact:true}).click();
+ assert.equal(await page.locator('#artist-focus-dialog').evaluate(el=>el.open),true);
+ const focusFrame=await page.locator('.artist-focus-frame').boundingBox();
+ await page.mouse.move(focusFrame.x+focusFrame.width/2,focusFrame.y+focusFrame.height/2);
+ await page.mouse.down();await page.mouse.move(focusFrame.x+focusFrame.width/2,focusFrame.y+focusFrame.height/2-20,{steps:3});await page.mouse.up();
+ await page.getByRole('button',{name:'Save focus',exact:true}).click();
+ assert.equal(studio.artistImages(artist.id)[0].focusSource,'manual');
+ await page.getByRole('button',{name:'Set focus point',exact:true}).click();
+ await page.getByRole('button',{name:'Use automatic crop',exact:true}).click();
+ await page.getByRole('button',{name:'Save focus',exact:true}).click();
+ assert.equal(studio.artistImages(artist.id)[0].focusSource,'auto');assert.equal(studio.artistImages(artist.id)[0].focusY,0);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),false);
  await page.getByRole('searchbox',{name:'Search artists'}).fill('no matching artist');
  await page.getByText('No artists match your search.').waitFor();
@@ -64,7 +78,6 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  await page.waitForFunction(()=>!document.querySelector('#catalog-dialog').open);assert.equal(catalog.album(album.id).entries.find(e=>e.songId==='project:'+a.id).audioAssetId,other.id);
  studio.selectAsset(a.id,take.id,'audio');studio.deleteAsset(a.id,other.id);await page.reload();await page.locator('.catalog-track-row').nth(1).waitFor();
  const audio=page.locator('.catalog-track-row audio').first();await audio.evaluate(async el=>{await el.play();el.pause();});assert.equal(await audio.evaluate(el=>el.readyState>=2),true);
- const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC1cAAAAASUVORK5CYII=','base64');
  await page.locator('#catalog-cover-file').setInputFiles({name:'cover.png',mimeType:'image/png',buffer:png});await page.locator('.catalog-album-hero img').waitFor();
  assert.ok(catalog.album(album.id).coverUrl);
  if(shot){mkdirSync(shot,{recursive:true});await page.screenshot({path:join(shot,'album-desktop.png'),fullPage:true});}
