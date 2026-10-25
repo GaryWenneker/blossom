@@ -87,9 +87,14 @@ export class StudioStore {
        source_asset_id TEXT UNIQUE REFERENCES studio_assets(id),
        filename TEXT NOT NULL, mime TEXT NOT NULL, provider TEXT NOT NULL,
        prompt TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
-       selected INTEGER NOT NULL DEFAULT 0, deleted_at TEXT);
+       selected INTEGER NOT NULL DEFAULT 0, deleted_at TEXT,
+       focus_x INTEGER NOT NULL DEFAULT 50, focus_y INTEGER NOT NULL DEFAULT 0,
+       focus_source TEXT NOT NULL DEFAULT 'auto');
       CREATE UNIQUE INDEX IF NOT EXISTS studio_artist_image_active
         ON studio_artist_images(artist_id) WHERE selected=1 AND deleted_at IS NULL;`);
+    const artistImageColumns=new Set(this.db.prepare("PRAGMA table_info(studio_artist_images)").all().map(c=>c.name));
+    for(const [name,type] of Object.entries({focus_x:"INTEGER NOT NULL DEFAULT 50",focus_y:"INTEGER NOT NULL DEFAULT 0",focus_source:"TEXT NOT NULL DEFAULT 'auto'"}))
+      if(!artistImageColumns.has(name))this.db.exec("ALTER TABLE studio_artist_images ADD COLUMN "+name+" "+type);
     this.migrateArtistImages();
     this.db.exec(`CREATE TABLE IF NOT EXISTS studio_suno_jobs
       (project_id TEXT PRIMARY KEY REFERENCES studio_projects(id),
@@ -298,7 +303,8 @@ export class StudioStore {
   artistImages(artistId){
     if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
     return this.db.prepare(`SELECT id,artist_id AS artistId,source_asset_id AS sourceAssetId,
-      provider,prompt,created_at AS createdAt,selected
+      provider,prompt,created_at AS createdAt,selected,
+      focus_x AS focusX,focus_y AS focusY,focus_source AS focusSource
       FROM studio_artist_images WHERE artist_id=? AND deleted_at IS NULL
       ORDER BY created_at DESC,id DESC`).all(artistId).map(row=>({
       ...row,selected:!!row.selected,url:"/api/studio/artist-images/"+row.id+"/content"
@@ -383,12 +389,25 @@ export class StudioStore {
       return this.artistImages(artistId);
     });
   }
+  setArtistImageFocus(artistId,imageId,{focusX,focusY,source="manual"}={}){
+    if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
+    const image=this.artistImage(imageId);
+    if(!image||image.artist_id!==artistId)throw new DomainError("Artist photo not found for this artist",404);
+    if(!Number.isInteger(focusX)||focusX<0||focusX>100||!Number.isInteger(focusY)||focusY<0||focusY>100)
+      throw new DomainError("Focus point must use integer percentages from 0 to 100",400);
+    if(!["auto","manual"].includes(source))throw new DomainError("Invalid focus source",400);
+    this.db.prepare("UPDATE studio_artist_images SET focus_x=?,focus_y=?,focus_source=? WHERE id=?")
+      .run(focusX,focusY,source,imageId);
+    this.store.audit("artist_photo_focus_set","artist",artistId,{imageId,focusX,focusY,source});
+    return this.artistImages(artistId).find(item=>item.id===imageId);
+  }
   artistBanners(){
-    const rows=this.db.prepare(`SELECT id,artist_id AS artistId,created_at AS createdAt
+    const rows=this.db.prepare(`SELECT id,artist_id AS artistId,created_at AS createdAt,
+      focus_x AS focusX,focus_y AS focusY,focus_source AS focusSource
       FROM studio_artist_images WHERE selected=1 AND deleted_at IS NULL`).all();
     return Object.fromEntries(rows.map(row=>[
       row.artistId,{assetId:row.id,url:"/api/studio/artist-images/"+row.id+"/content",
-        createdAt:row.createdAt}
+        createdAt:row.createdAt,focusX:row.focusX,focusY:row.focusY,focusSource:row.focusSource}
     ]));
   }
   asset(id){return this.db.prepare("SELECT * FROM studio_assets WHERE id=? AND deleted_at IS NULL").get(id);}
