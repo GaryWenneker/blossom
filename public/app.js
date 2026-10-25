@@ -289,6 +289,7 @@ function openArtistPhotos(artistId){
     '<p class="artist-banner-hint">No photos yet. Generate one here or create an artist photo in News to Song with this artist selected.</p>');
  applyPhotoFocus(body);
  dialog.showModal();
+ dialog.querySelector('[data-action="artist-photos-close"]')?.focus();
 }
 function bindArtistFocusDrag(dialog){
  const frame=dialog.querySelector(".artist-focus-frame"),img=frame?.querySelector("img");
@@ -331,6 +332,7 @@ function openArtistFocus(button){
  const img=dialog.querySelector(".artist-focus-frame img");
  img.style.objectPosition=objectPosition(focus.focusX,focus.focusY);img.src=button.dataset.imageUrl;
  dialog.showModal();bindArtistFocusDrag(dialog);
+ dialog.querySelector('[data-action="artist-focus-cancel"]')?.focus();
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
