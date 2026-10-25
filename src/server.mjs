@@ -121,11 +121,13 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         return reply(res,403,{error:"Valid Cloudflare Access login required"});
     }
     if(gatewayHost && !publicUiEnabled){
-      if(req.method==="GET"&&(path==="/"||path==="/gateway.css")){
-        const file=path==="/gateway.css"?"gateway.css":"gateway.html";
+      const gatewayFiles={"/":["gateway.html","text/html; charset=utf-8"],
+        "/gateway.css":["gateway.css","text/css; charset=utf-8"],
+        "/blossom-mark.svg":["blossom-mark.svg","image/svg+xml"]};
+      if(req.method==="GET"&&gatewayFiles[path]){
+        const [file,type]=gatewayFiles[path];
         const content=await readFile(new URL("../public/"+file,import.meta.url));
-        res.writeHead(200,{"Content-Type":path==="/gateway.css"?"text/css; charset=utf-8":
-          "text/html; charset=utf-8","Cache-Control":"no-store"});
+        res.writeHead(200,{"Content-Type":type,"Cache-Control":"no-store"});
         res.end(content);return;
       }
       if(req.method==="GET"&&path==="/healthz")

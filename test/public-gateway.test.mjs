@@ -36,7 +36,12 @@ test("Public hostname serves only MCP gateway landing and status, not admin page
   const html=await home.text();
   assert.match(html,/Blossom is bereikbaar/);
   assert.match(html,/MCP- en OAuth-gateway/);
+  assert.match(html,/rel="icon" href="\/blossom-mark\.svg" type="image\/svg\+xml"/);
   assert.doesNotMatch(html,/<input[^>]*password/i);
+  const mark=await req("/blossom-mark.svg");
+  assert.equal(mark.status,200);
+  assert.match(mark.headers.get("content-type"),/image\/svg\+xml/);
+  assert.match(await mark.text(),/<svg/);
   const css=await req("/gateway.css");
   assert.equal(css.status,200);
   assert.match(css.headers.get("content-type"),/text\/css/);
@@ -61,7 +66,18 @@ test("Public hostname serves only MCP gateway landing and status, not admin page
   const local=await req("/","127.0.0.1:8787");
   assert.equal(local.status,303);
   assert.equal(local.headers.get("location"),"/login");
-  assert.equal((await req("/login","127.0.0.1:8787")).status,200);
+  const localLogin=await req("/login","127.0.0.1:8787");
+  assert.equal(localLogin.status,200);
+  assert.match(await localLogin.text(),/rel="icon" href="\/blossom-mark\.svg" type="image\/svg\+xml"/);
+  const localMark=await req("/blossom-mark.svg","127.0.0.1:8787");
+  assert.equal(localMark.status,200);
+  assert.match(localMark.headers.get("content-type"),/image\/svg\+xml/);
+});
+test("Browser tab uses the Blossom mark on every HTML page",async()=>{
+  for(const name of ["index.html","login.html","gateway.html"]){
+    const html=await readFile(new URL("../public/"+name,import.meta.url),"utf8");
+    assert.match(html,/<link rel="icon" href="\/blossom-mark\.svg" type="image\/svg\+xml">/);
+  }
 });
 test("Tunnel diagnostics distinguish local server, routing, DNS, Cloudflare, and connector",async()=>{
   let hints=diagnose({local:{ok:false},virtualHost:{ok:false},remote:{ok:false},
