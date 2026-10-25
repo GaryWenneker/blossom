@@ -16,6 +16,12 @@ test("player shell has the web player regions and does not embed the SDK", () =>
   assert.match(html, /class="sp-brand">Blossom</);
   assert.match(html, /href="#studio"/);
   assert.match(html, /href="#player\/collection\/tracks"/);
+  assert.ok(html.indexOf('class="sp-top"') < html.indexOf('class="sp-library"'));
+  assert.match(html, /data-player-action="previous"[^>]*>\s*<svg/);
+  assert.match(html, /data-player-action="shuffle"[^>]*>\s*<svg/);
+  assert.match(html, /class="sp-heart"/);
+  assert.match(html, /class="sp-bar-title"/);
+  assert.doesNotMatch(html, />Previous<|>Play<|>Next<|>Shuffle<|>Repeat</);
   assert.doesNotMatch(html, /sdk\.scdn\.co|accessToken|localStorage/);
   const index = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
   const playback = readFileSync(new URL("../public/player-playback.js", import.meta.url), "utf8");

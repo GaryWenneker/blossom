@@ -1,6 +1,6 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { mountPlayer, playerView, unmountPlayer, updatePlayerHash } from "./player.js";
+import { mountPlayer, playerView, unmountPlayer, updatePlayerHash } from "./player.js?v=spotify-chrome-2";
 import { discographyView,discographyRefresh,discographyAction,bindDiscography,openArtistRoster,uploadCover,catalogAlbum } from "./discography.js";
 import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioConfigurePersistence,studioAutoSave,studioFlush,studioResumePersistence,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-dna-suno-v1";
 import { focusFromDrag,objectPosition,savedFocus,applyPhotoFocus } from "./artist-focus.js";

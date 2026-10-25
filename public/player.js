@@ -57,26 +57,40 @@ function more(href, nextOffset) {
   return nextOffset == null ? "" : `<a class="sp-more" href="${esc(href)}?offset=${nextOffset}">Show more</a>`;
 }
 
+function glyph(name, body) {
+  return `<svg class="sp-glyph sp-glyph-${name}" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`;
+}
+
+const ICON_HOME = glyph("home", `<path fill="currentColor" d="M8 1.4 1.2 7h1.6v7.2h4.2V9.2h2v5h4.2V7h1.6z"/>`);
+const ICON_PREV = glyph("prev", `<path fill="currentColor" d="M3 2.2h1.8v11.6H3zm10.2 0L6.2 8l7 5.8z"/>`);
+const ICON_NEXT = glyph("next", `<path fill="currentColor" d="M11.2 2.2H13v11.6h-1.8zM2.8 2.2 9.8 8l-7 5.8z"/>`);
+const ICON_PLAY = glyph("play", `<path fill="currentColor" d="M4.2 2.4v11.2L13.2 8z"/>`);
+const ICON_PAUSE = glyph("pause", `<path fill="currentColor" d="M3.2 2.4h3.2v11.2H3.2zm6.4 0h3.2v11.2H9.6z"/>`);
+const ICON_SHUFFLE = glyph("shuffle", `<path fill="currentColor" d="M11.2 3.2H13l-1.6 1.6.1.2h-.7L8.2 8.2l.8.8 2.2-2.6h.2L13 8.2V6.6h-1.8V3.2zM2.4 3.6h2.1l2 2.5-.8.8-1.7-2.1H2.4zm6.6 6.2.8.8 1.4-1.6h.2v1.6H13l-1.6 1.6H9.6v-1.6h-.2zM2.4 12.4h2.2l4.2-5.2-.8-.8z"/>`);
+const ICON_REPEAT = glyph("repeat", `<path fill="currentColor" d="M3.2 5.2h7.2V3.4L13.2 6 10.4 8.6V6.8H4.2v2.6H3.2zm9.6 5.6H5.6v1.8L2.8 10l2.8-2.6v1.8h6.2V6.6h1z"/>`);
+const ICON_HEART = `<svg class="sp-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="#fff" d="M8 13.2S3.2 9.8 3.2 6.8C3.2 5 4.6 3.8 6 3.8c.8 0 1.5.4 2 1.1.5-.7 1.2-1.1 2-1.1 1.4 0 2.8 1.2 2.8 3 0 3-4.8 6.4-4.8 6.4z"/></svg>`;
+
 export function playerView() {
   return `<div class="sp">
+    <header class="sp-top">
+      <strong class="sp-brand">Blossom</strong>
+      <a class="sp-home" href="#player" aria-label="Home">${ICON_HOME}</a>
+      <form class="sp-search" role="search">
+        <input name="q" type="search" maxlength="100" placeholder="What do you want to play?" aria-label="What do you want to play?">
+      </form>
+      <a class="sp-back" href="#studio">Studio</a>
+    </header>
     <aside class="sp-library" aria-label="Library">
-      <div class="sp-library-head"><strong class="sp-brand">Blossom</strong></div>
+      <div class="sp-library-head"><span>Library</span></div>
       <div class="sp-filters" role="group" aria-label="Library filters">
         <button type="button" data-player-action="library" data-kind="playlists" aria-pressed="true">Playlists</button>
         <button type="button" data-player-action="library" data-kind="artists" aria-pressed="false">Artists</button>
         <button type="button" data-player-action="library" data-kind="albums" aria-pressed="false">Albums</button>
       </div>
-      <a class="sp-pin" href="#player/collection/tracks">Liked Songs</a>
+      <a class="sp-pin" href="#player/collection/tracks"><span class="sp-heart" aria-hidden="true">${ICON_HEART}</span><span>Liked Songs</span></a>
       <div class="sp-library-list"></div>
     </aside>
     <section class="sp-main">
-      <header class="sp-top">
-        <a class="sp-home" href="#player" aria-label="Home">Home</a>
-        <form class="sp-search" role="search">
-          <input name="q" type="search" maxlength="100" placeholder="What do you want to play?" aria-label="What do you want to play?">
-        </form>
-        <a class="sp-back" href="#studio">Studio</a>
-      </header>
       <p class="sp-notice" role="status" hidden></p>
       <div class="sp-center"></div>
     </section>
@@ -86,19 +100,28 @@ export function playerView() {
       <p class="sp-now-artist"></p>
     </aside>
     <footer class="sp-bar" aria-label="Playback">
-      <div class="sp-transport">
-        <button type="button" data-player-action="previous" aria-label="Previous">Previous</button>
-        <button type="button" class="sp-play" data-player-action="toggle" aria-label="Play">Play</button>
-        <button type="button" data-player-action="next" aria-label="Next">Next</button>
+      <div class="sp-bar-now">
+        <img class="sp-bar-art" alt="" hidden>
+        <div class="sp-bar-copy">
+          <p class="sp-bar-title">Nothing playing</p>
+          <p class="sp-bar-artist"></p>
+        </div>
       </div>
-      <div class="sp-progress">
-        <span class="sp-time" data-role="position">0:00</span>
-        <input class="sp-seek" data-player-action="seek" type="range" min="0" max="0" value="0" aria-label="Seek">
-        <span class="sp-time" data-role="duration">0:00</span>
+      <div class="sp-bar-center">
+        <div class="sp-transport">
+          <button type="button" data-player-action="shuffle" aria-pressed="false" aria-label="Shuffle">${ICON_SHUFFLE}</button>
+          <button type="button" data-player-action="previous" aria-label="Previous">${ICON_PREV}</button>
+          <button type="button" class="sp-play" data-player-action="toggle" data-playing="false" aria-label="Play">${ICON_PLAY}${ICON_PAUSE}</button>
+          <button type="button" data-player-action="next" aria-label="Next">${ICON_NEXT}</button>
+          <button type="button" data-player-action="repeat" data-repeat="off" aria-pressed="false" aria-label="Repeat">${ICON_REPEAT}</button>
+        </div>
+        <div class="sp-progress">
+          <span class="sp-time" data-role="position">0:00</span>
+          <input class="sp-seek" data-player-action="seek" type="range" min="0" max="0" value="0" aria-label="Seek">
+          <span class="sp-time" data-role="duration">0:00</span>
+        </div>
       </div>
       <div class="sp-extra">
-        <button type="button" data-player-action="shuffle" aria-pressed="false" aria-label="Shuffle">Shuffle</button>
-        <button type="button" data-player-action="repeat" data-repeat="off" aria-pressed="false" aria-label="Repeat">Repeat</button>
         <input class="sp-volume" data-player-action="volume" type="range" min="0" max="100" value="80" aria-label="Volume">
       </div>
     </footer>
@@ -167,10 +190,10 @@ export function libraryList(data) {
   if (!items.length) return `<p class="sp-empty">Nothing saved here.</p>`;
   return items.map(item => {
     if (data.kind === "artists")
-      return `<a href="#player/artist/${esc(item.id)}">${art(item.imageUrl, item.name, "sp-mini")}<span>${esc(item.name)}</span></a>`;
+      return `<a class="sp-artist" href="#player/artist/${esc(item.id)}">${art(item.imageUrl, item.name, "sp-mini")}<span class="sp-lib-copy"><span>${esc(item.name)}</span></span></a>`;
     if (data.kind === "albums")
-      return `<a href="#player/album/${esc(item.id)}">${art(item.imageUrl, item.title, "sp-mini")}<span>${esc(item.title)}</span><small>${esc(item.artist)}</small></a>`;
-    return `<a href="#player/playlist/${esc(item.id)}">${art(item.imageUrl, item.title, "sp-mini")}<span>${esc(item.title)}</span></a>`;
+      return `<a href="#player/album/${esc(item.id)}">${art(item.imageUrl, item.title, "sp-mini")}<span class="sp-lib-copy"><span>${esc(item.title)}</span><small>${esc(item.artist)}</small></span></a>`;
+    return `<a href="#player/playlist/${esc(item.id)}">${art(item.imageUrl, item.title, "sp-mini")}<span class="sp-lib-copy"><span>${esc(item.title)}</span></span></a>`;
   }).join("");
 }
 
@@ -195,6 +218,8 @@ export function unmountPlayer() {
 function paintNotice(root, text) {
   const note = root.querySelector(".sp-notice");
   if (!note) return;
+  const center = root.querySelector(".sp-center");
+  if (text && text.includes("cannot play in Blossom") && center?.textContent.includes("cannot play in Blossom")) return;
   note.textContent = text || "";
   note.hidden = !text;
 }
@@ -208,9 +233,18 @@ function paintTransport(root, state) {
   const image = root.querySelector(".sp-now-art");
   if (view.imageUrl) { image.src = view.imageUrl; image.hidden = false; image.alt = view.title || ""; }
   else { image.removeAttribute("src"); image.hidden = true; image.alt = ""; }
+  const barTitle = root.querySelector(".sp-bar-title");
+  const barArtist = root.querySelector(".sp-bar-artist");
+  if (barTitle) barTitle.textContent = view.title || "Nothing playing";
+  if (barArtist) barArtist.textContent = view.artist || "";
+  const barImage = root.querySelector(".sp-bar-art");
+  if (barImage) {
+    if (view.imageUrl) { barImage.src = view.imageUrl; barImage.hidden = false; barImage.alt = ""; }
+    else { barImage.removeAttribute("src"); barImage.hidden = true; barImage.alt = ""; }
+  }
   const toggle = root.querySelector("[data-player-action=toggle]");
   const playing = view.paused === false;
-  toggle.textContent = playing ? "Pause" : "Play";
+  toggle.dataset.playing = playing ? "true" : "false";
   toggle.setAttribute("aria-label", playing ? "Pause" : "Play");
   root.querySelector("[data-role=position]").textContent = formatClock(view.position);
   root.querySelector("[data-role=duration]").textContent = formatClock(view.duration);
@@ -223,7 +257,7 @@ function paintTransport(root, state) {
   const repeat = root.querySelector("[data-player-action=repeat]");
   repeat.dataset.repeat = view.repeat || "off";
   repeat.setAttribute("aria-pressed", String(!!view.repeat && view.repeat !== "off"));
-  repeat.textContent = !view.repeat || view.repeat === "off" ? "Repeat" : "Repeat " + view.repeat;
+  repeat.setAttribute("aria-label", !view.repeat || view.repeat === "off" ? "Repeat" : "Repeat " + view.repeat);
 }
 
 function ensureClock(root) {
@@ -255,6 +289,10 @@ async function showRoute(root, api, hash) {
     center.innerHTML = await renderRoute(route, api);
   } catch (error) {
     center.innerHTML = playerMessage(error.message || "Player request failed", error.status === 409);
+  }
+  if (center.textContent.includes("cannot play in Blossom")) {
+    const note = root.querySelector(".sp-notice");
+    if (note) { note.textContent = ""; note.hidden = true; }
   }
 }
 
@@ -367,7 +405,14 @@ export async function mountPlayer({ api, hash }) {
     });
     root.addEventListener("submit", onSearch);
     root.addEventListener("input", onInput);
-    loadLibrary(root, api).catch(error => paintNotice(root, error.message));
+    loadLibrary(root, api).catch(error => {
+      if (error.status === 409) {
+        const list = root.querySelector(".sp-library-list");
+        if (list) list.innerHTML = `<p class="sp-empty">Reconnect to load your library.</p>`;
+        return;
+      }
+      paintNotice(root, error.message);
+    });
     ensurePlayback(root, api);
   }
   await showRoute(root, api, hash);
