@@ -196,7 +196,7 @@ export class StudioAPI{
       const prompt=String(data?.prompt||(
         "Wide cinematic artist publicity photograph for a fictional "+artist.genre+
         " musician or group, "+artist.name+". Artistic identity: "+artist.dna+
-        ". Professional editorial band photo; 16:9 landscape with negative space at bottom left."
+        ". Professional editorial band photo; 16:9 landscape with negative space at bottom left. Keep every face and the top of each head inside the upper-middle safe area; compose faces around the upper third so the image still reads in a very wide artist-page header crop."
       )).trim();
       if(prompt.length<10||prompt.length>4000)
         throw new DomainError("Artist photo prompt must be 10–4000 characters",400);
@@ -210,11 +210,12 @@ export class StudioAPI{
         filename:generated.filename,mime:generated.mime,provider:"chatgpt",prompt
       }));
     }
-    const artistMediaAction=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/images\/([a-f0-9-]{36})\/(select|delete)$/);
-    if(artistMediaAction)
-      return send(res,200,artistMediaAction[3]==="select"?
-        this.studio.selectArtistImage(artistMediaAction[1],artistMediaAction[2]):
-        this.studio.deleteArtistImage(artistMediaAction[1],artistMediaAction[2]));
+    const artistMediaAction=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/images\/([a-f0-9-]{36})\/(select|delete|focus)$/);
+    if(artistMediaAction){
+      if(artistMediaAction[3]==="select")return send(res,200,this.studio.selectArtistImage(artistMediaAction[1],artistMediaAction[2]));
+      if(artistMediaAction[3]==="delete")return send(res,200,this.studio.deleteArtistImage(artistMediaAction[1],artistMediaAction[2]));
+      return send(res,200,this.studio.setArtistImageFocus(artistMediaAction[1],artistMediaAction[2],data));
+    }
     const assetAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/assets\/([a-f0-9-]{36})\/(select|delete)$/);
     if(assetAction){
       const [,projectId,assetId,action]=assetAction;
