@@ -49,8 +49,13 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  await page.getByRole('button',{name:'Manage photos',exact:true}).click();
  assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),true);
  assert.ok(await page.getByRole('button',{name:/Generate artist banner/}).count());
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),false);
+ await page.getByRole('button',{name:'Manage photos',exact:true}).click();
  await page.getByRole('button',{name:'Set focus point',exact:true}).click();
  assert.equal(await page.locator('#artist-focus-dialog').evaluate(el=>el.open),true);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#artist-focus-dialog').evaluate(el=>el.open),false);
+ assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),true);
+ await page.getByRole('button',{name:'Set focus point',exact:true}).click();
  const focusFrame=await page.locator('.artist-focus-frame').boundingBox();
  await page.mouse.move(focusFrame.x+focusFrame.width/2,focusFrame.y+focusFrame.height/2);
  await page.mouse.down();await page.mouse.move(focusFrame.x+focusFrame.width/2,focusFrame.y+focusFrame.height/2-20,{steps:3});await page.mouse.up();
