@@ -2,6 +2,7 @@ import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaR
 import { pageFromHash, routeFromClick } from "./route.js";
 import { discographyView,discographyRefresh,discographyAction,bindDiscography } from "./discography.js";
 import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioConfigurePersistence,studioAutoSave,studioFlush,studioResumePersistence,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-partial-v1";
+import { focusFromDrag,objectPosition,savedFocus,applyPhotoFocus } from "./artist-focus.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
@@ -86,12 +87,14 @@ function artists(){
   '<div class="field full"><label for="artist-dna">Artist DNA</label><textarea id="artist-dna" name="dna" rows="4" required placeholder="Signature instruments, arrangement, sound, lyrical topics and things to avoid"></textarea></div>'+
   '<div class="field full actions"><button class="primary">Create artist</button><button type="button" class="secondary" data-action="artist-create-close">Cancel</button></div></form></dialog>';
  const photosDialog='<dialog id="artist-photos-dialog" aria-labelledby="artist-photos-title"><div class="dialog-header"><strong id="artist-photos-title">Artist photos</strong><button type="button" class="icon-button" data-action="artist-photos-close" aria-label="Close">×</button></div><div id="artist-photos-body"></div></dialog>';
+ const focusDialog='<dialog id="artist-focus-dialog" aria-labelledby="artist-focus-title"><div class="dialog-header"><strong id="artist-focus-title">Set header focus</strong><button type="button" class="icon-button" data-action="artist-focus-cancel" aria-label="Close">×</button></div><p class="small">Drag the image to keep faces and the subject inside the wide artist header.</p><div class="artist-focus-frame"><img alt="Artist header crop preview" draggable="false"></div><div class="actions artist-focus-actions"><button type="button" class="secondary" data-action="artist-focus-auto">Use automatic crop</button><button type="button" class="primary" data-action="artist-focus-save">Save focus</button><button type="button" class="secondary" data-action="artist-focus-cancel">Cancel</button></div></dialog>';
  const roster=state.data.artists.length?'<div class="artist-grid artist-banner-grid">'+state.data.artists.map(a=>{
    const banner=state.data.artistBanners?.[a.id];
+   const focus=savedFocus(banner);
    const searchable=[a.name,a.genre,a.language,a.dna,...(a.countries||[])].join(" ").toLowerCase();
    return '<article class="artist-card artist-banner-card" data-artist-id="'+e(a.id)+'" data-search="'+e(searchable)+'">'+
      '<div class="artist-hero">'+
-       (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" loading="lazy">':
+       (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" data-photo-focus data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'" loading="lazy">':
         '<div class="artist-hero-placeholder" aria-hidden="true">'+e(a.name.slice(0,1))+'</div>')+
        '<div class="artist-hero-shade" aria-hidden="true"></div>'+
        '<div class="artist-hero-content"><h3>'+e(a.name)+'</h3><span class="artist-hero-genre">'+e(a.genre)+'</span></div>'+
@@ -103,7 +106,7 @@ function artists(){
      '</div></article>';
  }).join("")+'</div>':'<div class="empty">No artists yet. Create your first artist to start the roster.</div>';
  return header("Artists","Every artist has separate creative DNA, a style, language and target territories.",'<button type="button" class="primary" data-action="artist-create-open" aria-haspopup="dialog">＋ New artist</button>')+
- createDialog+photosDialog+'<div class="artist-roster-heading"><h2>Roster <span class="small">('+state.data.artists.length+')</span></h2><input id="artist-search" type="search" aria-label="Search artists" placeholder="Search artists" autocomplete="off"></div>'+roster+'<p id="artist-search-empty" class="empty" hidden>No artists match your search.</p>';
+ createDialog+photosDialog+focusDialog+'<div class="artist-roster-heading"><h2>Roster <span class="small">('+state.data.artists.length+')</span></h2><input id="artist-search" type="search" aria-label="Search artists" placeholder="Search artists" autocomplete="off"></div>'+roster+'<p id="artist-search-empty" class="empty" hidden>No artists match your search.</p>';
 }
 function tracks(){
  const artists=state.data.artists,tracks=state.data.tracks;
@@ -256,6 +259,7 @@ function render(){
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
  view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
+ applyPhotoFocus(view);
  musicDnaChrome(state);
  watchOpenJobs();
 }
@@ -270,17 +274,65 @@ function openArtistPhotos(artistId){
  const images=state.data.artistImages?.[artistId]||[];
  const body=document.getElementById("artist-photos-body"),dialog=document.getElementById("artist-photos-dialog");
  if(!body||!dialog)return;
- document.getElementById("artist-photos-title").textContent=artist.name+" · photos";
+ document.getElementById("artist-photos-title").textContent="Photos — "+artist.name;
  body.innerHTML='<p class="small">Generate and choose a wide photo for '+e(artist.name)+'.</p>'+
   '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(artistId)+'">✦ Generate artist banner</button><label class="artist-photo-prompt-label" for="artist-photo-prompt-'+e(artistId)+'">Custom photo prompt <span class="small">(optional)</span></label><textarea id="artist-photo-prompt-'+e(artistId)+'" rows="2" placeholder="Describe the location, clothing, light and artistic direction"></textarea></div>'+
-  (images.length?'<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div><div class="artist-media-list">'+images.map(image=>
-    '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
+  (images.length?'<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div><div class="artist-media-list">'+images.map(image=>{
+    const focus=savedFocus(image);
+    return '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
     ' data-action="artist-image-select" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'"'+
     ' title="'+e(image.selected?'Active artist background':'Use as artist background')+'" aria-pressed="'+(image.selected?'true':'false')+'" '+(image.selected?'disabled':'')+'>'+
-    '<img src="'+e(image.url)+'" alt="Artist background option for '+e(artist.name)+'" loading="lazy"><span>'+e(image.selected?'Current background':'Use background')+'</span></button>'+
-    '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'" aria-label="Remove photo from '+e(artist.name)+'">Remove</button></div>').join("")+'</div></div>':
+    '<img src="'+e(image.url)+'" alt="Artist background option for '+e(artist.name)+'" data-photo-focus data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'" loading="lazy"><span>'+e(image.selected?'Current background':'Use background')+'</span></button>'+
+    '<div class="artist-photo-option-actions"><button type="button" class="secondary mini" data-action="artist-focus-open" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'" data-image-url="'+e(image.url)+'" data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'" data-focus-source="'+e(image.focusSource||'auto')+'">Set focus point</button>'+
+    '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'" aria-label="Remove photo from '+e(artist.name)+'">Remove</button></div><span class="artist-focus-state">'+(image.focusSource==='manual'?'Manually adjusted':'Automatic safe crop')+' · '+focus.focusX+'% / '+focus.focusY+'%</span></div>';
+   }).join("")+'</div></div>':
     '<p class="artist-banner-hint">No photos yet. Generate one here or create an artist photo in News to Song with this artist selected.</p>');
+ applyPhotoFocus(body);
  dialog.showModal();
+ dialog.querySelector('[data-action="artist-photos-close"]')?.focus();
+}
+function bindArtistFocusDrag(dialog){
+ const frame=dialog.querySelector(".artist-focus-frame"),img=frame?.querySelector("img");
+ if(!frame||!img||frame.dataset.dragBound)return;
+ frame.dataset.dragBound="1";
+ let drag=null;
+ const geometry=()=>({containerWidth:frame.clientWidth,containerHeight:frame.clientHeight,naturalWidth:img.naturalWidth,naturalHeight:img.naturalHeight});
+ frame.addEventListener("pointerdown",event=>{
+  if(event.button!==undefined&&event.button!==0)return;
+  if(!img.naturalWidth)return;
+  event.preventDefault();
+  drag={x:event.clientX,y:event.clientY,focusX:Number(dialog.dataset.focusX),focusY:Number(dialog.dataset.focusY),pointerId:event.pointerId};
+  frame.classList.add("is-dragging");
+  try{frame.setPointerCapture(event.pointerId)}catch{/* pointer capture may already be gone */}
+ });
+ frame.addEventListener("pointermove",event=>{
+  if(!drag||event.pointerId!==drag.pointerId)return;
+  event.preventDefault();
+  const next=focusFromDrag({...geometry(),focusX:drag.focusX,focusY:drag.focusY,dx:event.clientX-drag.x,dy:event.clientY-drag.y,round:false});
+  img.style.objectPosition=objectPosition(next.focusX,next.focusY);
+ });
+ const finish=event=>{
+  if(!drag||event.pointerId!==drag.pointerId)return;
+  if(event.type==="pointerup"){
+   const next=focusFromDrag({...geometry(),focusX:drag.focusX,focusY:drag.focusY,dx:event.clientX-drag.x,dy:event.clientY-drag.y});
+   dialog.dataset.focusX=String(next.focusX);dialog.dataset.focusY=String(next.focusY);dialog.dataset.focusSource="manual";
+   img.style.objectPosition=objectPosition(next.focusX,next.focusY);
+  }else img.style.objectPosition=objectPosition(drag.focusX,drag.focusY);
+  frame.classList.remove("is-dragging");drag=null;
+ };
+ frame.addEventListener("pointerup",finish);frame.addEventListener("pointercancel",finish);
+}
+function openArtistFocus(button){
+ const dialog=document.getElementById("artist-focus-dialog");
+ if(!dialog)return;
+ const focus=savedFocus({focusX:Number(button.dataset.focusX),focusY:Number(button.dataset.focusY)});
+ dialog.dataset.artistId=button.dataset.artistId;dialog.dataset.imageId=button.dataset.imageId;
+ dialog.dataset.focusX=String(focus.focusX);dialog.dataset.focusY=String(focus.focusY);
+ dialog.dataset.focusSource=button.dataset.focusSource||"auto";
+ const img=dialog.querySelector(".artist-focus-frame img");
+ img.style.objectPosition=objectPosition(focus.focusX,focus.focusY);img.src=button.dataset.imageUrl;
+ dialog.showModal();bindArtistFocusDrag(dialog);
+ dialog.querySelector('[data-action="artist-focus-cancel"]')?.focus();
 }
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
@@ -295,6 +347,21 @@ async function action(el){
  if(act==="artist-create-close"){document.getElementById("artist-create-dialog")?.close();return;}
  if(act==="artist-photos-open"){openArtistPhotos(el.dataset.artistId);return;}
  if(act==="artist-photos-close"){document.getElementById("artist-photos-dialog")?.close();return;}
+ if(act==="artist-focus-open"){openArtistFocus(el);return;}
+ if(act==="artist-focus-cancel"){document.getElementById("artist-focus-dialog")?.close();return;}
+ if(act==="artist-focus-auto"){
+  const dialog=document.getElementById("artist-focus-dialog"),img=dialog?.querySelector(".artist-focus-frame img");
+  if(dialog){dialog.dataset.focusX="50";dialog.dataset.focusY="0";dialog.dataset.focusSource="auto";if(img)img.style.objectPosition=objectPosition(50,0);}
+  return;
+ }
+ if(act==="artist-focus-save"){
+  const dialog=document.getElementById("artist-focus-dialog");
+  const artistId=dialog.dataset.artistId;
+  await api("studio/artists/"+artistId+"/images/"+dialog.dataset.imageId+"/focus",{
+   focusX:Number(dialog.dataset.focusX),focusY:Number(dialog.dataset.focusY),source:dialog.dataset.focusSource||"manual"
+  });
+  dialog.close();await refresh();openArtistPhotos(artistId);message("Artist header focus saved");return;
+ }
  if(act==="studio-project-more"){
    const cursor=state.data.studioProjectPage?.nextCursor;if(!cursor)return;
    const page=await api("studio/projects/page?limit=150&cursor="+encodeURIComponent(cursor)+(state.projectQuery?"&q="+encodeURIComponent(state.projectQuery):""));

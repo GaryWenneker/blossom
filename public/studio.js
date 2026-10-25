@@ -1,4 +1,5 @@
 import {StudioPersistence,projectChanges,mergeEdits,readDraft} from "./studio-persistence.js";
+import {savedFocus} from "./artist-focus.js";
 export const STUDIO_ASSET_VERSION="chatgpt-assets-v2";
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const presetNames={radio:"Radio edit",streaming:"Streaming",focus:"Focus",ambient:"Ambient",custom:"Custom"};
@@ -131,6 +132,8 @@ const panels=(p,assets,state)=>{
  const referenceOptions=(state.data.musicDnaProfiles||[]).filter(x=>x.analysisVersion>0);
  const projectReferences=state.data.studioReferences||[];
  const image=assets.find(a=>a.kind==="cover"&&a.selected),photo=assets.find(a=>a.kind==="artist-photo"&&a.selected)||state.data.artistBanners?.[p?.artistId];
+ const linkedPhoto=(state.data.artistImages?.[p?.artistId]||[]).find(item=>item.sourceAssetId===photo?.id||item.id===photo?.assetId||item.selected);
+ const photoFocus=savedFocus(linkedPhoto||photo);
  const artistName=(state.data.artists||[]).find(a=>a.id===p?.artistId)?.name||"Artist";
  const automaticLabel="✦ Generate with ChatGPT";
  const projectOptions=(state.data.studioProjects||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===p?.id?"selected":"")+'>'+esc(((state.data.artists||[]).find(a=>a.id===x.artistId)?.name||'No artist')+' · '+x.title+' · '+x.id.slice(0,8))+'</option>').join("");
@@ -206,7 +209,7 @@ const panels=(p,assets,state)=>{
  field("Wide artist banner prompt (16:9)",'<textarea id="studio-photo-prompt" rows="2" placeholder="Photorealistic cinematic 16:9 wide artist or band banner, room for name overlay...">'+esc(photoPrompt)+'</textarea>')+
  '<button class="secondary mini" data-action="studio-brief-photo-prompt">Use song brief prompt</button>'+
  '<button class="secondary wide" data-action="studio-photo">Generate wide artist cover with ChatGPT</button>'+
- (photo?'<div class="studio-photo-thumb"><div class="studio-photo-banner"><img src="'+esc(photo.url)+'" alt="Wide artist cover for '+esc(artistName)+'" loading="lazy"><strong>'+esc(artistName)+'</strong></div><span class="studio-photo-caption">Wide artist banner · selected</span><button type="button" class="secondary mini" data-tab="artists">View full-width in Artists →</button></div>':'<p class="studio-hint">Artist photos generate as wide landscape banners. Choose an artist and link the selected photo to display it on the Artists page.</p>')+
+ (photo?'<div class="studio-photo-thumb"><div class="studio-photo-banner"><img src="'+esc(photo.url)+'" alt="Wide artist cover for '+esc(artistName)+'" data-photo-focus data-focus-x="'+photoFocus.focusX+'" data-focus-y="'+photoFocus.focusY+'" loading="lazy"><strong>'+esc(artistName)+'</strong></div><span class="studio-photo-caption">Wide artist banner · selected</span><button type="button" class="secondary mini" data-tab="artists">View full-width in Artists →</button></div>':'<p class="studio-hint">Artist photos generate as wide landscape banners. Choose an artist and link the selected photo to display it on the Artists page.</p>')+
  '</section></div>'+
  '<section id="studio-step-5" class="studio-panel studio-release" tabindex="-1" aria-label="Release in Suno">'+
  '<div class="studio-panel-head"><h2>05 <span>Release · Generate in Suno</span></h2><span class="studio-mini-tag">'+

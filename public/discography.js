@@ -1,3 +1,4 @@
+import { savedFocus } from "./artist-focus.js";
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kindName=kind=>({album:'Album',ep:'EP',single:'Single'}[kind]||kind);
 let dialogContext={},dragged='';
@@ -30,7 +31,7 @@ function albumRows(album){return album.entries.map((entry,i)=>'<div class="catal
 export function discographyView(state){
  const d=library(state);if(!d.artistId)return null;
  const artist=state.data.artists.find(a=>a.id===d.artistId);if(!artist)return null;
- const banner=state.data.artistBanners?.[artist.id],album=d.album;
+ const banner=state.data.artistBanners?.[artist.id],focus=savedFocus(banner),album=d.album;
  const nav=button(album?'artist':'roster',album?'← Back to artist':'← All artists','aria-label="'+(album?'Back to artist':'All artists')+'"');
  if(album)return '<section class="catalog-workspace">'+nav+
   '<header class="catalog-album-hero">'+cover(album.coverUrl,album.title)+
@@ -40,10 +41,11 @@ export function discographyView(state){
   (album.entries.length?albumRows(album):'<div class="catalog-empty"><h2>Your album starts here</h2><p>Add existing songs, then arrange the track list. Draft songs are welcome.</p>'+button('add','Add songs','', 'primary')+'</div>')+
   '</div><p class="catalog-note">Drag songs to reorder, or use the arrow buttons. Album recordings stay fixed until you change them here. Removing a song keeps its project and audio.</p></section>';
  const filtered=d.albums.filter(a=>d.filter==='all'||a.kind===d.filter);
- return '<section class="catalog-workspace">'+nav+'<header class="catalog-artist-hero">'+
-  (banner?'<img src="'+esc(banner.url)+'" alt="Artist banner for '+esc(artist.name)+'">':'<div class="catalog-artist-placeholder" aria-hidden="true">'+esc(artist.name.slice(0,1))+'</div>')+
-  '<div class="catalog-artist-shade"></div><div class="catalog-artist-heading"><p class="catalog-eyebrow">BLOSSOM ARTIST</p><h1>'+esc(artist.name)+'</h1><p>'+esc(artist.genre)+'</p></div></header>'+
-  '<div class="catalog-section-heading"><h2>Discography</h2>'+button('new','＋ New release','aria-label="New release"','primary')+'</div>'+
+ return '<section class="catalog-workspace"><header class="catalog-artist-hero">'+
+  (banner?'<img src="'+esc(banner.url)+'" alt="Artist banner for '+esc(artist.name)+'" data-photo-focus data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'">':'<div class="catalog-artist-placeholder" aria-hidden="true">'+esc(artist.name.slice(0,1))+'</div>')+
+  '<div class="catalog-artist-shade"></div><div class="catalog-artist-heading"><p class="catalog-eyebrow">BLOSSOM ARTIST · '+esc(artist.genre)+'</p><h1>'+esc(artist.name)+'</h1><p class="catalog-artist-meta">'+d.albums.length+' releases <span>·</span> '+d.songs.length+' songs</p></div></header>'+
+  '<div class="catalog-artist-controls">'+button('new','＋ New release','aria-label="New release"','primary')+button('roster','← All artists','aria-label="All artists"')+'</div>'+
+  '<div class="catalog-section-heading"><h2>Discography</h2></div>'+
   '<div class="catalog-filters" aria-label="Release types">'+[['all','All'],['album','Albums'],['ep','EPs'],['single','Singles']].map(([key,label])=>button('filter',label,'data-kind="'+key+'" aria-pressed="'+(d.filter===key)+'"','catalog-chip')).join('')+'</div>'+
   (filtered.length?'<div class="catalog-album-grid">'+filtered.map(a=>'<button type="button" class="catalog-album-card" data-action="catalog-open" data-album-id="'+a.id+'">'+cover(a.coverUrl,a.title)+'<strong>'+esc(a.title)+'</strong><small>'+esc(kindName(a.kind))+' · '+a.trackCount+' songs'+(a.releaseDate?' · '+esc(a.releaseDate.slice(0,4)):'')+'</small></button>').join('')+'</div>':'<div class="catalog-empty"><h3>No releases here yet</h3><p>Create an album, EP or single and add songs from your library.</p></div>')+
   (d.albumsCursor?button('more-albums','Load more releases'):'')+
