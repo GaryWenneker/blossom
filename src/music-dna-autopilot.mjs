@@ -49,7 +49,7 @@ export class MusicDnaAutopilot {
       queued++;
     }
     if (queued) void this.drain();
-    return { queued, skipped, ...this.status() };
+    return { ...this.status(), queued, skipped };
   }
   update(id, status, message) {
     const job = this.jobs.get(id);
