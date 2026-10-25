@@ -11,6 +11,7 @@ import { StudioAPI } from "./studio-api.mjs";
 import { DiscographyAPI } from "./discography-api.mjs";
 import { MusicDNA } from "./music-dna.mjs";
 import { MusicDnaAPI } from "./music-dna-api.mjs";
+import { MusicDnaAutopilot } from "./music-dna-autopilot.mjs";
 import { MusicDnaChatGpt } from "./music-dna-chatgpt.mjs";
 import { MusicDnaMCP, musicDnaMcpToolFingerprint, musicDnaMcpToolNames } from "./music-dna-mcp.mjs";
 import { CloudflareAccess } from "./cloudflare-access.mjs";
@@ -92,7 +93,8 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const spotifyPlayer=new SpotifyPlayerApi(spotify,{db:store.db,musicDna});
   const spotifyCatalog=new SpotifyCatalog(spotify,musicDna);
   const musicDnaChat=new MusicDnaChatGpt(musicDna,(prompt,report)=>studioApi.chatgptLyrics.askHidden(prompt,report));
-  const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked,spotifyCatalog,chatgpt:musicDnaChat});
+  const musicDnaAutopilot = new MusicDnaAutopilot(musicDna);
+  const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked,spotifyCatalog,chatgpt:musicDnaChat,autopilot:musicDnaAutopilot});
   const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth,spotifyLiked,vault,studioApi,
     catalog:discographyApi.catalog,provider,allowLive,spotifyCatalog});
   // Nonsecret live-process tool contract. /healthz must reveal which code is
