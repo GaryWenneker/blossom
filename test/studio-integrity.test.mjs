@@ -214,3 +214,16 @@ test('assigning an artist to a project with a legacy selected photo composes tra
  const assigned=studio.save({...studio.require(p.id),artistId:a.id});
  assert.equal(assigned.artistId,a.id);assert.equal(studio.artistImages(a.id).length,1);assert.equal(studio.artistImages(a.id)[0].selected,true);
 });
+
+test('legacy Suno jobs migrate before integrity initialization and survive restart',t=>{
+  const store=new Store(':memory:');t.after(()=>store.close());
+  let studio=new StudioStore(store);
+  const a=store.addArtist(artist),p=project(studio,a);
+  store.db.exec('DROP TABLE studio_suno_jobs; CREATE TABLE studio_suno_jobs(project_id TEXT PRIMARY KEY,job_id TEXT,status TEXT,audio_url TEXT,imported_asset_id TEXT,created_at TEXT,updated_at TEXT)');
+  store.db.prepare('INSERT INTO studio_suno_jobs VALUES(?,?,?,?,?,?,?)').run(p.id,'legacy-job','complete','https://example.invalid/audio','legacy-asset','2026-01-01','2026-01-02');
+  studio=new StudioStore(store);
+  const take=store.db.prepare('SELECT * FROM studio_suno_takes WHERE job_id=?').get('legacy-job');
+  assert.equal(take.submitted_at,'2026-01-01');assert.equal(take.imported_asset_id,'legacy-asset');
+  new StudioStore(store);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM studio_suno_takes WHERE job_id=?').get('legacy-job').n,1);
+});
