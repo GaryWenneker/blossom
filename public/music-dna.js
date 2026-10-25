@@ -204,7 +204,9 @@ function rowMarkup(profile, focus, notice) {
   return '<div class="dna-row-wrap"><input type="checkbox" class="dna-row-check" aria-label="Select ' +
     esc(profile.artist + " " + profile.title) + '" data-action="dna-autopilot-toggle" data-id="' +
     esc(profile.id) + '"' + (autopilotSelection.has(profile.id) ? " checked" : "") + '>' +
-    button + "</div>";
+    button + '<button type="button" class="dna-row-analyze" data-action="dna-autopilot-one" data-id="' +
+    esc(profile.id) + '" aria-label="Analyze audio for ' + esc(profile.artist + " " + profile.title) +
+    '" title="Run Audio Autopilot for this recording">Analyze audio</button></div>';
 }
 
 function recordingLabel(total) {
@@ -293,7 +295,7 @@ export function musicDnaView(state) {
     spotifySearchMarkup(spotifyCatalogResults) + "</section>" +
     focusMarkup(cat.selected, noticeFor(cat.selected)) +
     '<div class="dna-cols">' + sortHeader("Artist", "artist", cat) + sortHeader("Title", "title", cat) +
-    "<span>BPM</span><span>DNA</span><span></span></div>" +
+    "<span>BPM</span><span>DNA</span><span></span><span class=\"dna-audio-column\">Audio</span></div>" +
     '<div class="dna-catalog"><div class="dna-scroll"><div class="dna-span" style="height:' + window.span + 'px">' +
     '<div class="dna-window" data-start="' + window.start + '" data-end="' + window.end +
     '" style="transform:translateY(' + window.y + 'px)">' +

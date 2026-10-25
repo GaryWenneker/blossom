@@ -91,3 +91,16 @@ test("Autopilot job status escapes untrusted content and action controls render 
   assert.match(page, /data-action="dna-autopilot-one"/);
   assert.match(page, /data-action="dna-autopilot-selected"/);
 });
+
+test("every visible recording has a direct Audio Autopilot button without opening details", () => {
+  const first = { id: ONE, artist: "Artist & Co", title: "First <Track>", analysisVersion: 1 };
+  const second = { id: TWO, artist: "Another Artist", title: "Second", analysisVersion: 0 };
+  const html = musicDnaView({ data: { musicDnaProfiles: [first, second], musicDnaTotal: 2 } });
+  assert.equal((html.match(/class="dna-row-analyze"/g) || []).length, 2);
+  assert.match(html, new RegExp('data-action="dna-autopilot-one" data-id="' + ONE + '"'));
+  assert.match(html, new RegExp('data-action="dna-autopilot-one" data-id="' + TWO + '"'));
+  assert.match(html, /Analyze audio/);
+  assert.match(html, /Auto-analyze selected \(0\)/);
+  assert.match(html, /aria-label="Analyze audio for Artist &amp; Co First &lt;Track&gt;"/);
+  assert.doesNotMatch(html, /<button[^>]*class="dna-row[^"]*"[^>]*>[\s\S]*?data-action="dna-autopilot-one"[^>]*>[\s\S]*?<\/button><\/button>/);
+});
