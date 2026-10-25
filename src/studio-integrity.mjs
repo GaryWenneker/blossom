@@ -26,6 +26,14 @@ export function initializeIntegrity(db){
     const columns=new Set(db.prepare('PRAGMA table_info(studio_projects)').all().map(c=>c.name));
     if(!columns.has('revision'))db.exec('ALTER TABLE studio_projects ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
     if(!columns.has('brief_input_hash'))db.exec("ALTER TABLE studio_projects ADD COLUMN brief_input_hash TEXT NOT NULL DEFAULT ''");
+    // Older installations used created_at rather than submitted_at.
+    // Upgrade in the same transaction before copying historical jobs.
+    const jobColumns=new Set(db.prepare('PRAGMA table_info(studio_suno_jobs)').all().map(c=>c.name));
+    if(!jobColumns.has('submitted_at')){
+      db.exec('ALTER TABLE studio_suno_jobs ADD COLUMN submitted_at TEXT');
+      const fallback=jobColumns.has('created_at')?'created_at':"NULL";
+      db.exec(`UPDATE studio_suno_jobs SET submitted_at=COALESCE(${fallback},updated_at,'1970-01-01T00:00:00.000Z') WHERE submitted_at IS NULL`);
+    }
     db.exec(`CREATE TABLE IF NOT EXISTS studio_project_creations(
       request_id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES studio_projects(id));
       CREATE TABLE IF NOT EXISTS studio_project_versions(
