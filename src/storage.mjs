@@ -12,7 +12,8 @@ export class Store {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS artists (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
         genre TEXT NOT NULL, language TEXT NOT NULL, countries TEXT NOT NULL, voice TEXT NOT NULL,
-        dna TEXT NOT NULL, identity_verified INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+        dna TEXT NOT NULL, identity_verified INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS tracks (id TEXT PRIMARY KEY, artist_id TEXT NOT NULL REFERENCES artists(id),
         title TEXT NOT NULL, mode TEXT NOT NULL, concept TEXT NOT NULL, lyrics TEXT NOT NULL,
         stage TEXT NOT NULL, rights TEXT NOT NULL, audio_ref TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
@@ -32,6 +33,9 @@ export class Store {
         updated_at TEXT NOT NULL
       );
     `);
+    const artistColumns = new Set(this.db.prepare("PRAGMA table_info(artists)").all().map(column => column.name));
+    if (!artistColumns.has("sort_order"))
+      this.db.exec("ALTER TABLE artists ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
   }
   close() { this.db.close(); }
   audit(type, entity, entityId, detail = {}) {
@@ -65,7 +69,7 @@ export class Store {
     return this.browserAccountStatus(provider);
   }
   artists() {
-    return this.db.prepare("SELECT * FROM artists ORDER BY created_at DESC").all().map(r => ({
+    return this.db.prepare("SELECT * FROM artists ORDER BY sort_order ASC, created_at DESC, id ASC").all().map(r => ({
       id:r.id,name:r.name,genre:r.genre,language:r.language,countries:parse(r.countries,[]),
       voice:r.voice,dna:r.dna,identityVerified:!!r.identity_verified,createdAt:r.created_at
     }));
@@ -73,10 +77,30 @@ export class Store {
   artist(key) { return this.artists().find(a => a.id === key); }
   addArtist(input) {
     const a = { id:id(), ...artistInput(input), createdAt:now() };
-    try { this.db.prepare("INSERT INTO artists VALUES(?,?,?,?,?,?,?,?,?)").run(
-      a.id,a.name,a.genre,a.language,JSON.stringify(a.countries),a.voice,a.dna,0,a.createdAt);
+    const sortOrder = this.db.prepare("SELECT COALESCE(MIN(sort_order), 1) - 1 AS sort_order FROM artists").get().sort_order;
+    try { this.db.prepare(`INSERT INTO artists(id,name,genre,language,countries,voice,dna,identity_verified,created_at,sort_order)
+      VALUES(?,?,?,?,?,?,?,?,?,?)`).run(
+      a.id,a.name,a.genre,a.language,JSON.stringify(a.countries),a.voice,a.dna,0,a.createdAt,sortOrder);
     } catch(e) { if(String(e).includes("UNIQUE")) throw new DomainError("Artist name already exists",409); throw e; }
     this.audit("created","artist",a.id,{name:a.name}); return a;
+  }
+
+  reorderArtists(ids) {
+    const current = this.db.prepare("SELECT id FROM artists").all().map(row => row.id);
+    if (!Array.isArray(ids) || ids.length !== current.length || new Set(ids).size !== ids.length ||
+        current.some(key => !ids.includes(key)))
+      throw new DomainError("Ordering must be an exact permutation of artists");
+    const update = this.db.prepare("UPDATE artists SET sort_order=? WHERE id=?");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      ids.forEach((key, index) => update.run(index, key));
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    this.audit("reordered", "artist", "roster", { count: ids.length });
+    return this.artists();
   }
   tracks() { return this.db.prepare("SELECT * FROM tracks ORDER BY created_at DESC").all().map(r => ({
     id:r.id,artistId:r.artist_id,title:r.title,mode:r.mode,concept:r.concept,lyrics:r.lyrics,

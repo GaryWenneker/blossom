@@ -23,6 +23,12 @@ function optionalNumber(value, label, min, max) {
     throw new DomainError("Invalid " + label);
   return value;
 }
+const SIGNAL_ONLY_ANALYSIS = "decoded PCM signal measurements (no instrument or vocal classification)";
+function bpmForAnalysis(value, analysisMethod) {
+  if (analysisMethod === SIGNAL_ONLY_ANALYSIS) return optionalNumber(value, "BPM", 20, 350);
+  if (value == null) throw new DomainError("BPM is required");
+  return optionalNumber(value, "BPM", 20, 350);
+}
 function httpUrl(value) {
   const result = text(value, "Source URL", 2000);
   if (!result) return "";
@@ -188,8 +194,9 @@ function analysisInput(incoming) {
   if (durationMs != null && normalizedSections.some(s => s.endMs > durationMs))
     throw new DomainError("Section extends beyond recording duration");
   const barBlocks=barBlocksInput(data.barBlocks,durationMs);
+  const analysisMethod = text(data.analysisMethod, "Analysis method", 100, true);
   const normalized = {
-    schemaVersion: barBlocks.length ? 2 : 1, bpm: optionalNumber(data.bpm, "BPM", 20, 350),
+    schemaVersion: barBlocks.length ? 2 : 1, bpm: bpmForAnalysis(data.bpm, analysisMethod),
     musicalKey: text(data.musicalKey, "Musical key", 32),
     timeSignature: text(data.timeSignature, "Time signature", 20),
     durationMs, genres, moods, instruments: normalizedInstruments,
@@ -210,10 +217,11 @@ function analysisInput(incoming) {
     sections: normalizedSections,
     barBlocks,
     summary: text(data.summary, "Summary", 3000),
-    analysisMethod: text(data.analysisMethod, "Analysis method", 100, true),
+    analysisMethod,
     analyzer: text(data.analyzer, "Analyzer", 160, true),
     confidence: optionalNumber(data.confidence, "confidence", 0, 1),
     analyzedAt: timestamp(),
+    chatSession: chatSessionInput(data.chatSession),
     measurements: data.measurements == null ? null : (() => {
       const m = checkShape(data.measurements, "audio measurements");
       return {
@@ -228,8 +236,20 @@ function analysisInput(incoming) {
       };
     })()
   };
+  if (!normalized.chatSession) delete normalized.chatSession;
   if (toJson(normalized).length > 100_000) throw new DomainError("Analysis exceeds size limit", 413);
   return normalized;
+}
+
+function chatSessionInput(value) {
+  if (value == null || value === "") return null;
+  const data = checkShape(value, "chat session");
+  const provider = text(data.provider, "Chat provider", 40, true);
+  if (provider !== "chatgpt") throw new DomainError("Unsupported chat provider");
+  const url = text(data.url, "Chat URL", 300, true);
+  if (!/^https:\/\/chatgpt\.com\/c\/[A-Za-z0-9_-]{8,80}$/.test(url))
+    throw new DomainError("Chat session must be a ChatGPT conversation");
+  return { provider, url };
 }
 function searchable(profile, analysis) {
   return [profile.artist, profile.title, analysis.summary, ...analysis.genres, ...analysis.moods,
@@ -354,8 +374,13 @@ export class MusicDNA {
   }
   versions(profileId) {
     this.get(profileId);
-    return this.db.prepare("SELECT id,version,created_at FROM music_dna_analyses WHERE profile_id=? ORDER BY version DESC")
-      .all(profileId).map(row => ({ id: row.id, version: row.version, createdAt: row.created_at }));
+    return this.db.prepare("SELECT id,version,created_at,payload FROM music_dna_analyses WHERE profile_id=? ORDER BY version DESC")
+      .all(profileId).map(row => {
+        let chatUrl = "";
+        try { chatUrl = JSON.parse(row.payload)?.chatSession?.url || ""; } catch { chatUrl = ""; }
+        if (!/^https:\/\/chatgpt\.com\/c\/[A-Za-z0-9_-]{8,80}$/.test(chatUrl)) chatUrl = "";
+        return { id: row.id, version: row.version, createdAt: row.created_at, ...(chatUrl ? { chatUrl } : {}) };
+      });
   }
   saveAnalysis(profileId, input) {
     const profile = this.get(profileId), data = analysisInput(input), analysisId = randomUUID();
@@ -392,6 +417,16 @@ export class MusicDNA {
     this.store.audit("analysis_saved", "music_dna_reference", profileId, { analysisId, analyzer: data.analyzer });
     return this.get(profileId);
   }
+  catalogOrder(options, term) {
+  const sort = String(options.sort || "");
+  if (!sort) return (term ? "bm25(music_dna_fts), " : "") + "p.updated_at DESC";
+  if (sort !== "artist" && sort !== "title") throw new DomainError("Invalid sort");
+  const dir = options.dir == null || options.dir === "" ? "asc" : String(options.dir);
+  if (dir !== "asc" && dir !== "desc") throw new DomainError("Invalid sort direction");
+  const column = sort === "artist" ? "p.artist" : "p.title";
+  const tie = sort === "artist" ? "p.title" : "p.artist";
+  return column + " COLLATE NOCASE " + dir.toUpperCase() + ", " + tie + " COLLATE NOCASE ASC, p.id ASC";
+}
   search(options = {}) {
     const limit = options.limit == null ? 20 : optionalNumber(options.limit, "limit", 1, 100);
     const offset = options.offset == null ? 0 : optionalNumber(options.offset, "offset", 0, 10_000_000);
@@ -405,7 +440,7 @@ export class MusicDNA {
       "JOIN music_dna_fts ON music_dna_fts.profile_id=p.id " +
       "LEFT JOIN music_dna_analyses a ON a.id=p.current_analysis_id " +
       (clauses.length ? "WHERE " + clauses.join(" AND ") + " " : "") +
-      "ORDER BY " + (term ? "bm25(music_dna_fts), " : "") + "p.updated_at DESC LIMIT ? OFFSET ?";
+      "ORDER BY " + this.catalogOrder(options, term) + " LIMIT ? OFFSET ?";
     return this.db.prepare(sql).all(...bindings, limit, offset).map(row => ({
       id: row.id, artist: row.artist, title: row.title, releaseYear: row.release_year,
       sourceKind: row.source_kind, updatedAt: row.updated_at,
@@ -515,17 +550,34 @@ export class MusicDNA {
     this.store.audit("audio_attached", "music_dna_reference", profileId, { sha256, byteSize: info.byteSize });
     return this.audioForProfile(profileId);
   }
-  claimJob(worker = "blossom-local", { audioOnly = false, metadataOnly = false } = {}) {
+  queueAnalysis(profileId) {
+    const profile = this.get(profileId);
+    const pending = this.db.prepare(
+      "SELECT id,status FROM music_dna_jobs WHERE profile_id=? AND status IN ('queued','running')"
+    ).get(profileId);
+    if (pending) return { profileId, jobId: pending.id, status: pending.status, queued: pending.status === "queued" };
+    const jobId = randomUUID();
+    this.db.prepare("INSERT INTO music_dna_jobs(id,profile_id,status,created_at,updated_at) VALUES(?,?,?,?,?)")
+      .run(jobId, profileId, "queued", timestamp(), timestamp());
+    return { profileId, jobId, status: "queued", queued: true, nextVersion: (profile.analysisVersion || 0) + 1 };
+  }
+  claimJob(worker = "blossom-local", { audioOnly = false, metadataOnly = false, profileId = "" } = {}) {
     worker = text(worker, "Worker", 100, true);
+    const onlyProfile = profileId ? ensureId(profileId) : "";
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const queued = this.db.prepare(
-        "SELECT j.id,j.profile_id FROM music_dna_jobs j " +
+      const params = [timestamp()];
+      let sql = "SELECT j.id,j.profile_id FROM music_dna_jobs j " +
         (audioOnly ? "JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
         (metadataOnly && !audioOnly ? "LEFT JOIN music_dna_audio_assets audio ON audio.profile_id=j.profile_id " : "") +
         "WHERE (j.status='queued' OR (j.status='running' AND j.leased_until < ?)) " +
-        (metadataOnly && !audioOnly ? "AND audio.profile_id IS NULL " : "") +
-        "AND j.attempts < 3 ORDER BY j.created_at LIMIT 1").get(timestamp());
+        (metadataOnly && !audioOnly ? "AND audio.profile_id IS NULL " : "");
+      if (onlyProfile) {
+        sql += "AND j.profile_id=? ";
+        params.push(onlyProfile);
+      }
+      sql += "AND j.attempts < 3 ORDER BY j.created_at LIMIT 1";
+      const queued = this.db.prepare(sql).get(...params);
       if (!queued) { this.db.exec("COMMIT"); return null; }
       const leased = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       this.db.prepare("UPDATE music_dna_jobs SET status='running',worker=?,attempts=attempts+1,leased_until=?,updated_at=? WHERE id=?")
@@ -562,6 +614,36 @@ export class MusicDNA {
       "WHERE j.status='failed' AND p.current_analysis_id IS NULL AND audio.profile_id IS NULL AND j.attempts<3)"
     ).run(now);
     return { interrupted: interrupted.changes, failed: failed.changes };
+  }
+  retryFailedAnalysis(profileId) {
+    const profile = this.get(profileId);
+    const pending = this.db.prepare(
+      "SELECT id,status,attempts FROM music_dna_jobs WHERE profile_id=? AND status IN ('queued','running')"
+    ).get(profileId);
+    if (pending?.status === "running")
+      return { profileId, jobId: pending.id, status: "running", queued: false };
+    if (pending?.status === "queued") {
+      if (pending.attempts >= 3)
+        this.db.prepare(
+          "UPDATE music_dna_jobs SET attempts=0,error='',progress=0,worker='',leased_until=NULL,updated_at=? WHERE id=?"
+        ).run(timestamp(), pending.id);
+      return { profileId, jobId: pending.id, status: "queued", queued: true };
+    }
+    const failed = this.db.prepare(
+      "SELECT id FROM music_dna_jobs WHERE profile_id=? AND status='failed' ORDER BY updated_at DESC, rowid DESC LIMIT 1"
+    ).get(profileId);
+    if (!failed) return this.queueAnalysis(profileId);
+    this.db.prepare(
+      "UPDATE music_dna_jobs SET status='queued',worker='',error='',progress=0,attempts=0,leased_until=NULL,updated_at=? WHERE id=?"
+    ).run(timestamp(), failed.id);
+    return { profileId, jobId: failed.id, status: "queued", queued: true,
+      nextVersion: (profile.analysisVersion || 0) + 1 };
+  }
+  dismissFailedJobs(profileId = "") {
+    const result = profileId
+      ? this.db.prepare("DELETE FROM music_dna_jobs WHERE profile_id=? AND status='failed'").run(this.get(profileId).id)
+      : this.db.prepare("DELETE FROM music_dna_jobs WHERE status='failed'").run();
+    return { removed: result.changes };
   }
   completeJob(jobId, analysis, error = "") {
     ensureId(jobId);

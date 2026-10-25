@@ -52,6 +52,7 @@ music-dna-reference-analysis, music-dna-bulk-ingestion, news-to-song-workflow, s
 - `studio_artist_images` is the artist-level, durable media library; each item has `artist_id`, independent selected status, optional Studio source asset, filename, provenance and timestamp. A direct Artists-screen generation needs no Studio project.
 - Studio-generated artist-photo is linked to its selected artist and kept after project asset removal. Historic selected project photos migrate into artist library on startup. Reassigning a project to another artist must not silently transfer the former artist's photo.
 - The Artists page renders a wide responsive 16:9 hero using a selected image, with CSS overlay of the name; the gallery below the hero selects or removes artist images. New variants preserve active background by default.
+- The Artists roster tiles keep newest-first until someone drags a tile grip onto another tile. That order is saved for the signed-in admin and used the next time the roster loads.
 - Album covers stay square and separate. Prompts use artist identity, genre and DNA, and avoid baked-in text or fake Spotify verification/listener claims.
 - See `.agents/rules/blossom-artist-media.mdc` and `.agents/skills/artist-media-workflow/SKILL.md`.
 

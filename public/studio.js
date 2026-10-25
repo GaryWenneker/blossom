@@ -126,6 +126,32 @@ function paramsFromDOM(){
    imagePrompt:document.querySelector("#studio-cover-prompt").value.trim(),
    artistPhotoPrompt:document.querySelector("#studio-photo-prompt").value.trim()};
 }
+function styleReady(profile){
+ const analysis=profile?.analysis;
+ if(!analysis)return false;
+ const genres=Array.isArray(analysis.genres)?analysis.genres:[];
+ const instruments=Array.isArray(analysis.instruments)?analysis.instruments:[];
+ return genres.some(genre=>String(genre||"").trim())||instruments.some(item=>String(item?.name||"").trim());
+}
+function dnaSunoPreview(references,suno){
+ if(!suno)return "";
+ if(!suno.style)return (references||[]).length?'<p class="studio-hint">These recordings have no style traits yet, so Suno will not use them.</p>':"";
+ const lines=(suno.contributions||[]).map(item=>{
+  const ref=(references||[]).find(row=>row.profileId===item.profileId);
+  const name=ref?ref.profile.artist+" · "+ref.profile.title:"Reference";
+  return '<div><span>'+esc(name)+' ('+item.weight+'%)</span><small>'+esc((item.tags||[]).join(", "))+'</small></div>';
+ }).join("");
+ const arrangement=(suno.arrangement||[]).map(item=>item.label+": "+item.direction).join(" · ");
+ const skipped=(suno.skipped||[]).map(item=>{
+  const ref=(references||[]).find(row=>row.profileId===item.profileId);
+  const name=ref?ref.profile.artist+" · "+ref.profile.title:"Reference";
+  return esc(name);
+ }).join(", ");
+ return '<div class="studio-dna-suno"><span class="studio-label">Suno will be told</span><p>'+esc(suno.style)+'</p><small>'+
+  esc(String(suno.characters))+' / 700 style characters</small>'+lines+
+  (skipped?'<p class="studio-hint">Not sent to Suno, no style traits: '+skipped+'</p>':'')+
+  (arrangement?'<p class="studio-hint">Matching lyric sections gain performance notes: '+esc(arrangement)+'</p>':'')+'</div>';
+}
 const panels=(p,assets,state)=>{
  const result=p?.result||{},params=p?.parameters||defaults;
  const artists=state.data.artists||[],genres=Object.values(state.data.genres||{}).flat();
@@ -177,12 +203,16 @@ const panels=(p,assets,state)=>{
  field("Suno model",'<input id="studio-model" maxlength="50" value="'+esc(params.sunoModel||"v6")+'" aria-label="Model selected in Suno">')+
  field("Primary genre",'<input id="studio-genre" list="studio-genres" value="'+esc(params.genre)+'"><datalist id="studio-genres">'+genres.map(g=>'<option value="'+esc(g)+'"></option>').join("")+'</datalist>')+
  field("Additional styles (comma separated)",'<input id="studio-styles" value="'+safeList(params.additionalStyles||[])+'" placeholder="Americana, Acoustic, Country Folk">')+
- '<div class="studio-dna-picker"><strong>Music DNA inspiration</strong><p class="studio-hint">Use analyzed recordings as references for an original arrangement. No source lyrics or melodies are copied.</p>'+
+ '<div class="studio-dna-picker"><strong>Music DNA inspiration</strong><p class="studio-hint">Analyzed traits lead the Suno style. The percentage mixes those traits. Song titles stay on this card and are not sent to Suno. No source lyrics or melodies are copied.</p>'+
  '<div class="studio-dna-choice">'+
- field("DNA reference",'<select id="studio-dna-select"><option value="">Choose an analyzed recording</option>'+referenceOptions.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.artist+" · "+r.title)+'</option>').join("")+'</select>')+
+ field("DNA reference",'<select id="studio-dna-select"><option value="">Choose an analyzed recording</option>'+referenceOptions.map(r=>{
+  const ready=styleReady(r);
+  return '<option value="'+esc(r.id)+'" '+(ready?'':'disabled')+'>'+esc(r.artist+" · "+r.title)+(ready?'':' — no style traits yet')+'</option>';
+ }).join("")+'</select>')+
  field("Influence",'<input id="studio-dna-weight" type="number" min="1" max="100" value="50">')+
- '<button class="secondary mini" data-action="studio-add-dna" '+(referenceOptions.length?'':'disabled')+'>Add reference</button></div>'+
+ '<button class="secondary mini" data-action="studio-add-dna" '+(referenceOptions.some(styleReady)?'':'disabled')+'>Add reference</button></div>'+
  (projectReferences.length ? '<div class="studio-dna-linked">'+projectReferences.map(r=>'<div><span>'+esc(r.profile.artist+" · "+r.profile.title)+' ('+r.weight+'%)</span><button class="secondary mini" data-action="studio-remove-dna" data-profile-id="'+esc(r.profileId)+'" aria-label="Remove reference">Remove</button></div>').join("")+'</div>' : '<p class="studio-hint">No DNA references linked yet. Analyze a recording in the Music DNA library first.</p>')+
+ dnaSunoPreview(projectReferences,state.data.studioDnaSuno)+
  '</div>'+
  field("Exclude styles / instruments",'<input id="studio-excludes" value="'+safeList(params.excludeStyles||[])+'">')+
  '<div class="studio-control-grid">'+
@@ -206,9 +236,12 @@ const panels=(p,assets,state)=>{
  field("Album artwork prompt",'<textarea id="studio-cover-prompt" rows="3" placeholder="Original cinematic artwork, square format...">'+esc(artPrompt)+'</textarea>')+
  '<button class="secondary mini" data-action="studio-brief-cover-prompt">Use song brief prompt</button>'+
  '<button class="primary wide" data-action="studio-cover">Generate album art with ChatGPT</button>'+
+ '<label class="secondary wide catalog-upload">Upload album art<input type="file" accept="image/png,image/jpeg,image/webp" data-studio-image="cover" aria-label="Upload album art"></label>'+
  field("Wide artist banner prompt (16:9)",'<textarea id="studio-photo-prompt" rows="2" placeholder="Photorealistic cinematic 16:9 wide artist or band banner, room for name overlay...">'+esc(photoPrompt)+'</textarea>')+
  '<button class="secondary mini" data-action="studio-brief-photo-prompt">Use song brief prompt</button>'+
  '<button class="secondary wide" data-action="studio-photo">Generate wide artist cover with ChatGPT</button>'+
+ '<label class="secondary wide catalog-upload">Upload artist photo<input type="file" accept="image/png,image/jpeg,image/webp" data-studio-image="artist-photo" aria-label="Upload artist photo"></label>'+
+ '<p class="small">Paste a PNG, JPEG, or WebP onto this step to upload it. A paste in the artist prompt becomes the artist photo; any other paste here becomes the album cover.</p>'+
  (photo?'<div class="studio-photo-thumb"><div class="studio-photo-banner"><img src="'+esc(photo.url)+'" alt="Wide artist cover for '+esc(artistName)+'" data-photo-focus data-focus-x="'+photoFocus.focusX+'" data-focus-y="'+photoFocus.focusY+'" loading="lazy"><strong>'+esc(artistName)+'</strong></div><span class="studio-photo-caption">Wide artist banner · selected</span><button type="button" class="secondary mini" data-tab="artists">View full-width in Artists →</button></div>':'<p class="studio-hint">Artist photos generate as wide landscape banners. Choose an artist and link the selected photo to display it on the Artists page.</p>')+
  '</section></div>'+
  '<section id="studio-step-5" class="studio-panel studio-release" tabindex="-1" aria-label="Release in Suno">'+

@@ -1,4 +1,5 @@
 import { DomainError } from "./domain.mjs";
+import { dnaSunoPlan, hasStyleTraits } from "./dna-suno-style.mjs";
 import { atomic,snapshot } from "./studio-integrity.mjs";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -46,20 +47,6 @@ export function referenceTraits(profile) {
     // No source artist names, lyrics, recordings or copied melodies in generation prompts.
   };
 }
-export function referenceStyle(traits) {
-  const parts = [];
-  if (traits.genres.length) parts.push(traits.genres.join(", "));
-  if (traits.moods.length) parts.push(traits.moods.map(x => x + " mood").join(", "));
-  if (traits.bpm) parts.push("approximately " + traits.bpm + " BPM");
-  for (const i of traits.instruments.slice(0, 8)) {
-    parts.push([i.timbre, i.name, i.technique, i.role].filter(Boolean).join(" "));
-  }
-  if (traits.vocals?.timbre) parts.push(traits.vocals.timbre + " vocals");
-  if (traits.vocals?.delivery) parts.push(traits.vocals.delivery + " phrasing");
-  if (traits.production?.texture) parts.push(traits.production.texture + " production");
-  if (traits.production?.dynamics) parts.push(traits.production.dynamics);
-  return parts.join(", ").slice(0, 1800);
-}
 export class StudioReferences {
   constructor(store, studio, dna) {
     this.store = store; this.studio = studio; this.dna = dna; this.db = store.db;
@@ -83,6 +70,7 @@ export class StudioReferences {
     for (const item of normalized) {
       const profile = this.dna.get(item.profileId);
       if (!profile.analysisVersion) throw new DomainError("Analyze the reference before linking it", 409);
+      if (!hasStyleTraits(profile.analysis)) throw new DomainError("This recording has no style traits yet", 409);
     }
     return atomic(this.db,()=>{
       this.db.prepare("DELETE FROM studio_music_dna_refs WHERE project_id=?").run(projectId);
@@ -99,10 +87,10 @@ export class StudioReferences {
       weight: item.weight, ...referenceTraits(item.profile)
     }));
   }
+  recipePlan(projectId) {
+    return dnaSunoPlan(this.generationContext(projectId));
+  }
   recipeStyle(projectId) {
-    return this.generationContext(projectId).map(item => {
-      const style = referenceStyle(item);
-      return style ? style + " (inspiration weight " + item.weight + "/100)" : "";
-    }).filter(Boolean).join(", ").slice(0, 3500);
+    return this.recipePlan(projectId).style;
   }
 }

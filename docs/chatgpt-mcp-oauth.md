@@ -113,3 +113,9 @@ Als `consent_redirected` blijft staan, zonder `token_issued`, controleer dan de 
 ## Toestemming afgewezen versus goedgekeurd
 
 In de OAuth-diagnose betekenen `consent_denied` en `consent_redirected` niet hetzelfde: een `consent_denied` wordt uitsluitend geregistreerd wanneer de autorisatiepagina een formulier verzendt met `decision=deny`. Dit zegt niet wie of wat de keuze heeft geactiveerd. Een expliciet goedgekeurde aanvraag krijgt `decision=approve` en genereert een autorisatiecode. De weigering is in het formulier nu achter **Weigeren → Weigering bevestigen** geplaatst. Bij herhaald verzenden van een geweigerde aanvraag zegt de pagina **Toestemming geweigerd** in plaats van ten onrechte te suggereren dat goedkeuring is verwerkt. De toestemming blijft eenmalig; een nieuwe verbinding moet vanuit ChatGPT worden gestart. Een OAuth-redirect bewijst nog niet dat ChatGPT de callback verwerkte of een token ophaalde. Bij ontbrekend `token_issued` controleer in de ChatGPT-popup of de browser op de correcte `chatgpt.com`-callback is teruggekomen, zonder autorisatiecode of `state` te delen.
+
+## Adjustments ChatGPT can make
+
+After the tool scan, call `blossom_operations`, then `blossom_invoke` with `operation` and `input`. Read actions work with `blossom:read`. Creating artists, tracks, releases, Studio projects, albums and Music DNA jobs requires an approved `blossom:write` scope. Existing tools such as `studio_project_save_result` stay as they are.
+
+ChatGPT cannot read or save API keys, open Safari, upload audio or image bytes, drive the ChatGPT or Suno websites, or change the public gateway. Those limits are returned in `withheld`. Submitting a release to the distributor still requires live distribution to be enabled on this Mac and `confirmation` set to `PUBLISH`. A restarted local Blossom process is required before ChatGPT sees the new tools; the public tunnel must point at that same process.

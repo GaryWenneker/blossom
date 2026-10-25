@@ -2,6 +2,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { DomainError } from "./domain.mjs";
 import { applyProjectPatch } from "./studio-patches.mjs";
 import { atomic,checkRevision,initializeIntegrity,inputFingerprint,snapshot,projectIntegrity,projectPage,inventory,referenceInputs } from "./studio-integrity.mjs";
+import { annotateLyrics, composeSunoStyle } from "./dna-suno-style.mjs";
 
 export const LENGTH_PRESETS = Object.freeze({
   radio:{label:"Radio edit",seconds:205,min:165,max:240},
@@ -44,12 +45,15 @@ export function normalizeParameters(input={},base=DEFAULT_PARAMETERS){
   return p;
 }
 export function sunoRecipe(project, referenceStyles = "") {
+  const plan=referenceStyles && typeof referenceStyles==="object"?referenceStyles:null;
+  const dnaStyle=plan?String(plan.style||""):String(referenceStyles||"");
   const p=project.parameters;
+  const lyrics=p.instrumental?"":project.result?.lyrics||"";
   return {provider:"suno",mode:"authorized-manual-handoff",model:project.parameters.sunoModel||"v6",
     title:project.title && project.title!=="Untitled project" ? project.title : project.result?.titles?.[0]||"Untitled",
     source:{projectId:project.id,revision:project.revision,artistId:project.artistId},
-    lyrics:p.instrumental?"":project.result?.lyrics||"",
-    style:[p.genre,...p.additionalStyles,project.result?.style||"",referenceStyles,p.customInstructions].filter(Boolean).join(", "),
+    lyrics:plan?.arrangement?.length?annotateLyrics(lyrics,plan.arrangement):lyrics,
+    style:composeSunoStyle(p,project.result?.style||"",dnaStyle),
     exclude:[...new Set([...p.excludeStyles,...(project.result?.exclusions||[])])].join(", "),vocalGender:p.instrumental?null:p.vocalGender,
     instrumental:p.instrumental,maxMode:p.maxMode,weirdness:p.weirdness,styleInfluence:p.styleInfluence,
     variety:p.variety,personalize:p.personalize,targetDurationSeconds:p.targetSeconds,
@@ -342,7 +346,9 @@ export class StudioStore {
   }
   registerArtistPhoto(artistId,{filename,mime,provider="chatgpt",prompt=""}){
     if(!this.store.artist(artistId))throw new DomainError("Artist not found",404);
-    if(!/^[0-9a-f-]{36}\.png$/.test(filename)||mime!=="image/png")
+    const photoMime=filename.endsWith(".png")?"image/png":filename.endsWith(".webp")?"image/webp":
+      (filename.endsWith(".jpg")||filename.endsWith(".jpeg"))?"image/jpeg":"";
+    if(!/^[0-9a-f-]{36}\.(?:png|jpe?g|webp)$/.test(filename)||photoMime!==mime)
       throw new DomainError("Unsupported artist photo format",400);
     if(!["chatgpt","upload","draw-things"].includes(provider))
       throw new DomainError("Invalid artist image provider",400);
@@ -445,7 +451,7 @@ export class StudioStore {
   registerAsset(projectId,kind,filename,mime,{provider="unknown",prompt="",briefFingerprint=""}={}){
     this.require(projectId);
     if(!["cover","artist-photo","audio"].includes(kind))throw new DomainError("Invalid asset type");
-    if(!/^[0-9a-f-]{36}\.(?:png|wav|mp3)$/.test(filename))throw new DomainError("Invalid asset filename");
+    if(!/^[0-9a-f-]{36}\.(?:png|jpe?g|webp|wav|mp3)$/.test(filename))throw new DomainError("Invalid asset filename");
     if(!["chatgpt","upload","draw-things","suno","unknown"].includes(provider))throw new DomainError("Invalid asset provider");
     const id=uuid(),createdAt=new Date().toISOString();
     this.db.prepare("INSERT INTO studio_assets(id,project_id,kind,filename,mime,created_at,provider,prompt,brief_fingerprint) VALUES(?,?,?,?,?,?,?,?,?)")

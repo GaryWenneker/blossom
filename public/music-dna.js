@@ -85,6 +85,8 @@ export function dnaFetchRange(start, end) {
 
 let currentQuery = "";
 let catalogScroll = 0;
+let catalogSort = "";
+let catalogDir = "asc";
 let catalogViewport = 720;
 let selected = null;
 let ignoreScroll = false;
@@ -99,6 +101,8 @@ function catalog(state) {
     profiles: data.musicDnaProfiles || [],
     selected: Object.hasOwn(data, "musicDnaSelected") ? data.musicDnaSelected : selected,
     viewport: data.musicDnaViewport ?? catalogViewport,
+    sort: data.musicDnaSort ?? catalogSort,
+    dir: data.musicDnaDir ?? catalogDir,
     jobs: data.musicDnaJobs || []
   };
 }
@@ -109,6 +113,10 @@ export function musicDnaRequest(state) {
   const range = cat.total ? dnaFetchRange(window.start, window.end) : { offset: 0, limit: 80 };
   const params = new URLSearchParams({ limit: String(range.limit), offset: String(range.offset) });
   if (cat.query) params.set("q", cat.query);
+  if (cat.sort) {
+    params.set("sort", cat.sort);
+    params.set("dir", cat.dir === "desc" ? "desc" : "asc");
+  }
   return { path: "music-dna/search?" + params.toString(), offset: range.offset, limit: range.limit };
 }
 
@@ -125,21 +133,34 @@ function analyzed(profile) {
 }
 function focusVersion(profile) {
   if (analyzed(profile)) return "DNA v" + profile.analysisVersion;
-  if (profile?.jobStatus === "failed") return "Analysis failed";
+  if (profile?.jobStatus === "failed") return "Try again";
   return "Awaiting analysis";
 }
-function rowTraits(profile) {
+function stoppedCopy(notice) {
+  const text = String(notice || "").trim();
+  return text || "Analysis stopped. Try again.";
+}
+function rowTraits(profile, notice) {
   if (profile.analysis?.genres?.length) return profile.analysis.genres.slice(0, 2).join(", ");
   if (profile.analysis) return "Analyzed";
-  if (profile.jobStatus === "failed") return "Analysis failed";
+  if (profile.jobStatus === "failed") return stoppedCopy(notice);
   return "Awaiting analysis";
 }
 function rowVersion(profile) {
   if (profile.analysisVersion) return "v" + profile.analysisVersion;
-  if (profile.jobStatus === "failed") return "failed";
   return "—";
 }
-function focusMarkup(profile) {
+function chatSessionMarkup(profile) {
+  const chatUrl = /^https:\/\/chatgpt\.com\/c\/[A-Za-z0-9_-]{8,80}$/;
+  const listed = Array.isArray(profile?.chatSessions) ? profile.chatSessions.filter(item => chatUrl.test(item?.chatUrl)) : [];
+  const sessions = listed.length ? listed : chatUrl.test(profile?.analysis?.chatSession?.url)
+    ? [{ version: profile.analysisVersion, chatUrl: profile.analysis.chatSession.url }] : [];
+  if (!sessions.length) return "";
+  return '<div class="dna-chat-sessions">' + sessions.map(item =>
+    '<a href="' + esc(item.chatUrl) + '" target="_blank" rel="noopener noreferrer">ChatGPT v' +
+    esc(item.version) + "</a>").join("") + "</div>";
+}
+function focusMarkup(profile, notice) {
   if (!profile) return '<p class="dna-focus dna-focus-empty">Select a recording to inspect its DNA.</p>';
   const analysis = profile.analysis;
   const chips = [];
@@ -153,26 +174,29 @@ function focusMarkup(profile) {
   if (analysis?.vocals?.type) chips.push(chip("vocal", analysis.vocals.type + " vocal"));
   const version = focusVersion(profile);
   const waiting = chips.length ? "" : profile.jobStatus === "failed"
-    ? chip("failed", "Analysis failed") : chip("awaiting", "Metadata only");
+    ? '<p class="dna-stopped">' + esc(stoppedCopy(notice)) + "</p>" : chip("awaiting", "Metadata only");
+  const actionLabel = profile.jobStatus === "failed" ? "Try again" : "Analyze";
   return '<section class="dna-focus" style="--dna-hue:' + dnaHue(profile.id) + '">' +
     '<div class="dna-focus-main"><strong>' + esc(profile.artist) + " · " + esc(profile.title) +
     "</strong><span>" + esc(version) + "</span></div>" +
     '<div class="dna-chips">' + (chips.join("") || waiting) + "</div>" +
-    '<div class="dna-focus-actions"><label class="secondary mini music-dna-upload">Upload MP3/WAV<input type="file" hidden accept=".mp3,.wav,audio/mpeg,audio/wav" data-dna-upload="' +
-    esc(profile.id) + '"></label></div>' + barBlocksMarkup(analysis) +
+    '<div class="dna-focus-actions"><button type="button" class="secondary mini" data-action="dna-analyze-recording" data-id="' +
+    esc(profile.id) + '">' + actionLabel + '</button><label class="secondary mini music-dna-upload">Upload MP3/WAV<input type="file" hidden accept=".mp3,.wav,audio/mpeg,audio/wav" data-dna-upload="' +
+    esc(profile.id) + '"></label></div>' + chatSessionMarkup(profile) + barBlocksMarkup(analysis) +
     '<details class="dna-raw"><summary>Raw DNA JSON</summary><pre>' +
     esc(JSON.stringify(analysis || { status: "No verified analysis saved" }, null, 2)) + "</pre></details></section>";
 }
 
-function rowMarkup(profile, focus) {
-  if (!profile) return '<div class="dna-row dna-row-pending" aria-hidden="true"><span></span><span></span><span></span><span></span></div>';
+function rowMarkup(profile, focus, notice) {
+  if (!profile) return '<div class="dna-row dna-row-pending" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>';
   const active = focus && focus.id === profile.id;
   const version = rowVersion(profile);
-  const traits = rowTraits(profile);
+  const traits = rowTraits(profile, notice);
   return '<button type="button" class="dna-row' + (active ? " is-selected" : "") + '"' +
     (active ? ' style="--dna-hue:' + dnaHue(profile.id) + '"' : "") +
-    ' data-action="dna-details" data-id="' + esc(profile.id) + '"><span class="dna-row-title">' +
-    esc(profile.artist) + " · " + esc(profile.title) + '</span><span class="dna-row-bpm">' +
+    ' data-action="dna-details" data-id="' + esc(profile.id) + '"><span class="dna-row-artist">' +
+    esc(profile.artist) + '</span><span class="dna-row-title">' + esc(profile.title) +
+    '</span><span class="dna-row-bpm">' +
     esc(profile.analysis?.bpm ?? "") + '</span><span class="dna-row-traits">' + esc(traits) +
     '</span><span class="dna-row-version">' + esc(version) + "</span></button>";
 }
@@ -213,14 +237,30 @@ function spotifyAddedLabel(page) {
   return "Added " + imported + " " + noun + ".";
 }
 
+function sortHeader(label, key, cat) {
+  const active = cat.sort === key;
+  const next = active && cat.dir !== "desc" ? "desc" : "asc";
+  const mark = active ? (cat.dir === "desc" ? " ↓" : " ↑") : "";
+  return '<button type="button" class="dna-sort' + (active ? " is-active" : "") +
+    '" data-action="dna-sort" data-sort="' + key + '" data-dir="' + next + '" aria-sort="' +
+    (active ? (cat.dir === "desc" ? "descending" : "ascending") : "none") + '">' +
+    label + mark + "</button>";
+}
+
 export function musicDnaView(state) {
   const cat = catalog(state);
   const window = dnaWindow({ total: cat.total, scrollTop: cat.scroll, viewportHeight: cat.viewport });
+  const jobs = activityJobs(state);
+  const noticeFor = profile => {
+    if (!profile || profile.jobStatus !== "failed") return "";
+    const job = jobs.find(item => item?.profileId === profile.id && item?.status === "failed");
+    return String(job?.error || "").trim();
+  };
   const rows = [];
   for (let index = window.start; index < window.end; index += 1) {
     const profile = index >= cat.offset && index < cat.offset + cat.profiles.length
       ? cat.profiles[index - cat.offset] : null;
-    rows.push(rowMarkup(profile, cat.selected));
+    rows.push(rowMarkup(profile, cat.selected, noticeFor(profile)));
   }
   const spotify = state.data.connections?.spotifyClientId
     ? '<a class="secondary dna-spotify-consent" href="/auth/spotify/start?choose=1">Connect Spotify Library ↗</a>'
@@ -231,7 +271,7 @@ export function musicDnaView(state) {
     '<button type="button" class="secondary" data-action="dna-reset">Clear</button>' +
     '<span class="dna-count">' + recordingLabel(cat.total) + "</span>" +
     '<button type="button" class="primary" data-action="dna-register">Register</button></div>' +
-    musicDnaActivityMarkup(activityJobs(state), activitySpotify(state)) +
+    musicDnaActivityMarkup(activityJobs(state), activitySpotify(state), { sort: cat.sort, dir: cat.dir }) +
     '<section class="dna-spotify-liked">' + spotify +
     '<button type="button" class="primary" data-action="dna-spotify-import" ' + (spotifyLikedImport.running ? "disabled" : "") + '>Import Liked Songs</button>' +
     '<p class="dna-spotify-progress" aria-live="polite">' + esc(spotifyLikedImport.status || "No sync started yet.") + "</p>" +
@@ -242,8 +282,9 @@ export function musicDnaView(state) {
     ">Search Spotify</button>" +
     '<p class="dna-spotify-search-status" aria-live="polite">' + esc(spotifyCatalogStatus) + "</p>" +
     spotifySearchMarkup(spotifyCatalogResults) + "</section>" +
-    focusMarkup(cat.selected) +
-    '<div class="dna-cols"><span>Recording</span><span>BPM</span><span>DNA</span><span></span></div>' +
+    focusMarkup(cat.selected, noticeFor(cat.selected)) +
+    '<div class="dna-cols">' + sortHeader("Artist", "artist", cat) + sortHeader("Title", "title", cat) +
+    "<span>BPM</span><span>DNA</span><span></span></div>" +
     '<div class="dna-catalog"><div class="dna-scroll"><div class="dna-span" style="height:' + window.span + 'px">' +
     '<div class="dna-window" data-start="' + window.start + '" data-end="' + window.end +
     '" style="transform:translateY(' + window.y + 'px)">' +
@@ -276,18 +317,39 @@ function jobActivity(job) {
     percent: jobPercent(job)
   };
 }
-export function musicDnaActivityItems(jobs, spotify = spotifyLikedImport) {
+export function musicDnaActivityItems(jobs, spotify = spotifyLikedImport, order = {}) {
   const items = [];
   if (spotifyInProgress(spotify)) items.push({
     kind: "spotify", label: "Spotify Liked Songs",
     status: spotify.running ? "Importing" : "Paused", percent: activityPercent(spotify)
   });
-  const open = (jobs || []).filter(job => job?.status === "queued" || job?.status === "running");
-  open.sort((a, b) => (a.status === "running" ? 0 : 1) - (b.status === "running" ? 0 : 1));
+  const open = (jobs || []).filter(job =>
+    job?.status === "queued" || job?.status === "running" || job?.status === "failed");
+  const named = order.sort === "artist" || order.sort === "title";
+  if (named) {
+    const dir = order.dir === "desc" ? -1 : 1;
+    open.sort((a, b) => dir * String(a[order.sort] || "").localeCompare(
+      String(b[order.sort] || ""), undefined, { sensitivity: "base" }));
+  } else {
+    const rank = job => job.status === "running" ? 0 : job.status === "queued" ? 1 : 2;
+    open.sort((a, b) => {
+      const byRank = rank(a) - rank(b);
+      if (byRank || a.status !== "failed") return byRank;
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    });
+  }
   for (const job of open) {
+    const parts = { artist: job.artist || "", title: job.title || "" };
+    if (job.status === "failed") {
+      items.push({
+        kind: "job", ...parts, profileId: job.profileId || "",
+        status: "Stopped", detail: stoppedCopy(job.error), percent: null
+      });
+      continue;
+    }
     const activity = jobActivity(job);
     items.push({
-      kind: "job", label: recordingName(job), profileId: job.profileId || "",
+      kind: "job", ...parts, profileId: job.profileId || "",
       status: activity.status, percent: activity.percent
     });
   }
@@ -296,22 +358,43 @@ export function musicDnaActivityItems(jobs, spotify = spotifyLikedImport) {
 function activitySummary(items) {
   const counts = {};
   for (const item of items) counts[item.status] = (counts[item.status] || 0) + 1;
-  return ["Importing", "Paused", "Running", "Queued"]
+  return ["Importing", "Paused", "Running", "Queued", "Stopped"]
     .filter(name => counts[name])
     .map(name => counts[name] + " " + name.toLowerCase())
     .join(" · ");
 }
-export function musicDnaActivityMarkup(jobs, spotify = spotifyLikedImport) {
-  const items = musicDnaActivityItems(jobs, spotify);
+export function musicDnaActivityMarkup(jobs, spotify = spotifyLikedImport, order = {}) {
+  const items = musicDnaActivityItems(jobs, spotify, order);
   const start = items.some(item => item.kind === "job" && item.status === "Queued")
     ? '<button type="button" class="secondary mini" data-action="dna-start-analysis">Start analysis</button>'
     : "";
+  const clear = items.some(item => item.kind === "job" && item.status === "Stopped")
+    ? '<button type="button" class="secondary mini" data-action="dna-dismiss-stopped">Clear stopped</button>'
+    : "";
   const body = items.length
-    ? '<p class="dna-activity-summary">' + esc(activitySummary(items)) + start + '</p><ul class="dna-activity-list">' + items.map(item =>
-      '<li data-kind="' + item.kind + '"><span class="dna-activity-label">' + esc(item.label) +
-      "</span><strong>" + esc(item.status) + "</strong>" +
+    ? '<p class="dna-activity-summary">' + esc(activitySummary(items)) + start + clear + '</p><ul class="dna-activity-list">' + items.map(item => {
+      const analyze = item.kind === "job" && item.status === "Queued" && item.profileId
+        ? '<button type="button" class="secondary mini" data-action="dna-start-one" data-id="' +
+          esc(item.profileId) + '">Analyze</button>'
+        : "";
+      const retry = item.kind === "job" && item.status === "Stopped" && item.profileId
+        ? '<button type="button" class="secondary mini" data-action="dna-start-one" data-id="' +
+          esc(item.profileId) + '">Try again</button>' +
+          '<button type="button" class="secondary mini" data-action="dna-dismiss-one" data-id="' +
+          esc(item.profileId) + '">Remove</button>'
+        : "";
+      const detail = item.detail
+        ? '<span class="dna-activity-detail">' + esc(item.detail) + "</span>" : "";
+      const name = item.kind === "job"
+        ? '<span class="dna-activity-artist">' + esc(item.artist) + '</span><span class="dna-activity-title">' +
+          esc(item.title) + "</span>"
+        : '<span class="dna-activity-label">' + esc(item.label) + "</span>";
+      return '<li data-kind="' + item.kind + (item.status === "Stopped" ? '" class="is-stopped"' : '"') +
+      ">" + name +
+      (item.status === "Stopped" ? "" : "<strong>" + esc(item.status) + "</strong>") +
       (item.percent == null ? "" : '<span class="dna-activity-percent">' + item.percent + "%</span>") +
-      "</li>").join("") + "</ul>"
+      analyze + retry + detail + "</li>";
+    }).join("") + "</ul>"
     : '<p class="dna-activity-empty">Nothing in progress.</p>';
   return '<section id="dna-activity" class="dna-activity" aria-live="polite"><h2>In progress</h2>' + body + "</section>";
 }
@@ -327,15 +410,24 @@ export function paintDnaActivity(state) {
   if (typeof document === "undefined") return;
   const node = document.querySelector("#dna-activity");
   if (!node) return;
-  node.outerHTML = musicDnaActivityMarkup(activityJobs(state), activitySpotify(state));
+  const cat = catalog(state);
+  node.outerHTML = musicDnaActivityMarkup(activityJobs(state), activitySpotify(state),
+    { sort: cat.sort, dir: cat.dir });
 }
 export function musicDnaQueueMarkup(jobs) {
   if (!jobs?.length) return "<p>No analysis jobs yet.</p>";
   return '<div class="dna-queue-list">' + jobs.map(job => {
     const open = job.status === "queued" || job.status === "running";
     const percent = open ? '<span class="dna-activity-percent">' + jobPercent(job) + "%</span>" : "";
+    const reason = job.error
+      ? "<small>" + esc(job.error) + "</small>"
+      : (job.status === "failed" ? "<small>" + esc(stoppedCopy("")) + "</small>" : "");
+    const retry = job.status === "failed" && job.profileId
+      ? '<button type="button" class="secondary mini" data-action="dna-start-one" data-id="' +
+        esc(job.profileId) + '">Try again</button>'
+      : "";
     return "<div><span>" + esc(recordingName(job)) + "</span><strong>" + esc(job.status) +
-      "</strong>" + percent + (job.error ? "<small>" + esc(job.error) + "</small>" : "") + "</div>";
+      "</strong>" + percent + reason + retry + "</div>";
   }).join("") + "</div>";
 }
 
@@ -420,8 +512,11 @@ export function musicDnaKeyAction(targetId, key) {
 
 export function musicDnaJobsChanged(previous, next) {
   if (!Array.isArray(previous)) return false;
-  const ids = jobs => (jobs || []).map(job => String(job?.id || "")).sort().join("\n");
-  return ids(previous) !== ids(next);
+  const signature = jobs => (jobs || []).map(job => {
+    const terminal = job?.status === "failed" || job?.status === "completed" ? ":" + job.status : "";
+    return String(job?.id || "") + terminal;
+  }).sort().join("\n");
+  return signature(previous) !== signature(next);
 }
 
 async function loadCatalog(state, api) {
@@ -432,12 +527,21 @@ async function loadCatalog(state, api) {
   state.data.musicDnaOffset = request.offset;
 }
 
+async function profileWithChats(api, profileId) {
+  const profile = await api("music-dna/profiles/" + profileId);
+  try {
+    const history = await api("music-dna/profiles/" + profileId + "/versions");
+    profile.chatSessions = (history?.versions || []).filter(item => item.chatUrl);
+  } catch { profile.chatSessions = []; }
+  return profile;
+}
+
 export async function reloadMusicDna(state, api) {
   await loadCatalog(state, api);
   const openId = selected?.id || state?.data?.musicDnaSelected?.id;
   if (!openId) return;
   try {
-    selected = await api("music-dna/profiles/" + openId);
+    selected = await profileWithChats(api, openId);
     if (state?.data) delete state.data.musicDnaSelected;
   } catch { /* keep the recording that is already open */ }
 }
@@ -447,7 +551,7 @@ export async function musicDnaAction(el, state, api, refresh, message) {
   if (action === "dna-details") {
     const profileId = el.dataset.id;
     if (!profileId) return;
-    selected = await api("music-dna/profiles/" + profileId);
+    selected = await profileWithChats(api, profileId);
     delete state.data.musicDnaSelected;
     await refresh();
     return;
@@ -456,10 +560,48 @@ export async function musicDnaAction(el, state, api, refresh, message) {
     try {
       const result = await api("music-dna/jobs/start", {});
       message(result?.started
-        ? "Analysis started. The percentage updates while ChatGPT works in the background."
+        ? "Analysis started. Each recording opens its own ChatGPT conversation."
         : "Analysis is already running.");
     } catch (error) {
       message(error.message || "Could not start analysis", true);
+    }
+    await refresh();
+    return;
+  }
+  if (action === "dna-start-one" || action === "dna-analyze-recording") {
+    const profileId = el.dataset.id;
+    try {
+      if (action === "dna-analyze-recording") {
+        const queued = await api("music-dna/jobs/queue", { profileId });
+        if (queued?.status === "running") {
+          message("That recording is already being analyzed.");
+          await refresh();
+          return;
+        }
+      }
+      const result = await api("music-dna/jobs/start", { profileId });
+      message(result?.started
+        ? "Analysis started in its own ChatGPT conversation."
+        : "Analysis is already running.");
+    } catch (error) {
+      message(error.message || "Could not start analysis", true);
+    }
+    await refresh();
+    return;
+  }
+  if (action === "dna-dismiss-one" || action === "dna-dismiss-stopped") {
+    const profileId = action === "dna-dismiss-one" ? el.dataset.id : "";
+    if (action === "dna-dismiss-one" && !profileId) {
+      message("Could not remove the stopped analysis", true);
+      return;
+    }
+    try {
+      const body = profileId ? { profileId } : {};
+      const result = await api("music-dna/jobs/dismiss", body);
+      const removed = Number(result?.removed) || 0;
+      message(removed === 1 ? "Removed 1 stopped analysis." : "Removed " + removed + " stopped analyses.");
+    } catch (error) {
+      message(error.message || "Could not remove the stopped analysis", true);
     }
     await refresh();
     return;
@@ -474,9 +616,26 @@ export async function musicDnaAction(el, state, api, refresh, message) {
     try {
       await loadCatalog(state, api);
       if (openId) {
-        selected = await api("music-dna/profiles/" + openId);
+        selected = await profileWithChats(api, openId);
         delete state.data.musicDnaSelected;
       }
+    } finally {
+      ignoreScroll = false;
+    }
+    return "render";
+  }
+  if (action === "dna-sort") {
+    const sort = el.dataset.sort === "title" ? "title" : "artist";
+    const dir = el.dataset.dir === "desc" ? "desc" : "asc";
+    catalogSort = sort;
+    catalogDir = dir;
+    catalogScroll = 0;
+    state.data.musicDnaSort = sort;
+    state.data.musicDnaDir = dir;
+    state.data.musicDnaScroll = 0;
+    ignoreScroll = true;
+    try {
+      await loadCatalog(state, api);
     } finally {
       ignoreScroll = false;
     }

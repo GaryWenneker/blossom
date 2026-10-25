@@ -9,6 +9,7 @@ import { MusicDNA } from "../src/music-dna.mjs";
 const sourceAnalysis = {
   analysisMethod:"Evidence-based published recording credits, no audio decoded",
   analyzer:"Music DNA evidence-first test",summary:"Published, unmeasured instrument credits",
+  bpm:104,
   instruments:[{name:"Bass guitar",role:"Credited player; exact pattern unverified"}],
   sections:[],barBlocks:[],measurements:null,confidence:0.6
 };

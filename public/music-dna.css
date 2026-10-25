@@ -3,10 +3,12 @@
 .dna-toolbar input{flex:1 1 auto;height:30px;min-width:0;padding:0 8px;font-size:13px;background:#111e1b;color:inherit;border:1px solid #3c564b;border-radius:6px}
 .dna-toolbar .secondary,.dna-toolbar .primary{height:30px;padding:0 10px;font-size:12px}
 .dna-count{flex:0 0 auto;font-size:12px;color:var(--muted,#93a69b);white-space:nowrap}
-.dna-cols{display:grid;grid-template-columns:minmax(0,1.6fr) 52px minmax(0,.9fr) 28px;gap:8px;padding:0 8px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#7f9488}
+.dna-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) 52px minmax(0,.85fr) 36px;gap:8px;padding:0 8px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#7f9488}
+.dna-cols .dna-sort{height:auto;margin:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;text-align:left;cursor:pointer}
+.dna-cols .dna-sort.is-active{color:#f3f7f4}
 .dna-span{position:relative;width:100%}
 .dna-window{position:absolute;left:0;right:0;top:0}
-.dna-row{display:grid;grid-template-columns:minmax(0,1.6fr) 52px minmax(0,.9fr) 28px;gap:8px;align-items:center;height:30px;padding:0 8px;border:0;border-bottom:1px solid #24332c;background:transparent;color:inherit;width:100%;text-align:left;font-size:12px;border-radius:0}
+.dna-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) 52px minmax(0,.85fr) 36px;gap:8px;align-items:center;height:30px;padding:0 8px;border:0;border-bottom:1px solid #24332c;background:transparent;color:inherit;width:100%;text-align:left;font-size:12px;border-radius:0}
 .dna-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dna-row-pending span{height:8px;align-self:center;border-radius:4px;background:#2c3b34}
 .dna-row-pending span:nth-child(1){width:46%}
@@ -36,9 +38,16 @@
 .dna-activity h2{margin:0 0 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#9aada3}
 .dna-activity-empty{margin:0;font-size:12px;color:#9aada3}
 .dna-activity-summary{margin:0 0 4px;font-size:12px;color:#d5f5a4}
+.dna-activity-summary button{margin-left:8px}
 .dna-activity-list{list-style:none;margin:0;padding:0;max-height:140px;overflow:auto}
 .dna-activity-list li{display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #24332c;font-size:12px}
-.dna-activity-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dna-activity-list li.is-stopped{flex-wrap:wrap;align-items:flex-start}
+.dna-activity-detail{flex:1 1 100%;color:#f3d2d2;white-space:normal;line-height:1.35}
+.dna-stopped{margin:6px 0 0;color:#f3d2d2;font-size:13px;line-height:1.4}
+.dna-activity-label,.dna-activity-artist,.dna-activity-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dna-activity-label{flex:1 1 auto}
+.dna-activity-artist{flex:0 1 34%;color:#f3f7f4}
+.dna-activity-title{flex:1 1 auto}
 .dna-activity-percent{flex:0 0 auto;font-variant-numeric:tabular-nums;color:#d5f5a4;font-weight:650}
 .dna-activity-list button,.dna-queue-list button{flex:0 0 auto}
 .topbar-queue{height:30px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
@@ -59,6 +68,9 @@
 .studio-dna-choice .studio-field{min-width:0}
 .studio-dna-linked>div{display:flex;justify-content:space-between;gap:.5rem;align-items:center;border-top:1px solid #375047;padding:.45rem 0;font-size:.82rem}
 .studio-dna-linked span{min-width:0;overflow-wrap:anywhere}
+.studio-dna-suno{margin-top:.7rem;padding-top:.55rem;border-top:1px solid #375047}
+.studio-dna-suno p{margin:.3rem 0;font-size:.82rem;overflow-wrap:anywhere}
+.studio-dna-suno small{display:block;color:#9baaa2}
 @media(max-width:850px){.studio-dna-choice{grid-template-columns:1fr}}
 @media(max-width:520px){.dna-toolbar{flex-wrap:wrap}.dna-toolbar input{flex-basis:100%}.dna-cols{display:none}}
 

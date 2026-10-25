@@ -41,7 +41,7 @@ function host({localNames=NAMES,healthFingerprint=musicDnaMcpToolFingerprint,
   }};
 }
 test("Live MCP manifest includes both Spotify tools and differs from old 12-tool version",()=>{
-  assert.equal(NAMES.length,14);
+  assert.equal(NAMES.length,16);
   assert.ok(NAMES.includes("spotify_liked_tracks"));
   assert.ok(NAMES.includes("spotify_liked_import_page"));
   assert.equal(musicDnaMcpToolFingerprint.length,20);
@@ -50,7 +50,7 @@ test("Installer requires authenticated tools/list, not only 200 /healthz",async(
   const h=host();
   assert.equal((await probeMcpHealth({fetcher:h.fetcher})).compatible,true);
   const result=await verifyLiveMcpTools({writeToken:TOKEN,fetcher:h.fetcher});
-  assert.deepEqual(result,{toolCount:14,toolFingerprint:musicDnaMcpToolFingerprint,
+  assert.deepEqual(result,{toolCount:16,toolFingerprint:musicDnaMcpToolFingerprint,
     spotifyLiked:true});
   assert.equal(h.calls.filter(x=>x.url.endsWith("/mcp")).length,1);
 });
@@ -94,7 +94,7 @@ test("Diagnostic identifies stale PUBLIC Cloudflare even when LOCAL MCP is corre
     const good=await diagnoseMcpTools({envFile:env,publicCheck:true,
       fetcher:host().fetcher,log:line=>logs.push(line)});
     assert.equal(good.matching,true);
-    assert.match(logs[0],/LOCAL: OK \| 14 MCP tools/);
+    assert.match(logs[0],/LOCAL: OK \| 16 MCP tools/);
     assert.match(logs[1],/PUBLIC: OK/);
     const bad=host({publicFingerprint:"stale_old_fingerprint"});
     await assert.rejects(diagnoseMcpTools({envFile:env,publicCheck:true,

@@ -5,7 +5,7 @@ const SONGS=`SELECT 'project:'||p.id AS song_key,p.id AS project_id,p.track_id,p
  UNION ALL SELECT 'track:'||t.id,NULL,t.id,t.artist_id,t.title,t.created_at FROM tracks t
  WHERE NOT EXISTS(SELECT 1 FROM studio_projects p WHERE p.track_id=t.id)`;
 export function safeMediaFilename(filename){
- if(typeof filename!=='string'||! /^[a-f0-9-]{36}\.(png|wav|mp3)$/.test(filename))throw new DomainError('Invalid media filename',400);
+ if(typeof filename!=='string'||! /^[a-f0-9-]{36}\.(png|jpe?g|webp|wav|mp3)$/.test(filename))throw new DomainError('Invalid media filename',400);
  return filename;
 }
 function metadata(input){
@@ -87,7 +87,7 @@ export class Discography {
  chosenRecording(song,assetId){
   if(assetId===null)return {id:null,filename:'',mime:'',ref:''};
   const key=assetId??song.selectedAudioId;
-  if(key){const asset=this.studio.asset(key);if(!asset||asset.kind!=='audio'||asset.project_id!==song.projectId)throw new DomainError('Recording not found for this song',404);safeMediaFilename(asset.filename);return {id:asset.id,filename:asset.filename,mime:asset.mime,ref:''};}
+  if(key){const asset=this.studio.asset(key);if(!asset||asset.kind!=='audio'||asset.project_id!==song.projectId||!/\.(?:wav|mp3)$/.test(asset.filename))throw new DomainError('Recording not found for this song',404);safeMediaFilename(asset.filename);return {id:asset.id,filename:asset.filename,mime:asset.mime,ref:''};}
   return {id:null,filename:'',mime:'',ref:song.audioUrl||''};
  }
  add(albumId,items,revision){
@@ -119,5 +119,5 @@ export class Discography {
  recording(albumId,entryId,assetId,revision){
   return this.mutate(albumId,revision,()=>{const entry=this.entry(albumId,entryId),song=this.song(entry.song_key),audio=this.chosenRecording(song,assetId);this.db.prepare('UPDATE album_tracks SET audio_asset_id=?,audio_filename=?,audio_mime=?,audio_ref=? WHERE id=?').run(audio.id,audio.filename,audio.mime,audio.ref,entryId);});
  }
- setCover(albumId,filename,revision){safeMediaFilename(filename);if(!filename.endsWith('.png'))throw new DomainError('Use PNG cover artwork');return this.mutate(albumId,revision,()=>this.db.prepare('UPDATE albums SET cover_filename=? WHERE id=?').run(filename,albumId));}
+ setCover(albumId,filename,revision){safeMediaFilename(filename);if(!/\.(?:png|jpe?g|webp)$/.test(filename))throw new DomainError('Use PNG, JPEG, or WebP cover artwork');return this.mutate(albumId,revision,()=>this.db.prepare('UPDATE albums SET cover_filename=? WHERE id=?').run(filename,albumId));}
 }

@@ -1,6 +1,20 @@
 import { randomBytes, createHash } from "node:crypto";
 import { DomainError } from "./domain.mjs";
 const hash = s=>createHash("sha256").update(s).digest("base64url");
+export const PLAYER_SCOPES = Object.freeze([
+  "streaming",
+  "user-read-email",
+  "user-read-private",
+  "user-read-playback-state",
+  "user-modify-playback-state",
+  "user-read-recently-played",
+  "user-top-read",
+  "user-follow-read",
+  "playlist-read-private",
+  "playlist-read-collaborative",
+  "user-library-read"
+]);
+export const AUTHORIZE_SCOPE = PLAYER_SCOPES.join(" ");
 export class SpotifyOAuth {
   constructor({vault,sessions,baseUrl="http://127.0.0.1:8787",publicCallbackOrigin="",fetcher=fetch}={}) {
     this.vault=vault;this.sessions=sessions;this.fetcher=fetcher;
@@ -30,7 +44,7 @@ export class SpotifyOAuth {
     this.sessions.saveOAuth(state,sessionHash,this.vault.encrypt("oauth_verifier",verifier));
     const url=new URL("https://accounts.spotify.com/authorize");
     url.search=new URLSearchParams({client_id:clientId,response_type:"code",redirect_uri:this.redirectUri,
-      code_challenge_method:"S256",code_challenge:challenge,state,scope:"user-read-private user-library-read",
+      code_challenge_method:"S256",code_challenge:challenge,state,scope:AUTHORIZE_SCOPE,
       ...(chooseAccount?{show_dialog:"true"}:{})}).toString();
     return url.toString();
   }
@@ -79,7 +93,7 @@ export class SpotifyOAuth {
   // A regular signed-in Spotify browser session is NOT an API grant.
   // Obtain an API access token only from a prior PKCE consent, with refresh
   // token kept inside the encrypted Blossom vault.
-  async accessToken() {
+  async refreshGrant() {
     const refreshToken=this.vault.read("spotify_refresh_token");
     if(!refreshToken)throw new DomainError(
       "Spotify API is not connected. In Blossom Connections, authorize Spotify with access to Liked Songs.",409);
@@ -104,7 +118,19 @@ export class SpotifyOAuth {
     if(typeof token?.refresh_token==="string"&&token.refresh_token)
       this.vault.save("spotify_refresh_token",
         this.vault.list().spotify_refresh_token?.label||"Spotify",token.refresh_token);
-    return token.access_token;
+    return token;
+  }
+  async accessToken() {
+    return (await this.refreshGrant()).access_token;
+  }
+  async playerGrant() {
+    const token=await this.refreshGrant();
+    const scopes=typeof token.scope==="string"?token.scope.split(/\s+/).filter(Boolean):[];
+    if(PLAYER_SCOPES.some(scope=>!scopes.includes(scope)))
+      throw new DomainError("Reconnect Spotify in Connections. The current grant cannot play in Blossom.",409);
+    const expiresIn=Number.isInteger(token.expires_in)&&token.expires_in>0&&token.expires_in<=86400
+      ?token.expires_in:3600;
+    return {accessToken:token.access_token,expiresIn};
   }
   async profile() {
     const accessToken=await this.accessToken();
@@ -153,25 +179,33 @@ export class SpotifyOAuth {
       throw new DomainError("Invalid Spotify id", 400);
     return id;
   }
-  async spotifyJson(url) {
+  async spotifyJson(url, options = {}) {
     if (!(url instanceof URL) || url.origin !== "https://api.spotify.com")
       throw new DomainError("Invalid Spotify id", 400);
-    const token = await this.accessToken();
+    const token = options.token || await this.accessToken();
+    const method = options.method || "GET";
     const res = await this.fetcher(url.toString(), {
-      headers: { Authorization: "Bearer " + token, Accept: "application/json" },
+      method,
+      headers: {
+        Authorization: "Bearer " + token,
+        Accept: "application/json",
+        ...(options.payload ? { "Content-Type": "application/json" } : {})
+      },
+      ...(options.payload ? { body: JSON.stringify(options.payload) } : {}),
       signal: AbortSignal.timeout(20000)
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new DomainError(
-        "Spotify cannot read this catalog. Reconnect through the official Spotify OAuth page.", res.status);
+        options.denied || "Spotify cannot read this catalog. Reconnect through the official Spotify OAuth page.", res.status);
       if (res.status === 429) {
         const retryRaw = Number(res.headers?.get?.("retry-after"));
         const wait = Number.isFinite(retryRaw) ? Math.min(Math.max(Math.ceil(retryRaw), 1), 3600) : 30;
         throw new DomainError("Spotify rate limit reached; retry in " + wait + " seconds", 429);
       }
-      if (res.status === 404) throw new DomainError("Spotify item was not found", 404);
+      if (res.status === 404) throw new DomainError(options.missing || "Spotify item was not found", 404);
       throw new DomainError("Spotify request failed (" + res.status + ")", 502);
     }
+    if (res.status === 204 || res.status === 202) return {};
     const body = await res.json().catch(() => null);
     if (!body || typeof body !== "object")
       throw new DomainError("Spotify returned an invalid response", 502);

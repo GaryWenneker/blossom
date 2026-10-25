@@ -160,7 +160,7 @@ Reference recordings can be saved as versioned, indexed musical DNA profiles, se
 
 The Music DNA Library now supports registering reference recordings and uploading permitted MP3/WAV files (40 MB maximum) with explicit permission confirmation. Audio is stored privately in `.data/reference-audio`, fingerprinted by SHA-256 and queued for signal-level analysis. Install FFmpeg, including `ffprobe`, on your Mac (`brew install ffmpeg`). In a separate terminal, run `npm run dna:worker:loop` to analyze queued local audio. A single batch run is `npm run dna:worker`.
 
-This computes measurable properties (duration, sample rate, codec, channel count, decoded RMS, peak and silence). It **does not yet identify instruments, singers, chord progressions, tempos, or song sections automatically**. You can attach a reviewed detailed DNA analysis via the existing REST/MCP endpoints. The News-to-Song Studio can combine up to three analyzed reference DNA profiles, with editable influence weights, into its original-song brief and Suno blueprint. See [Music DNA](docs/MUSIC_DNA.md).
+This computes measurable properties (duration, sample rate, codec, channel count, decoded RMS, peak and silence). It **does not yet identify instruments, singers, chord progressions, tempos, or song sections automatically**. You can attach a reviewed detailed DNA analysis via the existing REST/MCP endpoints. The News-to-Song Studio can combine up to three analyzed reference DNA profiles into the Suno style. Influence weights mix those traits, the traits lead the 1,000-character Suno style, and a recording with no genres or instruments cannot be linked. See [Music DNA](docs/MUSIC_DNA.md). See [Music DNA](docs/MUSIC_DNA.md).
 
 ## Social sign-in for existing Suno and Spotify accounts
 

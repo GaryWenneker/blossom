@@ -11,9 +11,10 @@ import { LocalComposer } from "./providers/local.mjs";
 import { SunoPlatform, sunoReady, fetchSunoAudio, trustedSunoAudioUrl } from "./providers/suno-platform.mjs";
 import { ChatGptLyricsBrowser } from "./chatgpt-playwright.mjs";
 import { importArticle } from "./article-import.mjs";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { inspectUploadedImage } from "./uploaded-image.mjs";
 
 const send=(res,code,data)=>{res.writeHead(code,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"});res.end(JSON.stringify(data));};
 async function readJSON(req){
@@ -33,6 +34,22 @@ async function audioBuffer(req){
   const mp3=bytes.length>128&&(bytes.subarray(0,3).toString()==="ID3" || (bytes[0]===255&&(bytes[1]&224)===224));
   if(type==="audio/mpeg"&&!mp3 || type!=="audio/mpeg"&&!wav)throw new DomainError("Invalid audio signature",400);
   return {bytes,mime:type==="audio/mpeg"?"audio/mpeg":"audio/wav",extension:type==="audio/mpeg"?"mp3":"wav"};
+}
+async function imageBuffer(req,{square}){
+  const declared=String(req.headers["content-type"]||"").split(";")[0];
+  const chunks=[];let length=0;
+  for await(const chunk of req){length+=chunk.length;if(length>20*1024*1024)throw new DomainError("Image exceeds 20MB",413);chunks.push(chunk);}
+  const bytes=Buffer.concat(chunks);
+  const image=inspectUploadedImage(bytes,{square});
+  const mime=declared==="image/jpg"?"image/jpeg":declared;
+  if(mime!==image.mime)throw new DomainError("Upload a PNG, JPEG, or WebP image",415);
+  return {bytes,...image};
+}
+async function saveImage(directory,image){
+  await mkdir(directory,{recursive:true,mode:0o700});
+  const filename=randomUUID()+"."+image.extension;
+  await writeFile(join(directory,filename),image.bytes,{flag:"wx",mode:0o600});
+  return filename;
 }
 export class StudioAPI{
   constructor({store,vault,composer,localComposer,articleImporter=importArticle,draw,chatgptImages,sunoBrowser,sunoPlatform,sunoAudioFetcher=fetch,chatgptLyrics=null,nativeChatgptOptions={},assetDir=process.env.BLOSSOM_ASSET_DIR||".data/assets"}={}){
@@ -61,6 +78,74 @@ export class StudioAPI{
     // Preserve operator-selected settings, title and metadata.
     return this.studio.save({...project,article:imported.text,expectedRevision:project.revision});
   }
+  referencePayload(projectId) {
+    return { references: this.references.list(projectId), suno: this.references.recipePlan(projectId) };
+  }
+  presets() { return LENGTH_PRESETS; }
+  async statusSnapshot() {
+    return {
+      openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY||this.composer.key),
+      localAI:await this.localComposer.status(),
+      studioVersion:"chatgpt-assets-v2",drawConfigured:false,imageProvider:"chatgpt",generationMode:"ChatGPT in signed-in Safari; results saved automatically",
+      sunoGeneration:"official API when configured; otherwise authorized manual handoff",
+      sunoApiConfigured:!!this.vault.list().suno_api_key?.configured
+    };
+  }
+  importArticle(url) { return this.articleImporter(url); }
+  async composeLocal(projectId) {
+    const project=await this.projectWithArticle(projectId);
+    const composed=await this.localComposer.generate({
+      ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
+      referenceDna:this.references.generationContext(project.id)
+    });
+    return this.studio.setResult(project.id,composed,{expectedRevision:project.revision,expectedInputHash:inputFingerprint(project),generated:true});
+  }
+  async refreshSuno(projectId) {
+    const job=this.studio.sunoJob(projectId);
+    if(!job)return {status:"not_started"};
+    if(job.status==="complete"||job.status==="error"||job.status==="failed")return job;
+    const key=this.vault.list().suno_api_key?.configured?this.vault.read("suno_api_key"):null;
+    if(!key)return {...job,warning:"Suno API key unavailable; generation status cannot be refreshed"};
+    const remote=await this.sunoPlatform.status(job.id,key);
+    return this.studio.updateSunoJob(projectId,job.id,remote);
+  }
+  async generateSuno(projectId) {
+    const project=this.studio.require(projectId);
+    const key=this.vault.list().suno_api_key?.configured?this.vault.read("suno_api_key"):null;
+    if(!key)throw new DomainError("Suno Platform API key required for automatic music generation. Otherwise use the manual Suno handoff.",409);
+    const readiness=sunoReady(project);
+    if(!readiness.ready)throw new DomainError("Not ready for Suno: "+readiness.missing.join("; "),409);
+    if(this.sunoInFlight.has(projectId)||this.studio.sunoJob(projectId)&&
+      !["error","failed"].includes(this.studio.sunoJob(projectId).status)&&!this.studio.sunoJob(projectId).importedAssetId)
+      throw new DomainError("This project already has a Suno generation",409);
+    this.sunoInFlight.add(projectId);
+    try{
+      const recipe=sunoRecipe(project,this.references.recipePlan(projectId));
+      const submitted=await this.sunoPlatform.submit(recipe,key);
+      return this.studio.beginSunoJob(projectId,submitted.id,submitted.status,recipe,studioBriefFingerprint(project));
+    }finally{this.sunoInFlight.delete(projectId);}
+  }
+  async importSunoAudio(projectId) {
+    const project=this.studio.require(projectId);
+    const job=this.studio.sunoJob(projectId);
+    if(!job||job.status!=="complete"||!job.audioUrl||job.importedAssetId)
+      throw new DomainError("A completed, unimported Suno audio result is required",409);
+    if(this.sunoInFlight.has(projectId))throw new DomainError("Suno import already in progress",409);
+    this.sunoInFlight.add(projectId);
+    try{
+      // Only allow known Suno media hosts; forbid redirects and invalid audio bytes.
+      const {bytes,mime,extension}=await fetchSunoAudio(trustedSunoAudioUrl(job.audioUrl),{fetcher:this.sunoAudioFetcher});
+      await mkdir(this.assetDir,{recursive:true,mode:0o700});
+      const filename=randomUUID()+"."+extension;
+      await writeFile(join(this.assetDir,filename),bytes,{flag:"wx",mode:0o600});
+      const asset=this.studio.registerAsset(projectId,"audio",filename,mime,
+        {provider:"suno",briefFingerprint:job.briefFingerprint||""});
+      this.studio.selectAsset(projectId,asset.id,"audio");
+      if(!project.trackId&&job.recipe?.source?.artistId)this.studio.makeTrack(projectId,{sourceRevision:job.recipe.source.revision});
+      this.studio.markSunoImported(projectId,job.id,asset.id);
+      return {job:this.studio.sunoJob(projectId),asset};
+    }finally{this.sunoInFlight.delete(projectId);}
+  }
   async handle(req,res,path,query=new URLSearchParams()) {
     if(req.method==="GET"){
       if(path==="/api/studio/projects/page"){
@@ -86,26 +171,11 @@ export class StudioAPI{
       if(path==="/api/studio/suno-browser/status")
         return send(res,200,this.sunoBrowser.status());
       const sunoStatusPath=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno\/status$/);
-      if(sunoStatusPath){
-        const projectId=sunoStatusPath[1],job=this.studio.sunoJob(projectId);
-        if(!job)return send(res,200,{status:"not_started"});
-        if(job.status==="complete"||job.status==="error"||job.status==="failed")
-          return send(res,200,job);
-        const key=this.vault.list().suno_api_key?.configured?this.vault.read("suno_api_key"):null;
-        if(!key)return send(res,200,{...job,warning:"Suno API key unavailable; generation status cannot be refreshed"});
-        const remote=await this.sunoPlatform.status(job.id,key);
-        const updated=this.studio.updateSunoJob(projectId,job.id,remote);
-        return send(res,200,updated);
-      }
+      if(sunoStatusPath)return send(res,200,await this.refreshSuno(sunoStatusPath[1]));
       const referencesGet=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
-      if(referencesGet)return send(res,200,{references:this.references.list(referencesGet[1])});
+      if(referencesGet)return send(res,200,this.referencePayload(referencesGet[1]));
       if(path==="/api/studio/presets")return send(res,200,LENGTH_PRESETS);
-      if(path==="/api/studio/status")return send(res,200,{
-        openaiConfigured:!!(this.vault.list().openai_api_key?.configured||process.env.OPENAI_API_KEY||this.composer.key),
-        localAI:await this.localComposer.status(),
-        studioVersion:"chatgpt-assets-v2",drawConfigured:false,imageProvider:"chatgpt",generationMode:"ChatGPT in signed-in Safari; results saved automatically",
-        sunoGeneration:"official API when configured; otherwise authorized manual handoff",
-        sunoApiConfigured:!!this.vault.list().suno_api_key?.configured});
+      if(path==="/api/studio/status")return send(res,200,await this.statusSnapshot());
       if(path==="/api/studio/artists/banners")
         return send(res,200,this.studio.artistBanners());
       if(path==="/api/studio/artists/images")
@@ -130,7 +200,7 @@ export class StudioAPI{
       }
       m=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/(assets|recipe)$/);
       if(m){const p=this.studio.require(m[1]);
-        return send(res,200,m[2]==="assets"?this.studio.assets(p.id):{...sunoRecipe(p,this.references.recipeStyle(p.id)),selectedAssets:this.studio.assets(p.id).filter(a=>a.selected)});}
+        return send(res,200,m[2]==="assets"?this.studio.assets(p.id):{...sunoRecipe(p,this.references.recipePlan(p.id)),selectedAssets:this.studio.assets(p.id).filter(a=>a.selected)});}
       if(path==="/api/studio/chatgpt-lyrics/status")
         return send(res,200,await this.chatgptLyrics.progress());
       throw new DomainError("Not found",404);
@@ -150,44 +220,32 @@ export class StudioAPI{
       await writeFile(join(this.assetDir,filename),bytes,{flag:"wx",mode:0o600});
       return send(res,201,this.studio.registerAsset(upload[1],"audio",filename,mime,{provider:"upload",briefFingerprint:studioBriefFingerprint(this.studio.require(upload[1]))}));
     }
+    const artistPhotoUpload=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/photos$/);
+    if(artistPhotoUpload){
+      const image=await imageBuffer(req,{square:false});
+      const filename=await saveImage(this.assetDir,image);
+      try{return send(res,201,this.studio.registerArtistPhoto(artistPhotoUpload[1],{filename,mime:image.mime,provider:"upload"}));}
+      catch(error){await unlink(join(this.assetDir,filename)).catch(()=>{});throw error;}
+    }
+    const imageUpload=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/upload-image$/);
+    if(imageUpload){
+      const project=this.studio.require(imageUpload[1]);
+      const kind=query.get("kind");
+      if(!["cover","artist-photo"].includes(kind))throw new DomainError("Invalid asset type",400);
+      if(kind==="artist-photo"&&!project.artistId)throw new DomainError("Choose an artist before adding their photo",409);
+      const image=await imageBuffer(req,{square:kind==="cover"});
+      const filename=await saveImage(this.assetDir,image);
+      try{
+        const asset=this.studio.registerAsset(project.id,kind,filename,image.mime,{provider:"upload",briefFingerprint:studioBriefFingerprint(project)});
+        this.studio.selectAsset(project.id,asset.id,kind);
+        return send(res,201,this.studio.assets(project.id).find(item=>item.id===asset.id));
+      }catch(error){await unlink(join(this.assetDir,filename)).catch(()=>{});throw error;}
+    }
     const data=await readJSON(req);
     const sunoAction=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/suno\/(generate|import)$/);
     if(sunoAction){
-      const projectId=sunoAction[1],operation=sunoAction[2];
-      const project=this.studio.require(projectId);
-      const key=this.vault.list().suno_api_key?.configured?this.vault.read("suno_api_key"):null;
-      if(operation==="generate"){
-        if(!key)throw new DomainError("Suno Platform API key required for automatic music generation. Otherwise use the manual Suno handoff.",409);
-        const readiness=sunoReady(project);
-        if(!readiness.ready)throw new DomainError("Not ready for Suno: "+readiness.missing.join("; "),409);
-        if(this.sunoInFlight.has(projectId)||this.studio.sunoJob(projectId)&&
-          !["error","failed"].includes(this.studio.sunoJob(projectId).status)&&!this.studio.sunoJob(projectId).importedAssetId)
-          throw new DomainError("This project already has a Suno generation",409);
-        this.sunoInFlight.add(projectId);
-        try{
-          const recipe=sunoRecipe(project,this.references.recipeStyle(projectId));
-          const submitted=await this.sunoPlatform.submit(recipe,key);
-          return send(res,202,this.studio.beginSunoJob(projectId,submitted.id,submitted.status,recipe,studioBriefFingerprint(project)));
-        }finally{this.sunoInFlight.delete(projectId);}
-      }
-      const job=this.studio.sunoJob(projectId);
-      if(!job||job.status!=="complete"||!job.audioUrl||job.importedAssetId)
-        throw new DomainError("A completed, unimported Suno audio result is required",409);
-      if(this.sunoInFlight.has(projectId))throw new DomainError("Suno import already in progress",409);
-      this.sunoInFlight.add(projectId);
-      try{
-        // Only allow known Suno media hosts; forbid redirects and invalid audio bytes.
-        const {bytes,mime,extension}=await fetchSunoAudio(trustedSunoAudioUrl(job.audioUrl),{fetcher:this.sunoAudioFetcher});
-        await mkdir(this.assetDir,{recursive:true,mode:0o700});
-        const filename=randomUUID()+"."+extension;
-        await writeFile(join(this.assetDir,filename),bytes,{flag:"wx",mode:0o600});
-        const asset=this.studio.registerAsset(projectId,"audio",filename,mime,
-          {provider:"suno",briefFingerprint:job.briefFingerprint||""});
-        this.studio.selectAsset(projectId,asset.id,"audio");
-        if(!project.trackId&&job.recipe?.source?.artistId)this.studio.makeTrack(projectId,{sourceRevision:job.recipe.source.revision});
-        this.studio.markSunoImported(projectId,job.id,asset.id);
-        return send(res,201,{job:this.studio.sunoJob(projectId),asset});
-      }finally{this.sunoInFlight.delete(projectId);}
+      if(sunoAction[2]==="generate")return send(res,202,await this.generateSuno(sunoAction[1]));
+      return send(res,201,await this.importSunoAudio(sunoAction[1]));
     }
     const artistPhotoGenerate=path.match(/^\/api\/studio\/artists\/([a-f0-9-]{36})\/generate-photo$/);
     if(artistPhotoGenerate){
@@ -221,21 +279,12 @@ export class StudioAPI{
       const [,projectId,assetId,action]=assetAction;
       return send(res,200,action==="select"?this.studio.selectAsset(projectId,assetId,data?.kind):this.studio.deleteAsset(projectId,assetId));
     }
-    if(path==="/api/studio/articles/import"){
-      const imported=await this.articleImporter(data?.url);
-      return send(res,200,imported);
-    }
+    if(path==="/api/studio/articles/import")
+      return send(res,200,await this.importArticle(data?.url));
     // Compatibility: old Studio buttons call chatgpt-extract. Do NOT launch
     // browser automation or claim that a ChatGPT Safari login is API access.
     const localExtract=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-extract$/);
-    if(localExtract){
-      const project=await this.projectWithArticle(localExtract[1]);
-      const composed=await this.localComposer.generate({
-        ...project,artistDna:this.store.artist(project.artistId)?.dna||"",
-        referenceDna:this.references.generationContext(project.id)
-      });
-      return send(res,200,this.studio.setResult(project.id,composed,{expectedRevision:project.revision,expectedInputHash:inputFingerprint(project),generated:true}));
-    }
+    if(localExtract)return send(res,200,await this.composeLocal(localExtract[1]));
     const chatgptLyricsRoute=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/chatgpt-lyrics$/);
     if(chatgptLyricsRoute){
       const project=await this.projectWithArticle(chatgptLyricsRoute[1]);
@@ -268,13 +317,13 @@ export class StudioAPI{
         return send(res,201,{asset});
       }
       const ready=sunoReady(p);if(op==="submit"&&!ready.ready)throw new DomainError("Not ready for Suno: "+ready.missing.join("; "),409);
-      const recipe=sunoRecipe(p,this.references.recipeStyle(p.id));
+      const recipe=sunoRecipe(p,this.references.recipePlan(p.id));
       const result=op==="submit"?await this.sunoBrowser.submit(recipe):await this.sunoBrowser.prefill(recipe);
       this.store.audit("supervised_browser_prefill","studio_project",p.id,{filled:result.filled,skipped:result.skipped});
       return send(res,200,result);
     }
     const referencesPost=path.match(/^\/api\/studio\/projects\/([a-f0-9-]{36})\/references$/);
-    if(referencesPost)return send(res,200,{references:this.references.set(referencesPost[1],data?.references)});
+    if(referencesPost){this.references.set(referencesPost[1],data?.references);return send(res,200,this.referencePayload(referencesPost[1]));}
     if(path==="/api/studio/openai-key"){
       if(data&&Object.hasOwn(data,"password"))throw new DomainError("Use an OpenAI API key, never a ChatGPT website password");
       this.vault.save("openai_api_key","OpenAI API",data?.apiKey);

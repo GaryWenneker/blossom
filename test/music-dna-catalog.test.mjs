@@ -139,31 +139,41 @@ test("the music dna page lists only unfinished work and a percent when one is kn
       { id: "j2", profileId: "waiting123", artist: "A & B", title: "<x>", status: "queued" },
       { id: "j5", profileId: "ready123", artist: "Ready", title: "Track", status: "queued", hasAudio: true },
       { id: "j3", artist: "Done", title: "Already", status: "completed" },
-      { id: "j4", artist: "Bad", title: "Take", status: "failed" }
+      { id: "j4", profileId: "bad123", artist: "Bad", title: "Take", status: "failed",
+        error: "Sign in to ChatGPT in Safari, then start the analysis again." }
     ],
     musicDnaSpotify: { running: true, received: 25, total: 100, status: "working" }
   } });
-  assert.match(html, /The Fixx — The Sign of Fire/);
+  assert.match(html, /<span class="dna-activity-artist">The Fixx<\/span><span class="dna-activity-title">The Sign of Fire<\/span>/);
   assert.match(html, />Running</);
-  assert.match(html, /A &amp; B — &lt;x&gt;/);
+  assert.match(html, /<span class="dna-activity-artist">A &amp; B<\/span><span class="dna-activity-title">&lt;x&gt;<\/span>/);
   assert.match(html, /data-action="dna-start-analysis"/);
   assert.doesNotMatch(html, /Waiting for audio/);
   assert.doesNotMatch(html, /dna-add-audio/);
   assert.doesNotMatch(html, /Done — Already/);
-  assert.doesNotMatch(html, /Bad — Take/);
+  assert.match(html, /<span class="dna-activity-artist">Bad<\/span><span class="dna-activity-title">Take<\/span>/);
+  assert.match(html, /Sign in to ChatGPT in Safari, then start the analysis again\./);
+  assert.match(html, /data-action="dna-start-one" data-id="bad123"/);
+  assert.match(html, />Try again</);
+  assert.match(html, /1 stopped/);
+  assert.doesNotMatch(html, /Analysis failed/);
   assert.match(html, /Spotify Liked Songs/);
   assert.match(html, /25%/);
   assert.match(html, /1 importing/);
   assert.match(html, /1 running/);
   assert.match(html, /2 queued/);
-  const jobs = [...html.matchAll(/<li data-kind="job">([\s\S]*?)<\/li>/g)].map(match => match[1]);
-  assert.equal(jobs.length, 3);
+  const jobs = [...html.matchAll(/<li data-kind="job"(?: class="is-stopped")?>([\s\S]*?)<\/li>/g)].map(match => match[1]);
+  assert.equal(jobs.length, 4);
   assert.equal(jobs.filter(row => row.includes("dna-activity-percent")).length, 3);
   const running = jobs.find(row => row.includes(">Running<"));
   const waiting = jobs.find(row => row.includes("A &amp; B"));
-  const ready = jobs.find(row => row.includes("Ready — Track"));
+  const ready = jobs.find(row => row.includes("dna-activity-artist\">Ready") && row.includes("dna-activity-title\">Track"));
   assert.match(running, /40%/);
+  assert.doesNotMatch(running, /dna-start-one/);
   assert.match(waiting, /0%/);
+  assert.match(waiting, /data-action="dna-start-one"/);
+  assert.match(waiting, /data-id="waiting123"/);
+  assert.match(ready, /data-action="dna-start-one"/);
   assert.ok(ready && ready.includes(">Queued<") && ready.includes("0%"));
 
   const capped = musicDnaView({ data: {
@@ -219,6 +229,46 @@ test("Start analysis asks the server to run ChatGPT in the background", async ()
     text => messages.push(text));
   assert.deepEqual(calls, [["music-dna/jobs/start", {}]]);
   assert.match(messages[0], /Analysis started/);
+});
+
+test("a queued recording can start on its own and a saved analysis shows its ChatGPT conversation", async () => {
+  const { musicDnaAction, musicDnaView } = await import("../public/music-dna.js");
+  const calls = [];
+  await musicDnaAction(
+    { dataset: { action: "dna-start-one", id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } },
+    { data: {} },
+    async (path, body) => { calls.push([path, body]); return { started: true }; },
+    async () => {},
+    () => {});
+  assert.deepEqual(calls, [[
+    "music-dna/jobs/start",
+    { profileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }
+  ]]);
+  const html = musicDnaView({ data: {
+    musicDnaProfiles: [],
+    musicDnaTotal: 0,
+    musicDnaSelected: {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      artist: "De Staat",
+      title: "Mona Lisa",
+      analysisVersion: 2,
+      analysis: {
+        chatSession: {
+          provider: "chatgpt",
+          url: "https://chatgpt.com/c/22222222-2222-4222-8222-222222222222"
+        }
+      },
+      chatSessions: [
+        { version: 2, chatUrl: "https://chatgpt.com/c/22222222-2222-4222-8222-222222222222" },
+        { version: 1, chatUrl: "https://chatgpt.com/c/11111111-1111-4111-8111-111111111111" }
+      ]
+    }
+  } });
+  assert.match(html, /data-action="dna-analyze-recording"/);
+  assert.match(html, /ChatGPT v2/);
+  assert.match(html, /ChatGPT v1/);
+  assert.match(html, /https:\/\/chatgpt\.com\/c\/11111111-1111-4111-8111-111111111111/);
+  assert.doesNotMatch(html, /javascript:/);
 });
 
 test("Spotify search results escape names and offer add", async () => {
@@ -336,6 +386,7 @@ test("a job leaving the queue is the signal to reload the catalog", async () => 
   assert.equal(musicDnaJobsChanged(undefined, [queued]), false);
   assert.equal(musicDnaJobsChanged([queued], [running]), false);
   assert.equal(musicDnaJobsChanged([running], []), true);
+  assert.equal(musicDnaJobsChanged([running], [{ id: "job-1", status: "failed" }]), true);
   assert.equal(musicDnaJobsChanged([queued, { id: "job-2", status: "queued" }], [queued]), true);
 });
 
@@ -349,8 +400,23 @@ test("a failed job is labeled, and a saved analysis replaces awaiting analysis",
     musicDnaTotal: 1,
     musicDnaSelected: { ...waiting, jobStatus: "failed" }
   } });
-  assert.match(failedHtml, /Analysis failed/);
+  assert.match(failedHtml, /Analysis stopped\. Try again\./);
+  assert.doesNotMatch(failedHtml, /Analysis failed/);
+  assert.doesNotMatch(failedHtml, />failed</);
   assert.doesNotMatch(failedHtml, /Awaiting analysis/);
+  const explained = musicDnaView({ data: {
+    musicDnaProfiles: [{ ...waiting, jobStatus: "failed" }],
+    musicDnaTotal: 1,
+    musicDnaSelected: { ...waiting, jobStatus: "failed" },
+    musicDnaOpenJobs: [{
+      id: "job-fail", profileId: waiting.id, artist: "Anne Clark",
+      title: "Sleeper In Metropolis", status: "failed",
+      error: "Sign in to ChatGPT in Safari, then start the analysis again."
+    }]
+  } });
+  assert.match(explained, /Sign in to ChatGPT in Safari, then start the analysis again\./);
+  assert.match(explained, />Try again</);
+  assert.doesNotMatch(explained, /Analysis failed/);
   const analyzedHtml = musicDnaView({ data: {
     musicDnaProfiles: [fixx], musicDnaTotal: 1, musicDnaSelected: fixx,
     musicDnaQuery: "fixx", musicDnaScroll: 0
@@ -414,4 +480,102 @@ test("top navigation holds the queue button and registration is a dialog", () =>
   assert.ok(html.indexOf('id="dna-register-dialog"') > mainEnd);
   assert.match(html, /id="dna-reference-form"/);
   assert.match(css, /\.dna-row\{[^}]*height:\s*30px/);
+});
+
+test("painting the activity list keeps the active artist sort", async () => {
+  const { paintDnaActivity } = await import("../public/music-dna.js");
+  let html = "";
+  const previous = globalThis.document;
+  globalThis.document = {
+    querySelector: () => ({ set outerHTML(value) { html = value; } })
+  };
+  try {
+    paintDnaActivity({ data: {
+      musicDnaSort: "artist",
+      musicDnaDir: "asc",
+      musicDnaOpenJobs: [
+        { id: "j1", profileId: "p1", artist: "Zebra", title: "Song", status: "failed", error: "x" },
+        { id: "j2", profileId: "p2", artist: "Alpha", title: "Other", status: "failed", error: "x" }
+      ]
+    }});
+    const artists = [...html.matchAll(/dna-activity-artist">([^<]+)/g)].map(match => match[1]);
+    assert.deepEqual(artists, ["Alpha", "Zebra"]);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
+test("artist and title are separate columns and the headers sort both lists", async () => {
+  const html = musicDnaView({ data: {
+    musicDnaProfiles: [{
+      id: fixx.id, artist: "Anne Clark", title: "Sleeper In Metropolis",
+      analysisVersion: 0, analysis: null
+    }],
+    musicDnaTotal: 1,
+    musicDnaSort: "artist",
+    musicDnaDir: "asc",
+    musicDnaOpenJobs: [
+      { id: "j1", profileId: "p1", artist: "Zebra", title: "Song", status: "failed", error: "Stopped." },
+      { id: "j2", profileId: "p2", artist: "Alpha", title: "Other", status: "failed", error: "Stopped." }
+    ]
+  }});
+  assert.match(html, /<span class="dna-row-artist">Anne Clark<\/span><span class="dna-row-title">Sleeper In Metropolis<\/span>/);
+  assert.doesNotMatch(html, /Anne Clark · Sleeper/);
+  assert.match(html, /data-action="dna-sort" data-sort="artist" data-dir="desc" aria-sort="ascending"/);
+  assert.match(html, /data-action="dna-sort" data-sort="title" data-dir="asc" aria-sort="none"/);
+  const artists = [...html.matchAll(/dna-activity-artist">([^<]+)/g)].map(match => match[1]);
+  assert.deepEqual(artists, ["Alpha", "Zebra"]);
+  const { musicDnaAction } = await import("../public/music-dna.js");
+  const state = { data: { musicDnaTotal: 3, musicDnaProfiles: [] } };
+  const paths = [];
+  const result = await musicDnaAction(
+    { dataset: { action: "dna-sort", sort: "title", dir: "desc" } },
+    state,
+    async path => {
+      paths.push(path);
+      return { results: [], total: 3 };
+    },
+    async () => {},
+    () => {});
+  assert.equal(result, "render");
+  assert.equal(state.data.musicDnaSort, "title");
+  assert.equal(state.data.musicDnaDir, "desc");
+  assert.equal(state.data.musicDnaScroll, 0);
+  assert.match(paths[0], /sort=title/);
+  assert.match(paths[0], /dir=desc/);
+});
+
+test("stopped analyses can be removed one at a time or cleared together", async () => {
+  const html = musicDnaView({ data: {
+    musicDnaProfiles: [],
+    musicDnaTotal: 0,
+    musicDnaOpenJobs: [
+      { id: "j1", profileId: "bad123", artist: "Animotion", title: "Obsession", status: "failed", error: "ChatGPT reply was not a music analysis" },
+      { id: "j2", profileId: "run123", artist: "Ready", title: "Track", status: "running", progress: 10 }
+    ]
+  }});
+  assert.match(html, /data-action="dna-dismiss-one" data-id="bad123"/);
+  assert.match(html, />Remove</);
+  assert.match(html, /data-action="dna-dismiss-stopped"/);
+  assert.match(html, />Clear stopped</);
+  assert.doesNotMatch(html.match(/data-kind="job">[\s\S]*?<\/li>/)[0], /dna-dismiss/);
+  const { musicDnaAction } = await import("../public/music-dna.js");
+  const calls = [];
+  await musicDnaAction(
+    { dataset: { action: "dna-dismiss-one", id: "bad123" } },
+    { data: {} },
+    async (path, body) => { calls.push([path, body]); return { removed: 1 }; },
+    async () => {},
+    () => {});
+  await musicDnaAction(
+    { dataset: { action: "dna-dismiss-stopped" } },
+    { data: {} },
+    async (path, body) => { calls.push([path, body]); return { removed: 39 }; },
+    async () => {},
+    () => {});
+  assert.deepEqual(calls, [
+    ["music-dna/jobs/dismiss", { profileId: "bad123" }],
+    ["music-dna/jobs/dismiss", {}]
+  ]);
 });

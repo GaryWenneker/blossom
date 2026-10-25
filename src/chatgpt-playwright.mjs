@@ -8,6 +8,30 @@ import { DomainError } from "./domain.mjs";
 import { LYRIC_LANGUAGES } from "./studio.mjs";
 
 export const CHATGPT_URL = "https://chatgpt.com/";
+const NEW_CHAT = 'a[data-testid="create-new-chat-button"], a[aria-label="New chat"], button[aria-label="New chat"], a[aria-label="Nieuwe chat"], button[aria-label="Nieuwe chat"]';
+
+export function chatGptConversationUrl(value) {
+  const url = String(value || "").trim().split(/[?#]/)[0];
+  return /^https:\/\/chatgpt\.com\/c\/[A-Za-z0-9_-]{8,80}$/.test(url) ? url : "";
+}
+
+export async function openFreshChatGptConversation(page) {
+  await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  if (new URL(page.url()).origin !== "https://chatgpt.com")
+    throw new DomainError("Refusing to automate a page outside ChatGPT", 502);
+  if (!new URL(page.url()).pathname.startsWith("/c/")) return;
+  const button = page.locator(NEW_CHAT);
+  if (await button.count()) await button.first().click({ timeout: 10000 });
+  else await page.goto(CHATGPT_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  if (typeof page.waitForFunction === "function")
+    await page.waitForFunction(() => !location.pathname.startsWith("/c/"), null, { timeout: 15000 }).catch(() => {});
+}
+
+export async function readChatGptConversationUrl(page) {
+  if (typeof page.waitForFunction === "function")
+    await page.waitForFunction(() => /^\/c\/[A-Za-z0-9_-]{8,80}$/.test(location.pathname), null, { timeout: 20000 }).catch(() => {});
+  return chatGptConversationUrl(typeof page.url === "function" ? page.url() : "");
+}
 export const MIN_ARTICLE_PASTE = 80;
 const PROFILE = ".data/chatgpt-playwright-profile";
 const COMPOSER = '#prompt-textarea, [data-testid="prompt-textarea"], [contenteditable="true"][role="textbox"]';
@@ -274,6 +298,8 @@ export class ChatGptLyricsBrowser {
       },
       async hasComposer() { return pageHasComposer(await readyPage()); },
       async submit(prompt) { return submitChatGptPrompt(await readyPage(), prompt); },
+      async freshChat() { await openFreshChatGptConversation(await readyPage()); },
+      async conversationUrl() { return readChatGptConversationUrl(await readyPage()); },
       async bringToFront() { await (await readyPage()).bringToFront(); },
       async close() { await context.close(); }
     };
@@ -352,9 +378,12 @@ export class ChatGptLyricsBrowser {
       if (text === "LOGIN" || text.startsWith("LOGIN"))
         throw fail("Sign in to ChatGPT in Safari, then start the analysis again.", 409, "chatgpt_login_required");
       const split = text.indexOf("\n");
-      const reply = text.startsWith("REPLY") && split >= 0 ? text.slice(split + 1) : "";
-      if (!reply) throw fail("ChatGPT reply was not a music analysis", 502, "chatgpt_reply_invalid");
-      return reply;
+      const body = text.startsWith("REPLY") && split >= 0 ? text.slice(split + 1).trim() : "";
+      const urlBreak = body.indexOf("\n");
+      const url = chatGptConversationUrl(urlBreak >= 0 ? body.slice(0, urlBreak) : "");
+      const reply = url ? body.slice(urlBreak + 1).trim() : "";
+      if (!url || !reply) throw fail("ChatGPT did not open a conversation for this analysis", 502, "chatgpt_reply_invalid");
+      return url + "\n" + reply;
     } finally {
       clearInterval(timer);
       await rm(progressPath, { force: true });
@@ -374,6 +403,7 @@ export class ChatGptLyricsBrowser {
       throw fail("Sign in to ChatGPT, then start the analysis again.", 409, "chatgpt_login_required");
     }
     report(40);
+    if (typeof session.freshChat === "function") await session.freshChat();
     let percent = 40;
     const timer = setInterval(() => {
       percent = Math.min(80, percent + 5);
@@ -381,8 +411,11 @@ export class ChatGptLyricsBrowser {
     }, 3000);
     try {
       const reply = await session.submit(prompt);
+      const url = typeof session.conversationUrl === "function"
+        ? chatGptConversationUrl(await session.conversationUrl()) : "";
+      if (!url) throw fail("ChatGPT did not open a conversation for this analysis", 502, "chatgpt_reply_invalid");
       report(85);
-      return reply;
+      return url + "\n" + reply;
     } finally {
       clearInterval(timer);
       await session.close();

@@ -1,0 +1,123 @@
+{
+  "project": "3TWNTY - The KLF audio layer",
+  "reference_notice": "Use only obtained/owned/authorized audio. Filenames alone do not prove exact editions.",
+  "recordings": [
+    {
+      "blossom_id": "5173ca63-38ad-405b-9e4e-4ca5f1a7f48c",
+      "artist": "The KLF",
+      "title": "What Time Is Love? (Pure Trance Original)",
+      "year": 1988,
+      "slug": "01_what_time_is_love_pure_trance_1988",
+      "filename": "01_what_time_is_love_pure_trance_1988.wav",
+      "edition_to_verify": "pure trance 1 original mix 7:05"
+    },
+    {
+      "blossom_id": "7a4e6bf7-22f1-4c97-b2dc-e650267def71",
+      "artist": "The KLF",
+      "title": "What Time Is Love? (Live at Trancentral - Radio Edit)",
+      "year": 1990,
+      "slug": "02_what_time_is_love_live_1990",
+      "filename": "02_what_time_is_love_live_1990.wav",
+      "edition_to_verify": "1990 live at Trancentral radio edit, not 2021 compilation edit"
+    },
+    {
+      "blossom_id": "b96c0b7d-4ce0-495f-b30a-bd9ad5a9c7dc",
+      "artist": "The KLF",
+      "title": "3 A.M. Eternal (Pure Trance Original)",
+      "year": 1989,
+      "slug": "03_3am_eternal_pure_trance_1989",
+      "filename": "03_3am_eternal_pure_trance_1989.wav",
+      "edition_to_verify": "1989 Pure Trance original"
+    },
+    {
+      "blossom_id": "c23fe638-08b3-465c-b756-73fc155b8ce0",
+      "artist": "The KLF",
+      "title": "3AM Eternal - Live at the S.S.L.",
+      "year": 2021,
+      "slug": "04_3am_eternal_live_2021",
+      "filename": "04_3am_eternal_live_2021.wav",
+      "edition_to_verify": "2021 digital Solid State Logik 1 edition, not original 1991 7inch"
+    },
+    {
+      "blossom_id": "ee745eca-c761-4784-ba5f-32d9da5b431b",
+      "artist": "The KLF",
+      "title": "Last Train to Trancentral (Pure Trance Original)",
+      "year": 1990,
+      "slug": "05_last_train_pure_trance_1990",
+      "filename": "05_last_train_pure_trance_1990.wav",
+      "edition_to_verify": "1990 Pure Trance original mix"
+    },
+    {
+      "blossom_id": "f87d2f4e-71af-48e1-8efa-0fa3476ee97e",
+      "artist": "The KLF",
+      "title": "Last Train to Trancentral (Live from the Lost Continent - Radio Edit)",
+      "year": 1991,
+      "slug": "06_last_train_live_radio_1991",
+      "filename": "06_last_train_live_radio_1991.wav",
+      "edition_to_verify": "1991 radio edit, not 2021 streaming compilation"
+    },
+    {
+      "blossom_id": "bf8bd941-e2de-4fce-b495-dad64aec6b85",
+      "artist": "The KLF",
+      "title": "Justified and Ancient (The White Room version)",
+      "year": 1991,
+      "slug": "07_justified_and_ancient_white_room",
+      "filename": "07_justified_and_ancient_white_room.wav",
+      "edition_to_verify": "original White Room Black Steel album recording"
+    },
+    {
+      "blossom_id": "e2724bfe-3173-40a6-94cb-7e09fd8d717e",
+      "artist": "The KLF",
+      "title": "Justified & Ancient (Stand by the JAMs)",
+      "year": 1991,
+      "slug": "08_justified_and_ancient_tammy",
+      "filename": "08_justified_and_ancient_tammy.wav",
+      "edition_to_verify": "1991 Tammy Wynette 7inch radio version"
+    },
+    {
+      "blossom_id": "78b62868-94cc-4ce5-b326-c3c6ebf9be9b",
+      "artist": "The KLF",
+      "title": "Kylie Said to Jason",
+      "year": 1989,
+      "slug": "09_kylie_said_to_jason",
+      "filename": "09_kylie_said_to_jason.wav",
+      "edition_to_verify": "1989 7inch edit"
+    },
+    {
+      "blossom_id": "545eb293-b86b-4840-bcea-d45c1d685706",
+      "artist": "The JAMs",
+      "title": "It's Grim Up North",
+      "year": 1991,
+      "slug": "10_its_grim_up_north",
+      "filename": "10_its_grim_up_north.wav",
+      "edition_to_verify": "1991 4 minute radio edit, not 10 minute part 1"
+    },
+    {
+      "blossom_id": "72672ba2-aa03-4573-88f1-34a019cb4f05",
+      "artist": "The Timelords",
+      "title": "Doctorin' the Tardis",
+      "year": 1988,
+      "slug": "11_doctorin_the_tardis",
+      "filename": "11_doctorin_the_tardis.wav",
+      "edition_to_verify": "1988 7inch radio version"
+    },
+    {
+      "blossom_id": "0e311cf5-4a9d-4a0d-b56c-0ae1c30b7222",
+      "artist": "The KLF",
+      "title": "America: What Time Is Love?",
+      "year": 1992,
+      "slug": "12_america_what_time_is_love",
+      "filename": "12_america_what_time_is_love.wav",
+      "edition_to_verify": "2021 Solid State Logik 1 edit around 4:07, not 1992 7inch"
+    },
+    {
+      "blossom_id": "220b817f-73d5-4603-b039-e8d27e255b16",
+      "artist": "The KLF",
+      "title": "Chill Out (continuous album mix)",
+      "year": 1990,
+      "slug": "13_chill_out_continuous",
+      "filename": "13_chill_out_continuous.wav",
+      "edition_to_verify": "1990 continuous 45-min original ambient mix, NOT Come Down Dawn"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { DomainError } from "./domain.mjs";
 import { StudioStore } from "./studio.mjs";
+import { invokeOperation, operationCatalog } from "./mcp-operations.mjs";
 
 const schema = properties => ({ type: "object", properties, additionalProperties: false });
 const str = { type: "string" };
@@ -29,7 +30,11 @@ const TOOLS = [
   { name: "music_dna_claim_job", description: "Claim one pending analysis job with a ten minute lease.",
     inputSchema: schema({ worker: str }), write: true },
   { name: "music_dna_complete_job", description: "Complete or mark failed a claimed analysis job; an actual analysis payload is needed for success.",
-    inputSchema: { ...schema({ jobId: str, analysis: { type: "object" }, error: str }), required: ["jobId"] }, write: true }
+    inputSchema: { ...schema({ jobId: str, analysis: { type: "object" }, error: str }), required: ["jobId"] }, write: true },
+  { name: "blossom_operations", description: "List every Blossom adjustment ChatGPT may perform, with input schemas, plus actions that stay on this Mac.",
+    inputSchema: schema({}) },
+  { name: "blossom_invoke", description: "Run one action from blossom_operations. Pass operation and input. Write actions require blossom:write. Never send API keys, passwords or tokens.",
+    inputSchema: { ...schema({ operation: str, input: { type: "object" } }), required: ["operation"] } }
 ];
 // Only nonsecret, executable tool contracts enter this identifier. It changes
 // when tools or input schemas change, unlike the old hardcoded "0.1.0" version.
@@ -67,13 +72,28 @@ async function readBody(req) {
 }
 export class MusicDnaMCP {
   constructor(dna, { readToken = process.env.BLOSSOM_MCP_READ_TOKEN,
-    writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN, oauth = null, spotifyLiked = null } = {}) {
+    writeToken = process.env.BLOSSOM_MCP_WRITE_TOKEN, oauth = null, spotifyLiked = null,
+    vault = null, studioApi = null, catalog = null, provider = null, allowLive = false,
+    spotifyCatalog = null } = {}) {
     this.dna = dna;
     this.studio = new StudioStore(dna.store);
     this.readToken = readToken;
     this.writeToken = writeToken;
     this.oauth = oauth;
     this.spotifyLiked = spotifyLiked;
+    this.vault = vault;
+    this.studioApi = studioApi;
+    this.catalog = catalog;
+    this.provider = provider;
+    this.allowLive = allowLive;
+    this.spotifyCatalog = spotifyCatalog;
+  }
+  operationContext() {
+    return {
+      store: this.dna.store, studio: this.studio, dna: this.dna, vault: this.vault,
+      studioApi: this.studioApi, catalog: this.catalog, provider: this.provider,
+      allowLive: !!this.allowLive, spotifyCatalog: this.spotifyCatalog
+    };
   }
   enabled() { return !!this.oauth?.enabled() || (this.readToken?.length || 0) >= 32 || (this.writeToken?.length || 0) >= 32; }
   async handle(req, res) {
@@ -139,6 +159,8 @@ export class MusicDnaMCP {
           case "music_dna_import_batch": value = this.dna.importBatch(args.items); break;
           case "music_dna_claim_job": value = this.dna.claimJob(args.worker); break;
           case "music_dna_complete_job": value = this.dna.completeJob(args.jobId, args.analysis, args.error); break;
+          case "blossom_operations": value = operationCatalog(); break;
+          case "blossom_invoke": value = await invokeOperation(this.operationContext(), args, { write }); break;
           default: throw new DomainError("Unknown tool", 404);
         }
         result = { content: [{ type: "text", text: JSON.stringify(value) }], isError: false };

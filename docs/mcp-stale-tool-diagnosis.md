@@ -53,7 +53,7 @@ The final command checks:
 The expected output shape is:
 
 ```text
-LOCAL: OK | 14 MCP tools | Spotify Liked Songs available | fingerprint <20 hex chars>
+LOCAL: OK | 16 MCP tools | Spotify Liked Songs available | fingerprint <20 hex chars>
 PUBLIC: OK | fingerprint <same fingerprint> | count 14 | reachable true
 ```
 

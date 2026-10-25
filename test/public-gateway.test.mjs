@@ -59,6 +59,12 @@ test("Public hostname serves only MCP gateway landing and status, not admin page
   assert.equal((await req("/login")).status,404);
   assert.equal((await req("/api/summary")).status,404);
   assert.equal((await req("/app.js")).status,404);
+  assert.equal((await req("/player.js")).status,404);
+  assert.equal((await req("/player-playback.js")).status,404);
+  const playerToken=await req("/api/player/token");
+  assert.equal(playerToken.status,404);
+  assert.doesNotMatch(await playerToken.text(),/accessToken|token-secret/);
+  assert.doesNotMatch(home.headers.get("content-security-policy")||"",/sdk\.scdn\.co/);
   assert.equal((await req("/api/studio/projects")).status,404);
   assert.equal((await req("/.well-known/oauth-authorization-server")).status,200);
   assert.equal((await req("/.well-known/oauth-protected-resource")).status,200);

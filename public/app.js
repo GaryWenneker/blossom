@@ -1,8 +1,11 @@
 import { musicDnaView, musicDnaAction, musicDnaCreate, musicDnaUpload, musicDnaRequest, musicDnaChrome, bindMusicDna, paintDnaActivity, musicDnaJobsChanged, reloadMusicDna } from "./music-dna.js";
 import { pageFromHash, routeFromClick } from "./route.js";
-import { discographyView,discographyRefresh,discographyAction,bindDiscography } from "./discography.js";
-import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioConfigurePersistence,studioAutoSave,studioFlush,studioResumePersistence,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-partial-v1";
+import { mountPlayer, playerView, unmountPlayer, updatePlayerHash } from "./player.js";
+import { discographyView,discographyRefresh,discographyAction,bindDiscography,openArtistRoster,uploadCover,catalogAlbum } from "./discography.js";
+import { studioView,studioAction,studioInput,studioAudio,studioActiveId,studioSelectedId,studioConfigurePersistence,studioAutoSave,studioFlush,studioResumePersistence,studioPaste,pasteStartsLyrics } from "./studio.js?v=studio-dna-suno-v1";
 import { focusFromDrag,objectPosition,savedFocus,applyPhotoFocus } from "./artist-focus.js";
+import { bindArtistRoster, dragHandleMarkup } from "./artist-order.js";
+import { clipboardImage, postImage } from "./image-paste.js";
 const e = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const view=document.querySelector("#view"),nav=document.querySelector("#nav"),toast=document.querySelector("#toast");
 const state={tab:pageFromHash(location.hash),data:{summary:{},artists:[],tracks:[],releases:[],events:[],watches:{records:[]},integrations:{},connections:{},browserAccounts:{},genres:{},studioProjects:[],studioStatus:{},studioPresets:{},studioArtistPresets:{},artistBanners:{},artistImages:{},studioAssets:[],studioReferences:[],musicDnaProfiles:[],musicDnaJobs:[]}};
@@ -51,6 +54,7 @@ async function refresh(){
   state.data.musicDnaJobs=dnaJobs.jobs;
   state.data.musicDnaJobCounts=dnaJobs.counts||null;
   state.data.studioReferences=dnaReferences.references;
+  state.data.studioDnaSuno=dnaReferences.suno||null;
   if(state.tab==="music-dna") await loadOpenJobs(false);
   await discographyRefresh(state,api);
   render();studioResumePersistence();
@@ -92,9 +96,10 @@ function artists(){
    const banner=state.data.artistBanners?.[a.id];
    const focus=savedFocus(banner);
    const searchable=[a.name,a.genre,a.language,a.dna,...(a.countries||[])].join(" ").toLowerCase();
-   return '<article class="artist-card artist-banner-card" data-artist-id="'+e(a.id)+'" data-search="'+e(searchable)+'">'+
-     '<div class="artist-hero">'+
-       (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" data-photo-focus data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'" loading="lazy">':
+   return '<article class="artist-card artist-banner-card" data-action="catalog-artist-open" data-artist-id="'+e(a.id)+'" data-search="'+e(searchable)+'">'+
+    dragHandleMarkup(a.name)+
+    '<div class="artist-hero">'+
+      (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" data-photo-focus data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'" loading="lazy" draggable="false">':
         '<div class="artist-hero-placeholder" aria-hidden="true">'+e(a.name.slice(0,1))+'</div>')+
        '<div class="artist-hero-shade" aria-hidden="true"></div>'+
        '<div class="artist-hero-content"><h3>'+e(a.name)+'</h3><span class="artist-hero-genre">'+e(a.genre)+'</span></div>'+
@@ -255,13 +260,20 @@ function showBrowserLogin(provider) {
 }
 
 function render(){
+ const was=document.body.dataset.view;
+ if(was==="player"&&state.tab!=="player")unmountPlayer();
  document.body.dataset.view=state.tab;
  nav.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
  document.querySelector("#crumb").textContent=state.tab.toUpperCase();
- view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections})[state.tab]();
+ if(state.tab==="player"&&was==="player"&&view.querySelector(".sp")){
+  updatePlayerHash(location.hash,api);
+  return;
+ }
+ view.innerHTML=({studio:()=>studioView(state),"music-dna":()=>musicDnaView(state),overview,artists,tracks,releases,intelligence,compliance,genres,connections,player:()=>playerView()})[state.tab]();
  applyPhotoFocus(view);
  musicDnaChrome(state);
  watchOpenJobs();
+ if(state.tab==="player")mountPlayer({api,hash:location.hash});
 }
 function showStudioReport(title,text){
  document.getElementById("studio-report-title").textContent=title;
@@ -275,8 +287,8 @@ function openArtistPhotos(artistId){
  const body=document.getElementById("artist-photos-body"),dialog=document.getElementById("artist-photos-dialog");
  if(!body||!dialog)return;
  document.getElementById("artist-photos-title").textContent="Photos — "+artist.name;
- body.innerHTML='<p class="small">Generate and choose a wide photo for '+e(artist.name)+'.</p>'+
-  '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(artistId)+'">✦ Generate artist banner</button><label class="artist-photo-prompt-label" for="artist-photo-prompt-'+e(artistId)+'">Custom photo prompt <span class="small">(optional)</span></label><textarea id="artist-photo-prompt-'+e(artistId)+'" rows="2" placeholder="Describe the location, clothing, light and artistic direction"></textarea></div>'+
+ body.innerHTML='<p class="small">Upload, paste, or generate a wide photo for '+e(artist.name)+'.</p>'+
+  '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(artistId)+'">✦ Generate artist banner</button><label class="secondary catalog-upload">Upload photo<input type="file" accept="image/png,image/jpeg,image/webp" data-artist-photo-file data-artist-id="'+e(artistId)+'" aria-label="Upload artist photo"></label><p class="small">PNG, JPEG, or WebP. Paste a photo while this dialog is open.</p><label class="artist-photo-prompt-label" for="artist-photo-prompt-'+e(artistId)+'">Custom photo prompt <span class="small">(optional)</span></label><textarea id="artist-photo-prompt-'+e(artistId)+'" rows="2" placeholder="Describe the location, clothing, light and artistic direction"></textarea></div>'+
   (images.length?'<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div><div class="artist-media-list">'+images.map(image=>{
     const focus=savedFocus(image);
     return '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
@@ -286,7 +298,7 @@ function openArtistPhotos(artistId){
     '<div class="artist-photo-option-actions"><button type="button" class="secondary mini" data-action="artist-focus-open" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'" data-image-url="'+e(image.url)+'" data-focus-x="'+focus.focusX+'" data-focus-y="'+focus.focusY+'" data-focus-source="'+e(image.focusSource||'auto')+'">Set focus point</button>'+
     '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'" aria-label="Remove photo from '+e(artist.name)+'">Remove</button></div><span class="artist-focus-state">'+(image.focusSource==='manual'?'Manually adjusted':'Automatic safe crop')+' · '+focus.focusX+'% / '+focus.focusY+'%</span></div>';
    }).join("")+'</div></div>':
-    '<p class="artist-banner-hint">No photos yet. Generate one here or create an artist photo in News to Song with this artist selected.</p>');
+    '<p class="artist-banner-hint">No photos yet. Upload or paste one here, or generate a banner.</p>');
  applyPhotoFocus(body);
  dialog.showModal();
  dialog.querySelector('[data-action="artist-photos-close"]')?.focus();
@@ -562,6 +574,7 @@ document.addEventListener("visibilitychange",()=>{
 window.addEventListener("focus",()=>{void updateBrowserStatusOnReturn();});
 window.addEventListener("hashchange",async()=>{
  const page=pageFromHash(location.hash);
+ if(page==="player"&&state.tab==="player"){updatePlayerHash(location.hash,api);return;}
  if(page===state.tab)return;
  try{await studioFlush();}catch(error){message(error.message,true);return;}
  state.tab=page;
@@ -576,11 +589,13 @@ document.addEventListener("click",async event=>{
  const route=routeFromClick({tab:tab?.dataset.tab,action:tab?.dataset.action});
  if(route){
   try{await studioFlush();}catch(error){message(error.message,true);return;}
+  if(route.page==="artists")openArtistRoster(state);
   state.tab=route.page;
   if(location.hash!==route.hash)history.pushState(null,"",route.hash);
   render();
   return;
  }
+ if(event.target.closest?.(".artist-tile-handle"))return;
  const btn=event.target.closest("[data-action]");
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
@@ -593,6 +608,24 @@ document.addEventListener("input",e=>{
  if(e.target.id?.startsWith("studio-")&&e.target.id!=="studio-project-picker"){studioInput(e,state,refresh);studioAutoSave(e,state,api);}
 });
 document.addEventListener("paste",event=>{
+ const image=clipboardImage(event.clipboardData);
+ if(image){
+  const artistDialog=document.getElementById("artist-photos-dialog");
+  const artistId=artistDialog?.open?artistDialog.querySelector("[data-artist-photo-file]")?.dataset.artistId:"";
+  const studioKind=event.target?.closest?.("#studio-step-4")?(event.target.id==="studio-photo-prompt"?"artist-photo":"cover"):"";
+  const editingText=event.target?.closest?.("input, textarea, select, [contenteditable='true']");
+  const album=!editingText&&event.target?.closest?.(".catalog-workspace")&&catalogAlbum(state)?.id;
+  if(artistId||studioKind||album){
+   event.preventDefault();
+   const projectId=studioKind?studioActiveId(state):"";
+   if(studioKind&&!projectId){message("Open a Studio project first",true);return;}
+   const task=artistId?postImage("studio/artists/"+artistId+"/photos",image).then(()=>refresh()).then(()=>openArtistPhotos(artistId))
+    :studioKind?postImage("studio/projects/"+projectId+"/upload-image?kind="+studioKind,image).then(()=>refresh())
+    :uploadCover(catalogAlbum(state),image,api).then(()=>refresh());
+   task.then(()=>message("Photo saved")).catch(error=>message(error.message,true));
+   return;
+  }
+ }
  const field=event.target?.id==="studio-source"?"url":event.target?.id==="studio-article"?"article":"";
  if(!field)return;
  const text=event.clipboardData?.getData("text")??"";
@@ -602,6 +635,19 @@ document.addEventListener("paste",event=>{
 document.addEventListener("change",async e=>{
  if(e.target.id==="studio-project-picker")try{await studioInput(e,state,refresh);}catch(error){message(error.message,true);}
  else if(e.target.id?.startsWith("studio-"))studioAutoSave(e,state,api);
+ if(e.target.matches("[data-artist-photo-file]")){
+  const file=e.target.files?.[0],artistId=e.target.dataset.artistId;e.target.value="";
+  if(!file)return;
+  try{await postImage("studio/artists/"+artistId+"/photos",file);await refresh();openArtistPhotos(artistId);message("Photo saved");}
+  catch(error){message(error.message,true);}
+  return;
+ }
+ if(e.target.matches("[data-studio-image]")){
+  const file=e.target.files?.[0];e.target.value="";
+  if(!file)return;
+  try{await postImage("studio/projects/"+studioActiveId(state)+"/upload-image?kind="+e.target.dataset.studioImage,file);await refresh();message("Photo saved");}
+  catch(error){message(error.message,true);}
+ }
  if(e.target.id==="studio-audio-file")await studioAudio(e.target.files[0],state,refresh,message);
  if(e.target.matches("[data-dna-upload]")){
    try{await musicDnaUpload(e.target,refresh,message);}catch(error){message(error.message,true);}
@@ -630,11 +676,12 @@ let openJobPoll=0;
 async function loadOpenJobs(paint){
  if(state.tab!=="music-dna"||document.visibilityState==="hidden")return;
  try{
-  const [queued,running]=await Promise.all([
-   api("music-dna/jobs?status=queued&limit=200"),
-   api("music-dna/jobs?status=running&limit=200")
-  ]);
-  const open=[...(running.jobs||[]),...(queued.jobs||[])];
+	  const [queued,running,failed]=await Promise.all([
+	   api("music-dna/jobs?status=queued&limit=200"),
+	   api("music-dna/jobs?status=running&limit=200"),
+	   api("music-dna/jobs?status=failed&limit=200")
+	  ]);
+	  const open=[...(running.jobs||[]),...(queued.jobs||[]),...(failed.jobs||[])];
   const changed=musicDnaJobsChanged(state.data.musicDnaOpenJobs, open);
   state.data.musicDnaOpenJobs=open;
   if(changed) await reloadMusicDna(state, api);
@@ -660,4 +707,5 @@ if(new URLSearchParams(location.search).get("spotify")==="connected"){
 studioConfigurePersistence(state,api,message);
 bindMusicDna(state,api,render,message);
 bindDiscography(state,api,refresh,message);
+bindArtistRoster(state,api,refresh,message);
 refresh().catch(error=>{view.innerHTML='<div class="warning-banner">Could not load Blossom: '+e(error.message)+'. Check the server and credentials.</div>'});

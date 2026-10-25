@@ -8,6 +8,12 @@ function library(state){
  return state.discography;
 }
 function remember(state){const d=library(state);try{sessionStorage.setItem('blossom.discography',JSON.stringify({artistId:d.artistId,albumId:d.albumId}));}catch{}}
+export function openArtistRoster(state){
+ const d=library(state);
+ d.artistId='';d.albumId='';d.album=null;
+ remember(state);
+ return d;
+}
 export async function discographyRefresh(state,api){
  const d=library(state);if(!d.artistId)return;
  if(!state.data.artists.some(a=>a.id===d.artistId)){d.artistId='';d.albumId='';remember(state);return;}
@@ -36,7 +42,7 @@ export function discographyView(state){
  if(album)return '<section class="catalog-workspace">'+nav+
   '<header class="catalog-album-hero">'+cover(album.coverUrl,album.title)+
   '<div><p class="catalog-eyebrow">'+esc(kindName(album.kind))+' · DRAFT COLLECTION</p><h1>'+esc(album.title)+'</h1><p>'+esc(artist.name)+' · '+album.entries.length+' songs'+(album.releaseDate?' · '+esc(album.releaseDate):'')+'</p><div class="actions">'+button('add','＋ Add songs','aria-label="Add songs"','primary')+button('edit','Edit release')+'</div></div></header>'+
-  '<div class="catalog-cover-actions"><label class="secondary catalog-upload">'+esc(album.coverUrl?'Change cover':'Upload cover')+'<input id="catalog-cover-file" type="file" accept="image/png" aria-label="Upload square album cover"></label><span class="small">Square PNG · up to 20 MB</span>'+button('reuse-cover','Use a song cover')+'</div>'+
+  '<div class="catalog-cover-actions"><label class="secondary catalog-upload">'+esc(album.coverUrl?'Change cover':'Upload cover')+'<input id="catalog-cover-file" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Upload square album cover"></label><span class="small">Square PNG, JPEG, or WebP · paste a photo on this release · up to 20 MB</span>'+button('reuse-cover','Use a song cover')+'</div>'+
   '<div class="catalog-list-heading"><span>#</span><span>Title</span><span>Recording &amp; order</span></div><div class="catalog-track-list">'+
   (album.entries.length?albumRows(album):'<div class="catalog-empty"><h2>Your album starts here</h2><p>Add existing songs, then arrange the track list. Draft songs are welcome.</p>'+button('add','Add songs','', 'primary')+'</div>')+
   '</div><p class="catalog-note">Drag songs to reorder, or use the arrow buttons. Album recordings stay fixed until you change them here. Removing a song keeps its project and audio.</p></section>';
@@ -86,9 +92,11 @@ async function addPicker(state,api){
  showDialog('Add songs to '+d.album.title,'<form id="catalog-form" class="catalog-form"><label>Find songs<input type="search" id="catalog-find" placeholder="Search loaded songs"></label><div class="catalog-picker-list">'+pickerRows(page.results,d.album)+'</div>'+
   (page.nextCursor?button('picker-more-songs','Load more songs'):'')+'<div class="actions"><button type="submit" class="primary">Add selected songs</button>'+button('close','Cancel')+'</div></form>',{mode:'add',album:d.album,songsCursor:page.nextCursor});
 }
-async function uploadCover(album,file,api){
- if(!file)return album;if(file.type!=='image/png')throw Error('Choose a square PNG cover');
- const response=await fetch('/api/albums/'+album.id+'/cover?expectedRevision='+album.revision,{method:'POST',headers:{'Content-Type':'image/png','X-Blossom-Request':'ui'},body:file});
+export function catalogAlbum(state){return library(state).album;}
+export async function uploadCover(album,file,api){
+ if(!file)return album;const type=file.type==="image/jpg"?"image/jpeg":file.type;
+ if(!["image/png","image/jpeg","image/webp"].includes(type))throw Error("Choose a PNG, JPEG, or WebP cover");
+ const response=await fetch("/api/albums/"+album.id+"/cover?expectedRevision="+album.revision,{method:"POST",headers:{"Content-Type":type,"X-Blossom-Request":"ui"},body:file});
  const result=await response.json();if(!response.ok)throw Error(result.error||'Cover upload failed');return result;
 }
 export async function discographyAction(el,state,api,refresh,message,render){

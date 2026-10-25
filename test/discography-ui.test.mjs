@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { Store } from '../src/storage.mjs';
 import { StudioStore } from '../src/studio.mjs';
 import { Discography } from '../src/discography.mjs';
-import { discographyView,discographyRefresh,discographyAction } from '../public/discography.js';
+import { readFileSync } from 'node:fs';
+import { discographyView,discographyRefresh,discographyAction,openArtistRoster } from '../public/discography.js';
 
 test('discography renders escaped artist identity, release types, independent songs and album controls',async t=>{
  const store=new Store(),studio=new StudioStore(store),c=new Discography(store,studio);t.after(()=>store.close());
@@ -31,4 +32,28 @@ test('discography renders escaped artist identity, release types, independent so
  assert.equal(c.album(a.id).entries.length,1);assert.ok(studio.project(p.id));
  await discographyAction({dataset:{action:'catalog-artist'}},state,api,refresh,()=>{},()=>{});assert.equal(state.discography.albumId,'');
  assert.equal(await discographyAction({dataset:{action:'unrelated'}},state,api,refresh,()=>{},()=>{}),false);
+});
+
+test('Artists navigation returns the roster and a tile opens that artist',async()=>{
+ const memory=new Map();
+ const previous=globalThis.sessionStorage;
+ globalThis.sessionStorage={getItem:key=>memory.has(key)?memory.get(key):null,setItem:(key,value)=>memory.set(key,String(value))};
+ try{
+  const state={data:{artists:[{id:'artist-1',name:'North Line',genre:'Folk'}],artistBanners:{}}};
+  await discographyAction({dataset:{action:'catalog-artist-open',artistId:'artist-1'}},state,async()=>({}),async()=>{},()=>{},()=>{});
+  state.discography.albumId='album-1';state.discography.album={id:'album-1'};
+  openArtistRoster(state);
+  assert.equal(state.discography.artistId,'');
+  assert.equal(state.discography.albumId,'');
+  assert.equal(state.discography.album,null);
+  assert.equal(discographyView(state),null);
+  assert.deepEqual(JSON.parse(sessionStorage.getItem('blossom.discography')),{artistId:'',albumId:''});
+ }finally{if(previous===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=previous;}
+ const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../public/discography.css',import.meta.url),'utf8');
+ assert.match(app,/if\(route\.page==="artists"\)openArtistRoster\(state\)/);
+ assert.match(app,/class="artist-card artist-banner-card" data-action="catalog-artist-open"/);
+ assert.match(css,/\.catalog-artist-hero\{[^}]*aspect-ratio:16\/9/);
+ assert.doesNotMatch(css,/\.catalog-artist-hero\{[^}]*21vw/);
+ assert.match(css,/@media\(max-width:600px\)\{[\s\S]*\.catalog-artist-hero\{aspect-ratio:auto;height:clamp\(265px,76vw,340px\);min-height:265px\}/);
 });

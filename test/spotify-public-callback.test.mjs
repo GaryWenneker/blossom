@@ -93,7 +93,9 @@ test("Public /callback is reachable without admin cookies while unrelated admin 
   assert.equal(redirect.status,303);
   const url=new URL(redirect.headers.location);
   assert.equal(url.searchParams.get("redirect_uri"),callback);
-  assert.equal(url.searchParams.get("scope"),"user-read-private user-library-read");
+  assert.match(url.searchParams.get("scope"),/(?:^|\s)user-library-read(?:\s|$)/);
+  assert.match(url.searchParams.get("scope"),/(?:^|\s)streaming(?:\s|$)/);
+  assert.doesNotMatch(url.searchParams.get("scope"),/user-library-modify|user-follow-modify|playlist-modify/);
   assert.equal(url.searchParams.get("code_challenge_method"),"S256");
 });
 

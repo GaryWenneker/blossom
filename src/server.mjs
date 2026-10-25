@@ -3,6 +3,7 @@ import { Sessions, Vault, encodeCookie, expireCookie } from "./security.mjs";
 import { SpotifyOAuth } from "./spotify.mjs";
 import { SpotifyLikedImporter } from "./spotify-liked.mjs";
 import { SpotifyCatalog } from "./spotify-catalog.mjs";
+import { SpotifyPlayerApi } from "./spotify-player.mjs";
 import { ConnectedBrowsers, providerBrowserUrl } from "./browser-connections.mjs";
 import { openProviderInSafari, localMacBrowserRequest } from "./native-browser.mjs";
 import { GENRES } from "./genres.mjs";
@@ -22,8 +23,11 @@ import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css","/discography.js":"discography.js","/discography.css":"discography.css",
- "/studio.js":"studio.js","/studio-persistence.js":"studio-persistence.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/artist-focus.js":"artist-focus.js","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
+ "/studio.js":"studio.js","/studio-persistence.js":"studio-persistence.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/artist-focus.js":"artist-focus.js","/artist-order.js":"artist-order.js","/image-paste.js":"image-paste.js","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
+ "/player.js":"player.js","/player.css":"player.css","/player-playback.js":"player-playback.js",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
+const APP_CSP = "default-src 'self'; style-src 'self'; script-src 'self' https://sdk.scdn.co; img-src 'self' data: https://i.scdn.co https://mosaic.scdn.co https://*.spotifycdn.com; media-src 'self' https: blob:; connect-src 'self' https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co; worker-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+const GATEWAY_CSP = "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {
   res.writeHead(code,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers});
@@ -85,10 +89,12 @@ export function createAppServer({store,provider,password,username="admin",vaultK
   const discographyApi=new DiscographyAPI(store,studioApi.studio,assetDir);
   const musicDna=new MusicDNA(store);
   const spotifyLiked=new SpotifyLikedImporter(spotify,musicDna);
+  const spotifyPlayer=new SpotifyPlayerApi(spotify,{db:store.db,musicDna});
   const spotifyCatalog=new SpotifyCatalog(spotify,musicDna);
   const musicDnaChat=new MusicDnaChatGpt(musicDna,(prompt,report)=>studioApi.chatgptLyrics.askHidden(prompt,report));
   const musicDnaApi=new MusicDnaAPI(musicDna,{spotifyLiked,spotifyCatalog,chatgpt:musicDnaChat});
-  const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth,spotifyLiked});
+  const musicDnaMcp=new MusicDnaMCP(musicDna,{oauth:mcpOAuth,spotifyLiked,vault,studioApi,
+    catalog:discographyApi.catalog,provider,allowLive,spotifyCatalog});
   // Nonsecret live-process tool contract. /healthz must reveal which code is
   // ACTUALLY handling requests, not merely whether an old process is alive.
   const mcpHealth = { status:"ok", service:"blossom-mcp",
@@ -103,7 +109,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
     res.setHeader("X-Content-Type-Options","nosniff");
     res.setHeader("X-Frame-Options","DENY");
     res.setHeader("Referrer-Policy","no-referrer");
-    res.setHeader("Content-Security-Policy","default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self' https:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader("Content-Security-Policy",APP_CSP);
     const parsedUrl=new URL(req.url||"/","http://localhost");
     const path=parsedUrl.pathname;
     const oauthPath=path.startsWith("/oauth/")||path.startsWith("/.well-known/oauth-");
@@ -127,7 +133,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       if(req.method==="GET"&&gatewayFiles[path]){
         const [file,type]=gatewayFiles[path];
         const content=await readFile(new URL("../public/"+file,import.meta.url));
-        res.writeHead(200,{"Content-Type":type,"Cache-Control":"no-store"});
+        res.writeHead(200,{"Content-Type":type,"Cache-Control":"no-store","Content-Security-Policy":GATEWAY_CSP});
         res.end(content);return;
       }
       if(req.method==="GET"&&path==="/healthz")
@@ -262,6 +268,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
       if(path==="/api/albums"||path.startsWith("/api/albums/")||path.startsWith("/api/catalog/")){await discographyApi.handle(req,res,path,parsedUrl.searchParams);return;}
       if(path.startsWith("/api/studio/")) {await studioApi.handle(req,res,path,parsedUrl.searchParams);return;}
       if(path.startsWith("/api/music-dna/")) {await musicDnaApi.handle(req,res,path,parsedUrl.searchParams);return;}
+      if(path.startsWith("/api/player")) {await spotifyPlayer.handle(req,res,path,parsedUrl);return;}
       const method=req.method;
       if(!["GET","POST"].includes(method))throw new DomainError("Method not allowed",405);
       if(method==="POST" && req.headers["x-blossom-request"]!=="ui")throw new DomainError("Missing request protection header",403);
@@ -291,6 +298,7 @@ export function createAppServer({store,provider,password,username="admin",vaultK
         throw new DomainError("Not found",404);
       }
       const incoming=await body(req);
+      if(path==="/api/artists/order")return reply(res,200,store.reorderArtists(incoming?.ids));
       if(path==="/api/artists")return reply(res,201,store.addArtist(incoming));
       if(path==="/api/tracks")return reply(res,201,store.addTrack(incoming));
       if(path==="/api/releases")return reply(res,201,store.addRelease(incoming));

@@ -153,7 +153,7 @@ test('imported take can link its historical source without relabelling it as the
 test('DNA selection and new analysis revisions invalidate old input and retain the used analysis ID',t=>{
  const {store,studio,a}=setup(t),dna=new MusicDNA(store),refs=new StudioReferences(store,studio,dna),p=project(studio,a);
  const profile=dna.create({artist:'Fixture reference',title:'Reference',sourceKind:'manual'});
- const analysis={analysisMethod:'editorial',analyzer:'fixture',confidence:0.5,genres:['Piano'],moods:[],instruments:[],vocals:{type:'instrumental'},production:{},sections:[],summary:'Synthetic profile'};
+ const analysis={analysisMethod:'editorial',analyzer:'fixture',confidence:0.5,bpm:90,genres:['Piano'],moods:[],instruments:[],vocals:{type:'instrumental'},production:{},sections:[],summary:'Synthetic profile'};
  dna.saveAnalysis(profile.id,analysis);refs.set(p.id,[{profileId:profile.id,weight:50}]);
  const generated=studio.setResult(p.id,brief);assert.equal(generated.referenceInputs.length,1);
  const oldHash=inputFingerprint(generated),usedId=generated.referenceInputs[0].analysisId;

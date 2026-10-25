@@ -133,6 +133,7 @@ test("Studio links versioned reference traits without copying source names or ly
     const refs = new StudioReferences(store, studio, dna);
     const ref = dna.create(audioReference);
     dna.saveAnalysis(ref.id, { analysisMethod: "Human listening review", analyzer: "Reviewer",
+      bpm: 96,
       genres: ["Country rock"], moods: ["Reflective"],
       instruments: [{ name: "Flute", technique: "Legato fill", timbre: "Airy" }],
       vocals: { type: "male", delivery: "Expressive phrasing" },

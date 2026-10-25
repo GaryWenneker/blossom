@@ -51,7 +51,10 @@ test("Spotify read consent uses user-library-read scope and never library-modify
     const sessionHash=sessions.session({headers:{cookie:"blossom_session="+token}});
     const oauth=new SpotifyOAuth({vault,sessions});
     const url=new URL(oauth.start(sessionHash,{chooseAccount:true}));
-    assert.equal(url.searchParams.get("scope"),"user-read-private user-library-read");
+    assert.match(url.searchParams.get("scope"),/(?:^|\s)user-library-read(?:\s|$)/);
+    assert.match(url.searchParams.get("scope"),/(?:^|\s)user-read-private(?:\s|$)/);
+    assert.match(url.searchParams.get("scope"),/(?:^|\s)streaming(?:\s|$)/);
+    assert.doesNotMatch(url.searchParams.get("scope"),/user-library-modify|user-follow-modify|playlist-modify/);
     assert.equal(url.searchParams.get("show_dialog"),"true");
     assert.equal(url.searchParams.get("code_challenge_method"),"S256");
     assert.ok(!url.searchParams.get("scope").includes("user-library-modify"));

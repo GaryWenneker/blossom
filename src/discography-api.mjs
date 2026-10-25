@@ -3,6 +3,7 @@ import { mkdir,readFile,writeFile,unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Discography,safeMediaFilename } from './discography.mjs';
 import { DomainError } from './domain.mjs';
+import { inspectUploadedImage } from './uploaded-image.mjs';
 
 const send=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
 async function bytes(req,limit){
@@ -13,11 +14,15 @@ async function json(req){
  const data=await bytes(req,256000);try{return JSON.parse(data.toString('utf8'));}catch{throw new DomainError('Invalid JSON');}
 }
 export function validateCover(data){
- const signature=Buffer.from([137,80,78,71,13,10,26,10]);
- if(data.length<45||!data.subarray(0,8).equals(signature)||data.subarray(12,16).toString()!=='IHDR')throw new DomainError('Upload square PNG artwork');
- const width=data.readUInt32BE(16),height=data.readUInt32BE(20);
- if(!width||width!==height||width>12000)throw new DomainError('Cover must be square PNG artwork, at most 12000×12000 pixels');
+ inspectUploadedImage(data,{square:true});
  return data;
+}
+function coverMime(filename){
+ const name=String(filename||'').toLowerCase();
+ if(name.endsWith('.png'))return 'image/png';
+ if(name.endsWith('.webp'))return 'image/webp';
+ if(name.endsWith('.jpg')||name.endsWith('.jpeg'))return 'image/jpeg';
+ throw new DomainError('Cover not found',404);
 }
 function media(res,data,mime,range){
  const headers={'Content-Type':mime,'Cache-Control':'private, no-store','Accept-Ranges':'bytes','X-Content-Type-Options':'nosniff'};
@@ -34,8 +39,10 @@ export class DiscographyAPI {
  }
  async cover(req,res,albumId,query){
   this.catalog.row(albumId);
-  if(String(req.headers['content-type']||'').split(';')[0]!=='image/png')throw new DomainError('Upload square PNG artwork',415);
-  const data=validateCover(await bytes(req,20*1024*1024)),filename=randomUUID()+'.png';
+  const declared=String(req.headers['content-type']||'').split(';')[0];
+  const data=await bytes(req,20*1024*1024),image=inspectUploadedImage(data,{square:true});
+  if((declared==='image/jpg'?'image/jpeg':declared)!==image.mime)throw new DomainError('Upload a square PNG, JPEG, or WebP cover',415);
+  const filename=randomUUID()+'.'+image.extension;
   await mkdir(this.assetDir,{recursive:true,mode:0o700});await writeFile(join(this.assetDir,filename),data,{flag:'wx',mode:0o600});
   try{return send(res,200,this.catalog.setCover(albumId,filename,Number(query.get('expectedRevision'))));}
   catch(error){await unlink(join(this.assetDir,filename));throw error;}
@@ -49,7 +56,7 @@ export class DiscographyAPI {
    const songPath=path.match(/^\/api\/catalog\/songs\/([^/]+)$/);
    if(songPath){let key;try{key=decodeURIComponent(songPath[1]);}catch{throw new DomainError('Invalid song ID');}return send(res,200,c.song(key));}
    if(albumId&&!suffix)return send(res,200,c.album(albumId));
-   if(albumId&&suffix==='cover'){const a=c.row(albumId);if(!a.cover_filename)throw new DomainError('Cover not found',404);return this.file(res,a.cover_filename,'image/png');}
+   if(albumId&&suffix==='cover'){const a=c.row(albumId);if(!a.cover_filename)throw new DomainError('Cover not found',404);return this.file(res,a.cover_filename,coverMime(a.cover_filename));}
    const audio=suffix.match(/^entries\/([a-f0-9-]{36})\/audio$/);
    if(albumId&&audio){const e=c.entry(albumId,audio[1]);if(!e.audio_filename)throw new DomainError('Recording not found',404);return this.file(res,e.audio_filename,e.audio_mime,req.headers.range);}
    throw new DomainError('Not found',404);

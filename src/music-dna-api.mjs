@@ -47,7 +47,7 @@ export class MusicDnaAPI {
       }
       if (path === "/api/music-dna/search") {
         const filters = {};
-        for (const name of ["q", "genre", "mood", "instrument", "vocal"])
+        for (const name of ["q", "genre", "mood", "instrument", "vocal", "sort", "dir"])
           filters[name] = searchParams.get(name) || "";
         for (const name of ["limit", "offset"]) {
           if (searchParams.has(name)) {
@@ -124,10 +124,16 @@ export class MusicDnaAPI {
       if (!this.spotifyCatalog) throw new DomainError("Spotify library integration unavailable",503);
       return respond(res, 200, await this.spotifyCatalog.importAlbum(body?.id));
     }
+    if (path === "/api/music-dna/jobs/queue")
+      return respond(res, 202, this.dna.queueAnalysis(body?.profileId));
     if (path === "/api/music-dna/jobs/start") {
       if (!this.chatgpt) throw new DomainError("ChatGPT analysis is unavailable", 503);
-      return respond(res, 202, this.chatgpt.start());
+      const profileId = typeof body?.profileId === "string" ? body.profileId : "";
+      if (profileId) this.dna.retryFailedAnalysis(profileId);
+      return respond(res, 202, this.chatgpt.start(profileId));
     }
+    if (path === "/api/music-dna/jobs/dismiss")
+      return respond(res, 200, this.dna.dismissFailedJobs(typeof body?.profileId === "string" ? body.profileId : ""));
     if (path === "/api/music-dna/profiles") return respond(res, 201, this.dna.create(body));
     if (path === "/api/music-dna/import-batch")
       return respond(res, 201, { items: this.dna.importBatch(body?.items) });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { Store } from "../src/storage.mjs";
 import { MusicDNA } from "../src/music-dna.mjs";
+import { MusicDnaAPI } from "../src/music-dna-api.mjs";
 import { createAppServer } from "../src/server.mjs";
 
 const reference = { artist: "Test Orchestra", title: "River Signals",
@@ -23,6 +24,18 @@ const analysis = {
       techniques: ["Fingerpicked arpeggios"] }],
   summary: "Airy flute introduction followed by acoustic fingerpicked guitar and blues vocals"
 };
+test("a musical analysis without a BPM is not stored", () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  try {
+    const ref = dna.create(reference);
+    const without = { ...analysis };
+    delete without.bpm;
+    assert.throws(() => dna.saveAnalysis(ref.id, without), /BPM is required/);
+    assert.equal(dna.get(ref.id).analysis, null);
+    assert.equal(dna.versions(ref.id).length, 0);
+  } finally { store.close(); }
+});
+
 test("References deduplicate verified identifiers but not identical artist/title alone", () => {
   const store = new Store(":memory:"), dna = new MusicDNA(store);
   try {
@@ -240,5 +253,100 @@ test("search and get report the latest job after analysis fails or succeeds", ()
     assert.equal(saved.analysis.genres[0], "Southern rock");
     assert.equal(dna.get(created.profileId).analysisVersion, 1);
     assert.equal(dna.get(created.profileId).jobStatus, "completed");
+  } finally { store.close(); }
+});
+
+test("the catalog sorts by artist or title without changing the default order", () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  try {
+    dna.create({ artist: "Zebra", title: "Alpha", sourceKind: "metadata" });
+    dna.create({ artist: "Alpha", title: "Zebra", sourceKind: "metadata" });
+    assert.deepEqual(dna.search({ sort: "artist", dir: "asc" }).map(row => row.artist), ["Alpha", "Zebra"]);
+    assert.deepEqual(dna.search({ sort: "title", dir: "desc" }).map(row => row.title), ["Zebra", "Alpha"]);
+    assert.throws(() => dna.search({ sort: "id" }), /Invalid sort/);
+    assert.throws(() => dna.search({ sort: "artist", dir: "sideways" }), /Invalid sort direction/);
+  } finally { store.close(); }
+});
+
+test("an explicit retry requeues a failed analysis after three attempts", () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  try {
+    const created = dna.importBatch([{
+      artist: "Animotion", title: "Obsession - 12 Inch Remix Version", sourceKind: "metadata"
+    }])[0];
+    const other = dna.importBatch([{
+      artist: "Anne Clark", title: "Sleeper In Metropolis", sourceKind: "metadata"
+    }])[0];
+    for (const item of [created, other]) {
+      const claimed = dna.claimJob("chatgpt", { metadataOnly: true, profileId: item.profileId });
+      dna.completeJob(claimed.jobId, null, "ChatGPT reply was not a music analysis");
+      dna.db.prepare("UPDATE music_dna_jobs SET attempts=3 WHERE id=?").run(claimed.jobId);
+    }
+    assert.equal(dna.claimJob("chatgpt", { metadataOnly: true, profileId: created.profileId }), null);
+    const retried = dna.retryFailedAnalysis(created.profileId);
+    assert.equal(retried.jobId, created.jobId);
+    assert.equal(retried.status, "queued");
+    const claimed = dna.claimJob("chatgpt", { metadataOnly: true, profileId: created.profileId });
+    assert.equal(claimed.jobId, created.jobId);
+    assert.equal(dna.jobs("failed").length, 1);
+    assert.equal(dna.jobs("failed")[0].profileId, other.profileId);
+    dna.completeJob(claimed.jobId, analysis);
+    assert.equal(dna.dismissFailedJobs(created.profileId).removed, 0);
+    assert.equal(dna.get(created.profileId).analysisVersion, 1);
+    assert.equal(dna.dismissFailedJobs(other.profileId).removed, 1);
+    assert.equal(dna.get(other.profileId).artist, "Anne Clark");
+    assert.equal(dna.jobs("failed").length, 0);
+    assert.equal(dna.jobs("completed").length, 1);
+    const running = dna.importBatch([{ artist: "Bjork", title: "Human Behaviour", sourceKind: "metadata" }])[0];
+    dna.claimJob("chatgpt", { metadataOnly: true, profileId: running.profileId });
+    const stopped = dna.importBatch([{ artist: "De Staat", title: "Mona Lisa", sourceKind: "metadata" }])[0];
+    const stoppedJob = dna.claimJob("chatgpt", { metadataOnly: true, profileId: stopped.profileId });
+    dna.completeJob(stoppedJob.jobId, null, "ChatGPT reply was not a music analysis");
+    assert.equal(dna.dismissFailedJobs().removed, 1);
+    assert.equal(dna.jobs("running").length, 1);
+    assert.equal(dna.jobs("failed").length, 0);
+    assert.equal(dna.jobs("completed").length, 1);
+  } finally { store.close(); }
+});
+
+test("Try again resets the failed job before ChatGPT starts", async () => {
+  const store = new Store(":memory:"), dna = new MusicDNA(store);
+  const started = [];
+  const api = new MusicDnaAPI(dna, { chatgpt: { start(profileId) { started.push(profileId); return { started: true }; } } });
+  try {
+    const created = dna.importBatch([{
+      artist: "Animotion", title: "Obsession - 12 Inch Remix Version", sourceKind: "metadata"
+    }])[0];
+    const claimed = dna.claimJob("chatgpt", { metadataOnly: true, profileId: created.profileId });
+    dna.completeJob(claimed.jobId, null, "ChatGPT reply was not a music analysis");
+    dna.db.prepare("UPDATE music_dna_jobs SET attempts=3 WHERE id=?").run(claimed.jobId);
+    const req = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(JSON.stringify({ profileId: created.profileId }));
+      }
+    };
+    let status = 0, payload = null;
+    const res = { writeHead(code) { status = code; }, end(text) { payload = JSON.parse(text); } };
+    await api.handle(req, res, "/api/music-dna/jobs/start", new URLSearchParams());
+    assert.equal(status, 202);
+    assert.deepEqual(started, [created.profileId]);
+    assert.equal(payload.started, true);
+    assert.equal(dna.jobs("queued")[0].id, claimed.jobId);
+    assert.equal(dna.jobs("queued")[0].attempts, 0);
+    const other = dna.importBatch([{ artist: "Anne Clark", title: "Sleeper In Metropolis", sourceKind: "metadata" }])[0];
+    const otherJob = dna.claimJob("chatgpt", { metadataOnly: true, profileId: other.profileId });
+    dna.completeJob(otherJob.jobId, null, "ChatGPT reply was not a music analysis");
+    const dismiss = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify({ profileId: other.profileId })); }
+    };
+    await api.handle(dismiss, res, "/api/music-dna/jobs/dismiss", new URLSearchParams());
+    assert.equal(payload.removed, 1);
+    assert.equal(dna.jobs("failed").length, 0);
+    assert.equal(dna.jobs("queued")[0].id, claimed.jobId);
+    assert.equal(dna.get(other.profileId).title, "Sleeper In Metropolis");
   } finally { store.close(); }
 });
