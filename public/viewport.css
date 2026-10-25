@@ -404,3 +404,51 @@ body[data-view="artists"] .artist-hero-content h3{
 .studio-library-tools{font-size:11px;margin:4px 0 8px}
 .studio-library-tools summary{cursor:pointer;color:var(--lime)}
 .studio-library-tools input{min-width:0;width:100%;margin:5px 0}
+
+/* Artists return to a scannable tile roster; creation and photo management stay in dialogs. */
+body[data-view="artists"] .artist-banner-grid{
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));
+  align-items:start;gap:14px;margin-bottom:18px
+}
+body[data-view="artists"] .artist-banner-card{
+  display:flex;flex-direction:column;padding:0;min-width:0;height:100%;
+  border-color:#2f4337;background:linear-gradient(160deg,#17231d,#121917)
+}
+body[data-view="artists"] .artist-hero{height:auto;aspect-ratio:16/9;min-height:145px;max-height:230px}
+body[data-view="artists"] .artist-hero-content{left:16px;right:13px;bottom:13px}
+body[data-view="artists"] .artist-hero-content h3{
+  font-size:clamp(22px,2.3vw,34px);line-height:1.05;letter-spacing:-.04em;margin:0 0 5px
+}
+body[data-view="artists"] .artist-hero-genre{font-size:11px}
+.artist-tile-dna{
+  display:-webkit-box;min-height:0;margin:11px 13px 12px!important;color:#adbbb1!important;
+  font-size:11px!important;line-height:1.5!important;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3
+}
+.artist-tile-actions{display:flex;flex-wrap:wrap;gap:7px;margin:auto 12px 12px}
+.artist-tile-actions button{flex:1 1 auto;min-width:0;padding:8px 9px;font-size:10px}
+.artist-roster-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:22px 0 12px}
+.artist-roster-heading h2{margin:0;white-space:nowrap}
+.artist-roster-heading input{max-width:310px}
+#artist-create-dialog{width:min(650px,94vw)}
+#artist-create-dialog .fields{margin-top:17px}
+#artist-create-dialog .actions{align-items:center}
+#artist-photos-dialog{width:min(900px,94vw)}
+#artist-photos-dialog .artist-photo-generate{display:grid;grid-template-columns:1fr;align-items:start;margin-top:12px}
+#artist-photos-dialog .artist-photo-generate>.primary{width:max-content;max-width:100%}
+#artist-photos-dialog .artist-photo-prompt-label{margin-top:2px}
+#artist-photos-dialog .artist-photo-generate textarea{margin-top:-6px}
+#artist-photos-dialog .artist-media-library{margin-top:18px}
+#artist-photos-dialog .artist-image-option-wrap{flex-basis:clamp(150px,24vw,245px)}
+#artist-photos-dialog .artist-media-option{width:100%}
+#artist-search-empty{margin-top:8px}
+@media(max-width:700px){
+  body[data-view="artists"] .artist-banner-grid{grid-template-columns:minmax(0,1fr)}
+  body[data-view="artists"] .artist-banner-card{height:auto}
+  body[data-view="artists"] .artist-hero{height:auto;aspect-ratio:16/9;min-height:170px}
+  body[data-view="artists"] .artist-hero-content h3{font-size:clamp(24px,8vw,38px);margin:0 0 5px}
+  .artist-roster-heading{align-items:stretch;flex-direction:column;gap:8px}
+  .artist-roster-heading input{max-width:none}
+  .artist-tile-actions button{flex:1 1 42%}
+  #artist-create-dialog .fields{grid-template-columns:minmax(0,1fr)}
+  #artist-create-dialog .field.full{grid-column:auto}
+}

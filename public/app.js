@@ -75,50 +75,35 @@ function overview(){
 }
 function artists(){
  const catalog=discographyView(state);if(catalog)return catalog;
- return header("Artists","Every artist has separate creative DNA, a style, language and target territories.")+
- '<div class="panel"><div class="panel-header"><h2>Create artist</h2><span class="small">Identity verification required before publishing</span></div><form id="artist-form" class="fields">'+
+ const createDialog='<dialog id="artist-create-dialog" aria-labelledby="artist-create-title">'+
+  '<div class="dialog-header"><strong id="artist-create-title">Create artist</strong><button type="button" class="icon-button" data-action="artist-create-close" aria-label="Close">×</button></div>'+
+  '<p class="small">Define the artist identity before adding tracks.</p><form id="artist-form" class="fields">'+
  '<div class="field"><label for="artist-name">Artist name</label><input id="artist-name" name="name" required maxlength="80" placeholder="e.g. Mira Solenne"></div>'+
  '<div class="field"><label for="artist-genre">Primary genre</label><input list="genre-options" id="artist-genre" name="genre" required maxlength="100" placeholder="Select or type, e.g. Country Pop"><datalist id="genre-options">'+Object.values(state.data.genres).flat().map(g=>'<option value="'+e(g)+'"></option>').join("")+'</datalist></div>'+
- '<div class="field"><label for="artist-language">Language</label><input id="artist-language" name="language" value="en" required placeholder="en"></div>'+
- '<div class="field"><label for="artist-countries">Target countries (ISO codes)</label><input id="artist-countries" name="countries" placeholder="GB, US, NL"></div>'+
- '<div class="field"><label for="artist-voice">Voice</label><select id="artist-voice" name="voice"><option value="instrumental">Instrumental</option><option value="female">Female</option><option value="male">Male</option><option value="mixed">Mixed</option></select></div>'+
- '<div class="field full"><label for="artist-dna">Artist DNA</label><textarea id="artist-dna" name="dna" rows="3" required placeholder="Signature instruments, arrangement, sound, lyrical topics and things to avoid"></textarea></div>'+
- '<div class="field full"><button class="primary">Create artist</button></div></form></div>'+
- '<h2>Roster <span class="small">('+state.data.artists.length+')</span></h2>'+
- (state.data.artists.length?'<div class="artist-grid artist-banner-grid">'+state.data.artists.map(a=>{
+  '<div class="field"><label for="artist-language">Language</label><input id="artist-language" name="language" value="en" required placeholder="en"></div>'+
+  '<div class="field"><label for="artist-countries">Target countries (ISO codes)</label><input id="artist-countries" name="countries" placeholder="GB, US, NL"></div>'+
+  '<div class="field"><label for="artist-voice">Voice</label><select id="artist-voice" name="voice"><option value="instrumental">Instrumental</option><option value="female">Female</option><option value="male">Male</option><option value="mixed">Mixed</option></select></div>'+
+  '<div class="field full"><label for="artist-dna">Artist DNA</label><textarea id="artist-dna" name="dna" rows="4" required placeholder="Signature instruments, arrangement, sound, lyrical topics and things to avoid"></textarea></div>'+
+  '<div class="field full actions"><button class="primary">Create artist</button><button type="button" class="secondary" data-action="artist-create-close">Cancel</button></div></form></dialog>';
+ const photosDialog='<dialog id="artist-photos-dialog" aria-labelledby="artist-photos-title"><div class="dialog-header"><strong id="artist-photos-title">Artist photos</strong><button type="button" class="icon-button" data-action="artist-photos-close" aria-label="Close">×</button></div><div id="artist-photos-body"></div></dialog>';
+ const roster=state.data.artists.length?'<div class="artist-grid artist-banner-grid">'+state.data.artists.map(a=>{
    const banner=state.data.artistBanners?.[a.id];
-   const images=state.data.artistImages?.[a.id]||[];
-   return '<article class="artist-card artist-banner-card">'+
+   const searchable=[a.name,a.genre,a.language,a.dna,...(a.countries||[])].join(" ").toLowerCase();
+   return '<article class="artist-card artist-banner-card" data-artist-id="'+e(a.id)+'" data-search="'+e(searchable)+'">'+
      '<div class="artist-hero">'+
        (banner?'<img class="artist-hero-image" src="'+e(banner.url)+'" alt="Artist banner for '+e(a.name)+'" loading="lazy">':
         '<div class="artist-hero-placeholder" aria-hidden="true">'+e(a.name.slice(0,1))+'</div>')+
        '<div class="artist-hero-shade" aria-hidden="true"></div>'+
-       '<div class="artist-hero-content"><span class="artist-hero-eyebrow">BLOSSOM ARTIST</span>'+
-         '<h3>'+e(a.name)+'</h3><span class="artist-hero-genre">'+e(a.genre)+'</span></div>'+
-     '</div><div class="artist-banner-details">'+
-       '<div class="small">'+e(a.genre)+' · '+e(a.language)+' · '+e(a.voice)+'</div>'+
-       '<p>'+e(a.dna)+'</p>'+
-       '<div class="tagrow">'+a.countries.map(c=>'<span class="tag">'+e(c)+'</span>').join("")+
-         '<span class="tag">Name unverified</span></div>'+
-       '<div class="actions" style="margin-top:16px"><button type="button" class="primary" data-action="catalog-artist-open" data-artist-id="'+e(a.id)+'">Open discography</button></div>'+
-       '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(a.id)+'">✦ Generate artist banner</button>'+
-         '<details><summary>Custom photo prompt</summary><textarea id="artist-photo-prompt-'+e(a.id)+'" rows="2" placeholder="Optional: describe the location, clothing, light and artistic direction for a wide photo"></textarea></details></div>'+
-       (images.length?
-         '<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div>'+
-         '<div class="artist-media-list">'+images.map(image=>
-           '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
-           ' data-action="artist-image-select" data-artist-id="'+e(a.id)+'" data-image-id="'+e(image.id)+'"'+
-           ' title="'+e(image.selected?'Active artist background':'Use as artist background')+'"'+
-           ' aria-pressed="'+(image.selected?'true':'false')+'" '+(image.selected?'disabled':'')+'>'+
-           '<img src="'+e(image.url)+'" alt="Artist background option for '+e(a.name)+'" loading="lazy">'+
-           '<span>'+e(image.selected?'Current background':'Use background')+'</span></button>'+
-           '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete"'+
-           ' data-artist-id="'+e(a.id)+'" data-image-id="'+e(image.id)+'"'+
-           ' aria-label="Remove photo from '+e(a.name)+'">Remove</button></div>').join("")+
-         '</div></div>':
-         '<p class="artist-banner-hint">Generate a wide artist photo in News to Song with this artist selected. It will appear here automatically.</p>')+
+       '<div class="artist-hero-content"><h3>'+e(a.name)+'</h3><span class="artist-hero-genre">'+e(a.genre)+'</span></div>'+
+     '</div><p class="artist-tile-dna" title="'+e(a.dna)+'">'+e(a.dna)+'</p>'+
+     '<div class="artist-tile-actions">'+
+       '<button type="button" class="primary" data-action="catalog-artist-open" data-artist-id="'+e(a.id)+'">Open discography</button>'+
+       '<button type="button" class="secondary" data-action="artist-image-generate" data-artist-id="'+e(a.id)+'">Generate banner</button>'+
+       '<button type="button" class="secondary" data-action="artist-photos-open" data-artist-id="'+e(a.id)+'" aria-haspopup="dialog">Manage photos</button>'+
      '</div></article>';
- }).join("")+'</div>':'<div class="empty">No artists yet. Create one above or run npm run seed for eight proposed identities.</div>');
+ }).join("")+'</div>':'<div class="empty">No artists yet. Create your first artist to start the roster.</div>';
+ return header("Artists","Every artist has separate creative DNA, a style, language and target territories.",'<button type="button" class="primary" data-action="artist-create-open" aria-haspopup="dialog">＋ New artist</button>')+
+ createDialog+photosDialog+'<div class="artist-roster-heading"><h2>Roster <span class="small">('+state.data.artists.length+')</span></h2><input id="artist-search" type="search" aria-label="Search artists" placeholder="Search artists" autocomplete="off"></div>'+roster+'<p id="artist-search-empty" class="empty" hidden>No artists match your search.</p>';
 }
 function tracks(){
  const artists=state.data.artists,tracks=state.data.tracks;
@@ -279,9 +264,37 @@ function showStudioReport(title,text){
  document.getElementById("studio-report-text").value=text;
  document.getElementById("studio-report-dialog").showModal();
 }
+function openArtistPhotos(artistId){
+ const artist=state.data.artists.find(item=>item.id===artistId);
+ if(!artist)return;
+ const images=state.data.artistImages?.[artistId]||[];
+ const body=document.getElementById("artist-photos-body"),dialog=document.getElementById("artist-photos-dialog");
+ if(!body||!dialog)return;
+ document.getElementById("artist-photos-title").textContent=artist.name+" · photos";
+ body.innerHTML='<p class="small">Generate and choose a wide photo for '+e(artist.name)+'.</p>'+
+  '<div class="artist-photo-generate"><button class="primary" type="button" data-action="artist-image-generate" data-artist-id="'+e(artistId)+'">✦ Generate artist banner</button><label class="artist-photo-prompt-label" for="artist-photo-prompt-'+e(artistId)+'">Custom photo prompt <span class="small">(optional)</span></label><textarea id="artist-photo-prompt-'+e(artistId)+'" rows="2" placeholder="Describe the location, clothing, light and artistic direction"></textarea></div>'+
+  (images.length?'<div class="artist-media-library"><div class="artist-media-heading"><strong>Artist photos</strong><span>'+images.length+' images · choose the background</span></div><div class="artist-media-list">'+images.map(image=>
+    '<div class="artist-image-option-wrap"><button type="button" class="artist-media-option'+(image.selected?' is-active':'')+'"'+
+    ' data-action="artist-image-select" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'"'+
+    ' title="'+e(image.selected?'Active artist background':'Use as artist background')+'" aria-pressed="'+(image.selected?'true':'false')+'" '+(image.selected?'disabled':'')+'>'+
+    '<img src="'+e(image.url)+'" alt="Artist background option for '+e(artist.name)+'" loading="lazy"><span>'+e(image.selected?'Current background':'Use background')+'</span></button>'+
+    '<button type="button" class="secondary mini artist-image-remove" data-action="artist-image-delete" data-artist-id="'+e(artistId)+'" data-image-id="'+e(image.id)+'" aria-label="Remove photo from '+e(artist.name)+'">Remove</button></div>').join("")+'</div></div>':
+    '<p class="artist-banner-hint">No photos yet. Generate one here or create an artist photo in News to Song with this artist selected.</p>');
+ dialog.showModal();
+}
 async function action(el){
  const act=el.dataset.action,id=el.dataset.id,update=async(p,d)=>{await api(p,d);await refresh()};
  if(act?.startsWith('catalog-')){await studioFlush();return discographyAction(el,state,api,refresh,message,render);}
+ if(act==="artist-create-open"){
+   const dialog=document.getElementById("artist-create-dialog");
+   document.getElementById("artist-form")?.reset();
+   dialog?.showModal();
+   dialog?.querySelector("input")?.focus();
+   return;
+ }
+ if(act==="artist-create-close"){document.getElementById("artist-create-dialog")?.close();return;}
+ if(act==="artist-photos-open"){openArtistPhotos(el.dataset.artistId);return;}
+ if(act==="artist-photos-close"){document.getElementById("artist-photos-dialog")?.close();return;}
  if(act==="studio-project-more"){
    const cursor=state.data.studioProjectPage?.nextCursor;if(!cursor)return;
    const page=await api("studio/projects/page?limit=150&cursor="+encodeURIComponent(cursor)+(state.projectQuery?"&q="+encodeURIComponent(state.projectQuery):""));
@@ -304,13 +317,17 @@ async function action(el){
    message("Generating the artist's wide photo. This may take a few minutes.");
    const image=await api("studio/artists/"+artistId+"/generate-photo",{prompt});
    await refresh();
+   openArtistPhotos(artistId);
+   const promptField=document.getElementById("artist-photo-prompt-"+artistId);if(promptField)promptField.value=prompt;
    message(image.selected?"New artist background linked":"New photo added. Select it from the artist's gallery.");
    return;
  }
  if(act==="artist-image-delete"){
    if(!window.confirm("Remove this photo from the artist's gallery? It will remain in any Studio projects."))return;
-   await api("studio/artists/"+el.dataset.artistId+"/images/"+el.dataset.imageId+"/delete",{});
+   const artistId=el.dataset.artistId;
+   await api("studio/artists/"+artistId+"/images/"+el.dataset.imageId+"/delete",{});
    await refresh();
+   openArtistPhotos(artistId);
    message("Photo removed from artist gallery");
    return;
  }
@@ -318,6 +335,7 @@ async function action(el){
    const artistId=el.dataset.artistId, imageId=el.dataset.imageId;
    await api("studio/artists/"+artistId+"/images/"+imageId+"/select",{});
    await refresh();
+   openArtistPhotos(artistId);
    message("Artist background updated");
    return;
  }
@@ -483,6 +501,10 @@ window.addEventListener("hashchange",async()=>{
  render();
 });
 document.addEventListener("click",async event=>{
+ if(event.target instanceof HTMLDialogElement && event.target.open){
+  const bounds=event.target.getBoundingClientRect();
+  if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom){event.target.close();return;}
+ }
  const tab=event.target.closest("[data-tab]");
  const route=routeFromClick({tab:tab?.dataset.tab,action:tab?.dataset.action});
  if(route){
@@ -495,7 +517,14 @@ document.addEventListener("click",async event=>{
  const btn=event.target.closest("[data-action]");
  if(btn){btn.disabled=true;try{await action(btn)}catch(error){message(error.message,true)}finally{btn.disabled=false}}
 });
-document.addEventListener("input",e=>{if(e.target.id?.startsWith("studio-")&&e.target.id!=="studio-project-picker"){studioInput(e,state,refresh);studioAutoSave(e,state,api);}});
+document.addEventListener("input",e=>{
+ if(e.target.id==="artist-search"){
+  const query=e.target.value.trim().toLowerCase();let visible=0;
+  document.querySelectorAll(".artist-banner-card").forEach(card=>{const matches=card.dataset.search.includes(query);card.hidden=!matches;if(matches)visible++;});
+  const empty=document.getElementById("artist-search-empty");if(empty)empty.hidden=visible!==0||!query;
+ }
+ if(e.target.id?.startsWith("studio-")&&e.target.id!=="studio-project-picker"){studioInput(e,state,refresh);studioAutoSave(e,state,api);}
+});
 document.addEventListener("paste",event=>{
  const field=event.target?.id==="studio-source"?"url":event.target?.id==="studio-article"?"article":"";
  if(!field)return;
