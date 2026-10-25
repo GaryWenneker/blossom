@@ -24,12 +24,13 @@ async function jsonBody(req) {
 
 export class MusicDnaAPI {
   constructor(dna, { audioDir = process.env.BLOSSOM_REFERENCE_AUDIO_DIR || ".data/reference-audio",
-    spotifyLiked=null, spotifyCatalog=null, chatgpt=null } = {}) {
+    spotifyLiked=null, spotifyCatalog=null, chatgpt=null, autopilot=null } = {}) {
     this.dna = dna;
     this.audioDir = audioDir;
     this.spotifyLiked = spotifyLiked;
     this.spotifyCatalog = spotifyCatalog;
     this.chatgpt = chatgpt;
+    this.autopilot = autopilot;
   }
   async handle(req, res, path, searchParams) {
     const method = req.method;
@@ -57,6 +58,10 @@ export class MusicDnaAPI {
           }
         }
         return respond(res, 200, { results: this.dna.search(filters), total: this.dna.count(filters) });
+      }
+      if (path === "/api/music-dna/autopilot") {
+        if (!this.autopilot) throw new DomainError("Local Autopilot unavailable", 503);
+        return respond(res, 200, this.autopilot.status());
       }
       if (path === "/api/music-dna/jobs") {
         const rawLimit = searchParams.get("limit");
@@ -126,6 +131,10 @@ export class MusicDnaAPI {
     }
     if (path === "/api/music-dna/jobs/queue")
       return respond(res, 202, this.dna.queueAnalysis(body?.profileId));
+    if (path === "/api/music-dna/autopilot/run") {
+      if (!this.autopilot) throw new DomainError("Local Autopilot unavailable", 503);
+      return respond(res, 202, this.autopilot.enqueue(body?.ids, body?.rightsConfirmed));
+    }
     if (path === "/api/music-dna/jobs/start") {
       if (!this.chatgpt) throw new DomainError("ChatGPT analysis is unavailable", 503);
       const profileId = typeof body?.profileId === "string" ? body.profileId : "";
