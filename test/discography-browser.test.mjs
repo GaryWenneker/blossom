@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync,mkdtempSync,rmSync,writeFileSync,mkdirSync } from 'node:fs';
+import { once } from 'node:events';
+import { createServer as reservePort } from 'node:net';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { chromium } from 'playwright-core';
+import { Store } from '../src/storage.mjs';
+import { StudioStore } from '../src/studio.mjs';
+import { Discography } from '../src/discography.mjs';
+import { createAppServer } from '../src/server.mjs';
+
+const chrome=[process.env.CHROME_BIN,'/usr/bin/google-chrome','/usr/bin/chromium','/opt/google/chrome/chrome','/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(p=>p&&existsSync(p));
+test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, covers and mobile',async t=>{
+ if(process.env.CI&&process.env.BLOSSOM_BROWSER_LAYOUT_TEST==='false')return t.skip('Browser runtime checked in the Node 22 job');
+ if(!chrome){if(process.env.BLOSSOM_REQUIRE_BROWSER==='true')assert.fail('Chromium required for runtime verification');return t.skip('Set CHROME_BIN for browser runtime verification');}
+ const dir=mkdtempSync(join(tmpdir(),'blossom-album-browser-')),store=new Store(join(dir,'db')),studio=new StudioStore(store),catalog=new Discography(store,studio);
+ const artist=store.addArtist({name:'Les Horizons',genre:'French alternative',language:'fr',voice:'mixed',dna:'Angular guitars and analogue synths'});
+ const a=studio.save({title:'Première lumière',artistId:artist.id}),b=studio.save({title:'Après la pluie',artistId:artist.id});
+ // A valid one-second silent WAV makes playback observable without a provider.
+ const wav=Buffer.alloc(16044);wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(16000,40);
+ const name='11111111-1111-1111-1111-111111111111.wav';writeFileSync(join(dir,name),wav);
+ const take=studio.registerAsset(a.id,'audio',name,'audio/wav');studio.selectAsset(a.id,take.id,'audio');
+ const other=studio.registerAsset(a.id,'audio','22222222-2222-2222-2222-222222222222.wav','audio/wav');writeFileSync(join(dir,'22222222-2222-2222-2222-222222222222.wav'),wav);
+ const reserved=reservePort();reserved.listen(0,'127.0.0.1');await once(reserved,'listening');const port=reserved.address().port;await new Promise(r=>reserved.close(r));
+ const base='http://127.0.0.1:'+port;
+ const server=createAppServer({store,assetDir:dir,publicUrl:base,password:'runtime-album-password',provider:{available:()=>false},localComposer:{status:async()=>({available:false})}});
+ server.listen(port,'127.0.0.1');await once(server,'listening');
+ let browser,page;
+ const shot=process.env.BLOSSOM_SCREENSHOT_DIR||(process.env.CI?'.data/discography-screenshots':'');
+ t.after(async()=>{if(page&&shot){mkdirSync(shot,{recursive:true});await page.screenshot({path:join(shot,'runtime-final.png'),fullPage:true}).catch(error=>t.diagnostic('Screenshot unavailable: '+error.message));}await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));store.close();rmSync(dir,{recursive:true,force:true});});
+ browser=await chromium.launch({executablePath:chrome,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+ const login=await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json','x-blossom-request':'ui'},body:JSON.stringify({username:'admin',password:'runtime-album-password'})});
+ const pair=login.headers.get('set-cookie').split(';')[0],split=pair.indexOf('=');
+ const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies([{name:pair.slice(0,split),value:pair.slice(split+1),url:base}]);page=await context.newPage();
+ const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto(base+'/#artists');await page.getByRole('button',{name:'Open discography'}).click();
+ await page.getByRole('button',{name:'New release',exact:true}).click();await page.getByLabel('Release title').fill('Les jours ouverts');
+ await page.getByRole('button',{name:'Create release',exact:true}).click();await page.getByRole('heading',{name:'Les jours ouverts',exact:true}).waitFor();
+ await page.locator('.catalog-album-hero').getByRole('button',{name:'Add songs',exact:true}).click();await page.getByLabel('Add Première lumière', {exact:true}).check();await page.getByLabel('Add Après la pluie',{exact:true}).check();
+ await page.getByRole('button',{name:'Add selected songs',exact:true}).click();await page.locator('.catalog-track-row').nth(1).waitFor();
+ let album=catalog.albums(artist.id).results[0];let stored=catalog.album(album.id);assert.equal(stored.entries.length,2);
+ const originalFirst=stored.entries[0].title,nextFirst=stored.entries[1].title;
+ await page.getByRole('button',{name:'Move '+nextFirst+' up',exact:true}).click();await page.waitForFunction(title=>document.querySelector('.catalog-track-row strong')?.textContent===title,nextFirst);
+ const rows=page.locator('.catalog-track-row');await rows.nth(1).dragTo(rows.nth(0));await page.waitForFunction(title=>document.querySelector('.catalog-track-row strong')?.textContent===title,originalFirst);
+ await page.getByRole('button',{name:'Choose recording for Première lumière',exact:true}).click();await page.locator('#catalog-form select[name="audioAssetId"]').selectOption(other.id);await page.getByRole('button',{name:'Save recording',exact:true}).click();
+ await page.waitForFunction(()=>!document.querySelector('#catalog-dialog').open);assert.equal(catalog.album(album.id).entries.find(e=>e.songId==='project:'+a.id).audioAssetId,other.id);
+ studio.selectAsset(a.id,take.id,'audio');studio.deleteAsset(a.id,other.id);await page.reload();await page.locator('.catalog-track-row').nth(1).waitFor();
+ const audio=page.locator('.catalog-track-row audio').first();await audio.evaluate(async el=>{await el.play();el.pause();});assert.equal(await audio.evaluate(el=>el.readyState>=2),true);
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC1cAAAAASUVORK5CYII=','base64');
+ await page.locator('#catalog-cover-file').setInputFiles({name:'cover.png',mimeType:'image/png',buffer:png});await page.locator('.catalog-album-hero img').waitFor();
+ assert.ok(catalog.album(album.id).coverUrl);
+ if(shot){mkdirSync(shot,{recursive:true});await page.screenshot({path:join(shot,'album-desktop.png'),fullPage:true});}
+ await page.getByRole('button',{name:'Remove Après la pluie from album',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.catalog-track-row').length===1);assert.ok(studio.project(b.id));
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ if(shot)await page.screenshot({path:join(shot,'album-mobile.png'),fullPage:true});
+ await page.getByRole('button',{name:'Back to artist',exact:true}).click();await page.getByRole('heading',{name:'Discography',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Add Première lumière to album',exact:true}).click();await page.getByRole('button',{name:'Create new release',exact:true}).click();
+ await page.getByLabel('Release title').fill('Première lumière');await page.locator('#catalog-form select[name="kind"]').selectOption('single');await page.getByRole('button',{name:'Create release',exact:true}).click();
+ await page.getByRole('heading',{name:'Première lumière',exact:true}).waitFor();assert.equal(catalog.song('project:'+a.id).collections.length,2);
+ await page.getByRole('button',{name:'Edit release',exact:true}).click();await page.keyboard.press('Escape');assert.equal(await page.locator('#catalog-dialog').evaluate(el=>el.open),false);
+ assert.deepEqual(errors,[]);assert.equal(catalog.song('project:'+a.id).takes.length,1);
+});

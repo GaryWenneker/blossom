@@ -23,6 +23,14 @@ jobs:
       - run: npm test
         env:
           BLOSSOM_BROWSER_LAYOUT_TEST: ${{ matrix.node == '22' && 'true' || 'false' }}
+      - name: Keep discography runtime screenshots
+        if: always() && matrix.node == '22'
+        uses: actions/upload-artifact@v4
+        with:
+          name: discography-runtime
+          path: .data/discography-screenshots
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Real FFmpeg Music DNA smoke test
         if: matrix.node == '22'
         timeout-minutes: 3

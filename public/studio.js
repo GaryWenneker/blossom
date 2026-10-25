@@ -220,6 +220,7 @@ const panels=(p,assets,state)=>{
  (studioSunoReadiness(p).ready?'':'disabled')+'>'+
  (state.data.studioStatus?.sunoApiConfigured?'♫ Generate music in Suno':'♫ Generate in Suno (Playwright) ↗')+'</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-browser-download">Import selected Suno MP3</button>'+
+ '<button type="button" class="secondary" data-action="catalog-add-project" data-id="'+esc(p?.id||'')+'" '+(p?.id&&p?.artistId?'':'disabled')+'>Add to album / EP / single</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-status"'+(p?.sunoJob?'':' disabled')+'>Check generation status</button>'+
  '<button type="button" class="secondary" data-action="studio-suno-import"'+
  (p?.sunoJob?.status==="complete"&&!p?.sunoJob?.importedAssetId?'':' disabled')+
