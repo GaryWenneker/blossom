@@ -22,7 +22,7 @@ import { sunoBlueprint, ensureReleaseReady, DomainError, RELEASE_CHECKS } from "
 import { checkTerms, enableMonitor, WATCH_URLS } from "./monitor.mjs";
 
 const PUBLIC = {"/":"index.html","/app.js":"app.js","/styles.css":"styles.css","/discography.js":"discography.js","/discography.css":"discography.css",
- "/studio.js":"studio.js","/studio-persistence.js":"studio-persistence.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
+ "/studio.js":"studio.js","/studio-persistence.js":"studio-persistence.js","/studio.css":"studio.css","/music-dna.js":"music-dna.js","/music-dna.css":"music-dna.css","/viewport.css":"viewport.css","/artist-focus.js":"artist-focus.js","/blossom-mark.svg":"blossom-mark.svg","/route.js":"route.js",
   "/login":"login.html","/login.js":"login.js","/login.css":"login.css"};
 const MIME = {html:"text/html; charset=utf-8",js:"text/javascript; charset=utf-8",css:"text/css; charset=utf-8",svg:"image/svg+xml"};
 function reply(res,code,data,headers={}) {
