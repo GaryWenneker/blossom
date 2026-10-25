@@ -45,10 +45,17 @@ export function initializeIntegrity(db){
       recipe TEXT NOT NULL,brief_fingerprint TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,audio_url TEXT,imported_asset_id TEXT,
       submitted_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-      CREATE INDEX IF NOT EXISTS studio_project_order ON studio_projects(updated_at DESC,id DESC);
+      `);
+    const takeColumns=new Set(db.prepare('PRAGMA table_info(studio_suno_takes)').all().map(c=>c.name));
+    for(const [name,type] of Object.entries({recipe:"TEXT NOT NULL DEFAULT '{}'",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",audio_url:'TEXT',imported_asset_id:'TEXT',submitted_at:'TEXT',updated_at:'TEXT'}))
+      if(!takeColumns.has(name))db.exec(`ALTER TABLE studio_suno_takes ADD COLUMN ${name} ${type}`);
+    const takeCreated=takeColumns.has('created_at')?'created_at':'NULL';
+    db.exec(`UPDATE studio_suno_takes SET submitted_at=COALESCE(submitted_at,${takeCreated},updated_at,'1970-01-01T00:00:00.000Z'),updated_at=COALESCE(updated_at,${takeCreated},submitted_at,'1970-01-01T00:00:00.000Z') WHERE submitted_at IS NULL OR updated_at IS NULL`);
+    db.exec(`CREATE INDEX IF NOT EXISTS studio_project_order ON studio_projects(updated_at DESC,id DESC);
       CREATE INDEX IF NOT EXISTS studio_project_artist ON studio_projects(artist_id);
       CREATE INDEX IF NOT EXISTS studio_take_project ON studio_suno_takes(project_id,submitted_at DESC);
       INSERT OR IGNORE INTO studio_suno_takes
+        (job_id,project_id,recipe,brief_fingerprint,status,audio_url,imported_asset_id,submitted_at,updated_at)
         SELECT job_id,project_id,'{}','',status,audio_url,imported_asset_id,submitted_at,updated_at FROM studio_suno_jobs;`);
     // Guard new relationships without deleting or rewriting questionable legacy rows.
     for(const [column,table] of [['artist_id','artists'],['track_id','tracks']]){
