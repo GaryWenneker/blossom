@@ -241,3 +241,18 @@ test('legacy takes and jobs upgrade together without losing recordings',t=>{
   assert.equal(rows.length,2);assert.equal(rows[0].imported_asset_id,'job-asset');assert.equal(rows[1].imported_asset_id,'take-asset');
   assert.equal(rows[1].submitted_at,'2026-01-01');assert.equal(rows[1].recipe,'{}');
 });
+
+test('project-keyed pre-release takes table without job_id is preserved and migrated',t=>{
+  const store=new Store(':memory:');t.after(()=>store.close());
+  let studio=new StudioStore(store);const a=store.addArtist(artist),p=project(studio,a);
+  store.db.exec(`DROP TABLE studio_suno_takes;
+    CREATE TABLE studio_suno_takes(project_id TEXT PRIMARY KEY, suno_job_id TEXT,
+    status TEXT, audio_url TEXT, imported_asset_id TEXT, created_at TEXT, updated_at TEXT);
+    INSERT INTO studio_suno_takes VALUES('${p.id}','provider-job-42','complete',
+      'https://example.invalid/legacy.mp3','legacy-asset','2026-02-03','2026-02-04');`);
+  studio=new StudioStore(store);
+  const take=store.db.prepare('SELECT * FROM studio_suno_takes WHERE job_id=?').get('provider-job-42');
+  assert.equal(take.project_id,p.id);assert.equal(take.status,'complete');
+  assert.equal(take.imported_asset_id,'legacy-asset');assert.equal(take.submitted_at,'2026-02-03');
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM studio_suno_takes_legacy_project_key').get().n,1);
+});
