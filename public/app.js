@@ -567,12 +567,6 @@ window.addEventListener("hashchange",async()=>{
  state.tab=page;
  render();
 });
-document.addEventListener("keydown",event=>{
- if(event.key!=="Escape")return;
- const dialogs=[...document.querySelectorAll("dialog[open]")];
- const topDialog=dialogs.at(-1);
- if(topDialog){event.preventDefault();topDialog.close();}
-});
 document.addEventListener("click",async event=>{
  if(event.target instanceof HTMLDialogElement && event.target.open){
   const bounds=event.target.getBoundingClientRect();
