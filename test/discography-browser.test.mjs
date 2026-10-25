@@ -57,7 +57,7 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  if(shot)await page.screenshot({path:join(shot,'album-mobile.png'),fullPage:true});
  await page.getByRole('button',{name:'Back to artist',exact:true}).click();await page.getByRole('heading',{name:'Discography',exact:true}).waitFor();
  await page.getByRole('button',{name:'Add Première lumière to album',exact:true}).click();await page.getByRole('button',{name:'Create new release',exact:true}).click();
- await page.getByLabel('Release title').fill('Première lumière');await page.getByLabel('Release type').selectOption('single');await page.getByRole('button',{name:'Create release',exact:true}).click();
+ await page.getByLabel('Release title').fill('Première lumière');await page.locator('#catalog-form select[name="kind"]').selectOption('single');await page.getByRole('button',{name:'Create release',exact:true}).click();
  await page.getByRole('heading',{name:'Première lumière',exact:true}).waitFor();assert.equal(catalog.song('project:'+a.id).collections.length,2);
  await page.getByRole('button',{name:'Edit release',exact:true}).click();await page.keyboard.press('Escape');assert.equal(await page.locator('#catalog-dialog').evaluate(el=>el.open),false);
  assert.deepEqual(errors,[]);assert.equal(catalog.song('project:'+a.id).takes.length,1);
