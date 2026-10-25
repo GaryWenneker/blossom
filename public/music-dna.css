@@ -98,3 +98,18 @@
 .dna-spotify-hit span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dna-spotify-hit button{height:30px;padding:0 10px;font-size:12px;flex:0 0 auto}
 @media(max-width:650px){.dna-spotify-liked button,.dna-spotify-liked .dna-spotify-consent{width:100%;justify-content:center}}
+
+/* Per-recording Audio Autopilot: independent selection does not change detail focus. */
+.dna-row-wrap{display:flex;align-items:center;height:30px;min-width:0;border-bottom:1px solid #24332c}
+.dna-row-wrap .dna-row{min-width:0;flex:1;width:auto;padding-left:0;border-bottom:0}
+.dna-row-check{flex:0 0 15px;width:15px;height:15px;margin:0 8px;accent-color:#b4ec76;cursor:pointer}
+.dna-row-wrap:has(.dna-row-check:checked){background:rgba(180,236,118,.09)}
+.dna-focus-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dna-autopilot-jobs:not(:empty){margin:8px 0;padding:8px 10px;border:1px solid #365046;border-radius:8px;background:#101614}
+.dna-autopilot-jobs>strong{font-size:12px}
+.dna-autopilot-jobs>button{margin-left:10px}
+.dna-autopilot-jobs>p{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;margin:7px 0 0;padding:5px 0;border-top:1px solid #24332c;font-size:12px}
+.dna-autopilot-jobs>p span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dna-autopilot-jobs>p strong{color:#d5f5a4;font-size:11px}
+.dna-autopilot-jobs>p small{grid-column:1/-1;color:#b2c2b8;overflow-wrap:anywhere}
+@media(max-width:520px){.dna-autopilot-jobs>p{grid-template-columns:1fr}.dna-autopilot-jobs>p small{grid-column:auto}}

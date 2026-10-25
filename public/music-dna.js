@@ -90,6 +90,7 @@ let catalogDir = "asc";
 let catalogViewport = 720;
 let selected = null;
 let ignoreScroll = false;
+const autopilotSelection = new Set();
 
 function catalog(state) {
   const data = state?.data || {};
@@ -181,7 +182,8 @@ function focusMarkup(profile, notice) {
     "</strong><span>" + esc(version) + "</span></div>" +
     '<div class="dna-chips">' + (chips.join("") || waiting) + "</div>" +
     '<div class="dna-focus-actions"><button type="button" class="secondary mini" data-action="dna-analyze-recording" data-id="' +
-    esc(profile.id) + '">' + actionLabel + '</button><label class="secondary mini music-dna-upload">Upload MP3/WAV<input type="file" hidden accept=".mp3,.wav,audio/mpeg,audio/wav" data-dna-upload="' +
+    esc(profile.id) + '">' + actionLabel + '</button> <button type="button" class="secondary mini" data-action="dna-autopilot-one" data-id="' +
+    esc(profile.id) + '">Audio Autopilot</button> <label class="secondary mini music-dna-upload">Upload MP3/WAV<input type="file" hidden accept=".mp3,.wav,audio/mpeg,audio/wav" data-dna-upload="' +
     esc(profile.id) + '"></label></div>' + chatSessionMarkup(profile) + barBlocksMarkup(analysis) +
     '<details class="dna-raw"><summary>Raw DNA JSON</summary><pre>' +
     esc(JSON.stringify(analysis || { status: "No verified analysis saved" }, null, 2)) + "</pre></details></section>";
@@ -192,13 +194,17 @@ function rowMarkup(profile, focus, notice) {
   const active = focus && focus.id === profile.id;
   const version = rowVersion(profile);
   const traits = rowTraits(profile, notice);
-  return '<button type="button" class="dna-row' + (active ? " is-selected" : "") + '"' +
+  const button = '<button type="button" class="dna-row' + (active ? " is-selected" : "") + '"' +
     (active ? ' style="--dna-hue:' + dnaHue(profile.id) + '"' : "") +
     ' data-action="dna-details" data-id="' + esc(profile.id) + '"><span class="dna-row-artist">' +
     esc(profile.artist) + '</span><span class="dna-row-title">' + esc(profile.title) +
     '</span><span class="dna-row-bpm">' +
     esc(profile.analysis?.bpm ?? "") + '</span><span class="dna-row-traits">' + esc(traits) +
     '</span><span class="dna-row-version">' + esc(version) + "</span></button>";
+  return '<div class="dna-row-wrap"><input type="checkbox" class="dna-row-check" aria-label="Select ' +
+    esc(profile.artist + " " + profile.title) + '" data-action="dna-autopilot-toggle" data-id="' +
+    esc(profile.id) + '"' + (autopilotSelection.has(profile.id) ? " checked" : "") + '>' +
+    button + "</div>";
 }
 
 function recordingLabel(total) {
@@ -270,8 +276,11 @@ export function musicDnaView(state) {
     '<button type="button" class="secondary" data-action="dna-search">Search</button>' +
     '<button type="button" class="secondary" data-action="dna-reset">Clear</button>' +
     '<span class="dna-count">' + recordingLabel(cat.total) + "</span>" +
+    '<button type="button" class="secondary" data-action="dna-autopilot-selected"' +
+    (autopilotSelection.size ? "" : " disabled") + '>Auto-analyze selected (' + autopilotSelection.size + ')</button>' +
     '<button type="button" class="primary" data-action="dna-register">Register</button></div>' +
     musicDnaActivityMarkup(activityJobs(state), activitySpotify(state), { sort: cat.sort, dir: cat.dir }) +
+    autopilotStatusMarkup(state?.data?.musicDnaAutopilotJobs || []) +
     '<section class="dna-spotify-liked">' + spotify +
     '<button type="button" class="primary" data-action="dna-spotify-import" ' + (spotifyLikedImport.running ? "disabled" : "") + '>Import Liked Songs</button>' +
     '<p class="dna-spotify-progress" aria-live="polite">' + esc(spotifyLikedImport.status || "No sync started yet.") + "</p>" +
@@ -291,6 +300,15 @@ export function musicDnaView(state) {
     (rows.length ? rows.join("") : '<p class="dna-empty">No matching recordings.</p>') +
     "</div></div></div></div></div>";}
 
+export function autopilotStatusMarkup(jobs) {
+  const visible = (jobs || []).filter(job => job?.status);
+  if (!visible.length) return '<section class="dna-autopilot-jobs" aria-live="polite"></section>';
+  return '<section class="dna-autopilot-jobs" aria-live="polite"><strong>Audio Autopilot</strong> ' +
+    '<button type="button" class="secondary mini" data-action="dna-autopilot-refresh">Refresh</button>' +
+    visible.map(job => '<p><span>' + esc([job.artist, job.title].filter(Boolean).join(" · ")) +
+      '</span><strong>' + esc(job.status) + '</strong><small>' + esc(job.message || "") + '</small></p>').join("") +
+    '</section>';
+}
 function recordingName(job) {
   const name = [job?.artist, job?.title].filter(Boolean).join(" \u2014 ");
   return name || String(job?.profileId || "").slice(0, 8) || "Recording";
@@ -538,6 +556,8 @@ async function profileWithChats(api, profileId) {
 
 export async function reloadMusicDna(state, api) {
   await loadCatalog(state, api);
+  try { state.data.musicDnaAutopilotJobs = (await api("music-dna/autopilot")).jobs || []; }
+  catch { /* Catalog remains functional without the optional local bridge. */ }
   const openId = selected?.id || state?.data?.musicDnaSelected?.id;
   if (!openId) return;
   try {
@@ -548,6 +568,29 @@ export async function reloadMusicDna(state, api) {
 
 export async function musicDnaAction(el, state, api, refresh, message) {
   const action = el.dataset.action;
+  if (action === "dna-autopilot-toggle") {
+    const id = el.dataset.id;
+    if (!id) return;
+    if (el.checked) autopilotSelection.add(id);
+    else autopilotSelection.delete(id);
+    return "render";
+  }
+  if (action === "dna-autopilot-one" || action === "dna-autopilot-selected") {
+    const ids = action === "dna-autopilot-one" ? [el.dataset.id] : [...autopilotSelection];
+    if (!ids.length) return;
+    if (!confirm("Confirm you have permission to download and analyze the selected recordings. Ambiguous versions will be held.")) return;
+    try {
+      const result = await api("music-dna/autopilot/run", { ids, rightsConfirmed: true });
+      autopilotSelection.clear();
+      message(result.queued + " recording(s) queued for Audio Autopilot; " +
+        result.skipped + " already queued.");
+      await refresh();
+    } catch (error) { message(error.message || "Autopilot could not start", true); }
+    return "render";
+  }
+  if (action === "dna-autopilot-refresh") {
+    await refresh(); return "render";
+  }
   if (action === "dna-details") {
     const profileId = el.dataset.id;
     if (!profileId) return;

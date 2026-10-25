@@ -75,3 +75,54 @@ Install FFmpeg + ffprobe on your Mac with `brew install ffmpeg`. Start a separat
 In News-to-Song Studio, select up to three profiles that already have genres or instruments. A recording with neither cannot be linked. Assign 1–100 influence weights. Those weights are normalized: the strongest reference supplies genre, tempo band, vocal character, and lead instruments; a smaller weight adds only a short non-overlapping slice. The compiled tags occupy the front of Suno’s 1,000-character style field (about 700 characters), ahead of the project genre and custom instructions. The song brief’s previous style paragraph does not sit in front of them. Matching lyric section headers in the outgoing Suno recipe gain performance notes from the lead reference. The DNA card shows the exact style line, the character count, and which recording contributed which tags. Song titles stay on the card. They are not sent to Suno, and no source lyrics or melodies are copied. Profiles are stored in `studio_music_dna_refs`. The existing Suno handoff remains manual unless the official API key is configured.
 
 **Operations and caveats:** The worker currently runs in its own process; it is not automatically started by Blossom. It requires the same SQLite database and audio directory as the web server. FFmpeg/ffprobe must be on PATH. This is not yet a full multi-worker music understanding pipeline, and the existing PostgreSQL SQL file remains a future migration target. The Cloudflare Tunnel is not deployed by these source changes.
+
+## Audio Autopilot from selected Music DNA recordings
+
+The catalog supports **Audio Autopilot** on a focused recording and multi-select
+checkboxes on catalog rows. A selected recording ID, not a fuzzy title, is
+passed to the local analyzer. The signed-in user must explicitly acknowledge
+they are permitted to download and analyze those recordings before queuing.
+
+- `POST /api/music-dna/autopilot/run` accepts
+  `{"ids":["<recording-uuid>"],"rightsConfirmed":true}` (1–50 IDs).
+- `GET /api/music-dna/autopilot` returns per-recording
+  `queued/running/published/held_*/failed` state. The catalog polls this
+  alongside existing analysis jobs while Music DNA is open.
+- Runs are sequential and use the installed `analyzer/.venv/bin/python`
+  and `analyzer/blossom_bridge.py` together with
+  `scripts/music-dna-autopilot-profile.py`. The Python bridge still
+  writes measured data via the authenticated local MCP endpoint, using
+  the existing Blossom recording ID. No shell, browser-supplied URL or
+  arbitrary process command is accepted.
+- The bridge's 13 historically matched KLF releases retain their
+  original strict edition rules. For other catalog records, the
+  generic matcher requires a *named edition* in the recording title
+  and a known duration in its analysis. Without both, it reports
+  `held_missing_edition` or `held_missing_duration`, never a
+  fabricated successful match. Source metadata is not proof of a
+  particular audio master.
+- The Python wrapper acquires the same lock as the separate periodic
+  Autopilot to avoid concurrent modifications. Existing published-file
+  receipts suppress duplicate versions.
+
+### Local setup
+
+The local administrator must have the authorized analyzer installed
+under `<repo>/analyzer` (or configure `BLOSSOM_ANALYZER_DIR`).
+Use the existing `./install.command` in the analyzer once.
+Install `yt-dlp`, `ffmpeg` and the requirements from the
+3TWNTY Blossom Autopilot package as described there. The server
+does not install or download tools automatically.
+
+Restart Blossom after pulling new source. In Music DNA, select one
+recording and click **Audio Autopilot**, or tick several rows and click
+**Auto-analyze selected**. A single rights acknowledgement enables the
+requested batch only. The current backend keeps the UI job state
+in process memory; a server restart interrupts that UI progress and
+requires resubmitting incomplete IDs. The analyzer's own local
+receipts and state are preserved for idempotent resumption.
+
+This integration never guarantees exact master identity, instrument
+classification, or a reliable BPM for ambient recordings. An unverified
+or ineligible YouTube candidate must remain held rather than
+being published as accurate Music DNA.

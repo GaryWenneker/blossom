@@ -676,17 +676,21 @@ let openJobPoll=0;
 async function loadOpenJobs(paint){
  if(state.tab!=="music-dna"||document.visibilityState==="hidden")return;
  try{
-	  const [queued,running,failed]=await Promise.all([
+	  const [queued,running,failed,autopilot]=await Promise.all([
 	   api("music-dna/jobs?status=queued&limit=200"),
 	   api("music-dna/jobs?status=running&limit=200"),
-	   api("music-dna/jobs?status=failed&limit=200")
+	   api("music-dna/jobs?status=failed&limit=200"),
+	   api("music-dna/autopilot").catch(()=>({jobs:[]}))
 	  ]);
 	  const open=[...(running.jobs||[]),...(queued.jobs||[]),...(failed.jobs||[])];
   const changed=musicDnaJobsChanged(state.data.musicDnaOpenJobs, open);
+  const nextAutoJobs=autopilot.jobs||[];
+  const autoChanged=JSON.stringify(nextAutoJobs)!==JSON.stringify(state.data.musicDnaAutopilotJobs||[]);
   state.data.musicDnaOpenJobs=open;
-  if(changed) await reloadMusicDna(state, api);
+  state.data.musicDnaAutopilotJobs=nextAutoJobs;
+  if(changed || autoChanged) await reloadMusicDna(state, api);
   if(paint && state.tab==="music-dna"){
-    if(changed) render();
+    if(changed || autoChanged) render();
     else paintDnaActivity(state);
   }
   musicDnaChrome(state);
