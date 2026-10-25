@@ -44,7 +44,7 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  const originalFirst=stored.entries[0].title,nextFirst=stored.entries[1].title;
  await page.getByRole('button',{name:'Move '+nextFirst+' up',exact:true}).click();await page.waitForFunction(title=>document.querySelector('.catalog-track-row strong')?.textContent===title,nextFirst);
  const rows=page.locator('.catalog-track-row');await rows.nth(1).dragTo(rows.nth(0));await page.waitForFunction(title=>document.querySelector('.catalog-track-row strong')?.textContent===title,originalFirst);
- await page.getByRole('button',{name:'Choose recording for Première lumière',exact:true}).click();await page.getByLabel('Album recording').selectOption(other.id);await page.getByRole('button',{name:'Save recording',exact:true}).click();
+ await page.getByRole('button',{name:'Choose recording for Première lumière',exact:true}).click();await page.locator('#catalog-form select[name="audioAssetId"]').selectOption(other.id);await page.getByRole('button',{name:'Save recording',exact:true}).click();
  await page.waitForFunction(()=>!document.querySelector('#catalog-dialog').open);assert.equal(catalog.album(album.id).entries.find(e=>e.songId==='project:'+a.id).audioAssetId,other.id);
  studio.selectAsset(a.id,take.id,'audio');studio.deleteAsset(a.id,other.id);await page.reload();await page.locator('.catalog-track-row').nth(1).waitFor();
  const audio=page.locator('.catalog-track-row audio').first();await audio.evaluate(async el=>{await el.play();el.pause();});assert.equal(await audio.evaluate(el=>el.readyState>=2),true);
