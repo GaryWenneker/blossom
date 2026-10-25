@@ -65,7 +65,7 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  await page.getByRole('button',{name:'Use automatic crop',exact:true}).click();
  await page.getByRole('button',{name:'Save focus',exact:true}).click();
  assert.equal(studio.artistImages(artist.id)[0].focusSource,'auto');assert.equal(studio.artistImages(artist.id)[0].focusY,0);
- await page.keyboard.press('Escape');assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),false);
+ await page.getByRole('button',{name:'Close',exact:true}).click();assert.equal(await page.locator('#artist-photos-dialog').evaluate(el=>el.open),false);
  await page.getByRole('searchbox',{name:'Search artists'}).fill('no matching artist');
  await page.getByText('No artists match your search.').waitFor();
  await page.getByRole('searchbox',{name:'Search artists'}).fill('');
