@@ -251,7 +251,7 @@ body[data-view="artists"] .artist-banner-card{
 .artist-hero-image,.artist-hero-placeholder{
   display:block;position:absolute;inset:0;width:100%;height:100%
 }
-.artist-hero-image{object-fit:cover;object-position:center 35%}
+.artist-hero-image{object-fit:cover;object-position:50% 0%}
 .artist-hero-placeholder{
   display:grid;place-items:center;
   background:radial-gradient(ellipse at 65% 30%,#304338,#13221d 60%,#0b1714);
@@ -302,7 +302,7 @@ body[data-view="artists"] .artist-hero-content h3{
   height:auto;max-height:155px;border:1px solid #3b453e;
   border-radius:8px;overflow:hidden;background:#17231d
 }
-.studio-photo-banner img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 35%}
+.studio-photo-banner img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 0%}
 .studio-photo-banner:after{
   content:"";position:absolute;inset:0;
   background:linear-gradient(0deg,#000c,transparent 67%);pointer-events:none
@@ -426,6 +426,10 @@ body[data-view="artists"] .artist-hero-genre{font-size:11px}
 }
 .artist-tile-actions{display:flex;flex-wrap:wrap;gap:7px;margin:auto 12px 12px}
 .artist-tile-actions button{flex:1 1 auto;min-width:0;padding:8px 9px;font-size:10px}
+.artist-image-option-wrap{display:flex;flex-direction:column;gap:7px;flex:0 0 clamp(150px,24vw,245px);min-width:0}
+.artist-photo-option-actions{display:flex;gap:7px;justify-content:space-between}
+.artist-photo-option-actions button{flex:1 1 50%;min-width:0;padding:7px 8px;font-size:10px}
+.artist-focus-state{font-size:9px;color:#9bad9f;line-height:1.3}
 .artist-roster-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:22px 0 12px}
 .artist-roster-heading h2{margin:0;white-space:nowrap}
 .artist-roster-heading input{max-width:310px}
@@ -440,6 +444,12 @@ body[data-view="artists"] .artist-hero-genre{font-size:11px}
 #artist-photos-dialog .artist-media-library{margin-top:18px}
 #artist-photos-dialog .artist-image-option-wrap{flex-basis:clamp(150px,24vw,245px)}
 #artist-photos-dialog .artist-media-option{width:100%}
+#artist-focus-dialog{width:min(920px,94vw);max-height:90dvh}
+#artist-focus-dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
+#artist-focus-dialog .artist-focus-frame{position:relative;width:100%;height:clamp(150px,22vw,240px);margin:14px 0;overflow:hidden;border:1px solid #3c5144;border-radius:9px;background:#1f2b29;cursor:grab;touch-action:none}
+#artist-focus-dialog .artist-focus-frame.is-dragging{cursor:grabbing}
+#artist-focus-dialog .artist-focus-frame img{display:block;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none;pointer-events:none;touch-action:none}
+#artist-focus-dialog .artist-focus-actions{justify-content:flex-end}
 #artist-search-empty{margin-top:8px}
 @media(max-width:700px){
   body[data-view="artists"] .artist-banner-grid{grid-template-columns:minmax(0,1fr)}
@@ -449,6 +459,9 @@ body[data-view="artists"] .artist-hero-genre{font-size:11px}
   .artist-roster-heading{align-items:stretch;flex-direction:column;gap:8px}
   .artist-roster-heading input{max-width:none}
   .artist-tile-actions button{flex:1 1 42%}
+  .artist-photo-option-actions button{font-size:9px;padding:7px 6px}
   #artist-create-dialog .fields{grid-template-columns:minmax(0,1fr)}
   #artist-create-dialog .field.full{grid-column:auto}
+  #artist-focus-dialog .artist-focus-actions{display:grid;grid-template-columns:1fr 1fr}
+  #artist-focus-dialog .artist-focus-actions button:first-child{grid-column:1/-1}
 }
