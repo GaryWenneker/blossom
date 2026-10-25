@@ -39,18 +39,44 @@ export function initializeIntegrity(db){
       CREATE TABLE IF NOT EXISTS studio_project_versions(
       project_id TEXT NOT NULL REFERENCES studio_projects(id), revision INTEGER NOT NULL,
       snapshot TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL,
-      PRIMARY KEY(project_id,revision));
-      CREATE TABLE IF NOT EXISTS studio_suno_takes(
+      PRIMARY KEY(project_id,revision));`);
+    // Some pre-release databases used a project-keyed takes table. Keep it
+    // intact under a legacy name while creating the current job-keyed table.
+    const hasTakes=!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='studio_suno_takes'").get();
+    const existingTakeColumns=hasTakes?new Set(db.prepare('PRAGMA table_info(studio_suno_takes)').all().map(c=>c.name)):new Set();
+    let legacyTakes='';
+    if(hasTakes&&(!existingTakeColumns.has('job_id')||!existingTakeColumns.has('project_id')||!existingTakeColumns.has('status'))){
+      db.exec('DROP INDEX IF EXISTS studio_take_project');
+      legacyTakes='studio_suno_takes_legacy_project_key';
+      const collision=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(legacyTakes);
+      if(collision)throw new Error('Both legacy and current Suno take tables exist; refusing to alter them automatically.');
+      db.exec(`ALTER TABLE studio_suno_takes RENAME TO ${legacyTakes}`);
+    }
+    db.exec(`CREATE TABLE IF NOT EXISTS studio_suno_takes(
       job_id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES studio_projects(id),
-      recipe TEXT NOT NULL,brief_fingerprint TEXT NOT NULL DEFAULT '',
+      recipe TEXT NOT NULL DEFAULT '{}',brief_fingerprint TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,audio_url TEXT,imported_asset_id TEXT,
-      submitted_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-      `);
+      submitted_at TEXT NOT NULL,updated_at TEXT NOT NULL);`);
     const takeColumns=new Set(db.prepare('PRAGMA table_info(studio_suno_takes)').all().map(c=>c.name));
-    for(const [name,type] of Object.entries({recipe:"TEXT NOT NULL DEFAULT '{}'",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",audio_url:'TEXT',imported_asset_id:'TEXT',submitted_at:'TEXT',updated_at:'TEXT'}))
+    for(const [name,type] of Object.entries({job_id:'TEXT',project_id:'TEXT',recipe:"TEXT NOT NULL DEFAULT '{}'",brief_fingerprint:"TEXT NOT NULL DEFAULT ''",status:"TEXT NOT NULL DEFAULT 'legacy'",audio_url:'TEXT',imported_asset_id:'TEXT',submitted_at:'TEXT',updated_at:'TEXT'}))
       if(!takeColumns.has(name))db.exec(`ALTER TABLE studio_suno_takes ADD COLUMN ${name} ${type}`);
-    const takeCreated=takeColumns.has('created_at')?'created_at':'NULL';
-    db.exec(`UPDATE studio_suno_takes SET submitted_at=COALESCE(submitted_at,${takeCreated},updated_at,'1970-01-01T00:00:00.000Z'),updated_at=COALESCE(updated_at,${takeCreated},submitted_at,'1970-01-01T00:00:00.000Z') WHERE submitted_at IS NULL OR updated_at IS NULL`);
+    if(legacyTakes){
+      const rows=db.prepare(`SELECT * FROM ${legacyTakes}`).all();
+      const insert=db.prepare(`INSERT OR IGNORE INTO studio_suno_takes
+        (job_id,project_id,recipe,brief_fingerprint,status,audio_url,imported_asset_id,submitted_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?)`);
+      for(const row of rows){
+        const projectId=row.project_id??row.studio_project_id;
+        const jobId=row.job_id??row.suno_job_id??row.take_id??row.id??projectId;
+        if(!projectId||!jobId)throw new Error('Legacy Suno take is missing its project or job identifier; original table was preserved.');
+        const created=row.created_at??row.submitted_at??'1970-01-01T00:00:00.000Z';
+        insert.run(String(jobId),String(projectId),row.recipe??'{}',row.brief_fingerprint??'',row.status??'legacy',row.audio_url??null,row.imported_asset_id??null,String(created),String(row.updated_at??created));
+      }
+    }else if(hasTakes){
+      // Fill newly added fields on prior job-keyed tables before indexing.
+      const created=existingTakeColumns.has('created_at')?'created_at':'NULL';
+      db.exec(`UPDATE studio_suno_takes SET submitted_at=COALESCE(submitted_at,${created},updated_at,'1970-01-01T00:00:00.000Z'),updated_at=COALESCE(updated_at,${created},submitted_at,'1970-01-01T00:00:00.000Z') WHERE submitted_at IS NULL OR updated_at IS NULL`);
+    }
     db.exec(`CREATE INDEX IF NOT EXISTS studio_project_order ON studio_projects(updated_at DESC,id DESC);
       CREATE INDEX IF NOT EXISTS studio_project_artist ON studio_projects(artist_id);
       CREATE INDEX IF NOT EXISTS studio_take_project ON studio_suno_takes(project_id,submitted_at DESC);
