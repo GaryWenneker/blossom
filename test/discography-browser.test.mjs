@@ -27,17 +27,18 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  const base='http://127.0.0.1:'+port;
  const server=createAppServer({store,assetDir:dir,publicUrl:base,password:'runtime-album-password',provider:{available:()=>false},localComposer:{status:async()=>({available:false})}});
  server.listen(port,'127.0.0.1');await once(server,'listening');
- let browser;
- t.after(async()=>{await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));store.close();rmSync(dir,{recursive:true,force:true});});
+ let browser,page;
+ const shot=process.env.BLOSSOM_SCREENSHOT_DIR||(process.env.CI?'.data/discography-screenshots':'');
+ t.after(async()=>{if(page&&shot){mkdirSync(shot,{recursive:true});await page.screenshot({path:join(shot,'runtime-final.png'),fullPage:true}).catch(error=>t.diagnostic('Screenshot unavailable: '+error.message));}await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));store.close();rmSync(dir,{recursive:true,force:true});});
  browser=await chromium.launch({executablePath:chrome,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
  const login=await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json','x-blossom-request':'ui'},body:JSON.stringify({username:'admin',password:'runtime-album-password'})});
  const pair=login.headers.get('set-cookie').split(';')[0],split=pair.indexOf('=');
- const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies([{name:pair.slice(0,split),value:pair.slice(split+1),url:base}]);const page=await context.newPage();
+ const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies([{name:pair.slice(0,split),value:pair.slice(split+1),url:base}]);page=await context.newPage();
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto(base+'/#artists');await page.getByRole('button',{name:'Open discography'}).click();
  await page.getByRole('button',{name:'New release',exact:true}).click();await page.getByLabel('Release title').fill('Les jours ouverts');
  await page.getByRole('button',{name:'Create release',exact:true}).click();await page.getByRole('heading',{name:'Les jours ouverts',exact:true}).waitFor();
- await page.getByRole('button',{name:'Add songs',exact:true}).click();await page.getByLabel('Add Première lumière', {exact:true}).check();await page.getByLabel('Add Après la pluie',{exact:true}).check();
+ await page.locator('.catalog-album-hero').getByRole('button',{name:'Add songs',exact:true}).click();await page.getByLabel('Add Première lumière', {exact:true}).check();await page.getByLabel('Add Après la pluie',{exact:true}).check();
  await page.getByRole('button',{name:'Add selected songs',exact:true}).click();await page.locator('.catalog-track-row').nth(1).waitFor();
  let album=catalog.albums(artist.id).results[0];let stored=catalog.album(album.id);assert.equal(stored.entries.length,2);
  const originalFirst=stored.entries[0].title,nextFirst=stored.entries[1].title;
@@ -50,7 +51,7 @@ test('runtime: artist albums, bulk add, recording, drag/keyboard order, unlink, 
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC1cAAAAASUVORK5CYII=','base64');
  await page.locator('#catalog-cover-file').setInputFiles({name:'cover.png',mimeType:'image/png',buffer:png});await page.locator('.catalog-album-hero img').waitFor();
  assert.ok(catalog.album(album.id).coverUrl);
- const shot=process.env.BLOSSOM_SCREENSHOT_DIR||(process.env.CI?'.data/discography-screenshots':'');if(shot){mkdirSync(shot,{recursive:true});await page.screenshot({path:join(shot,'album-desktop.png'),fullPage:true});}
+ if(shot){mkdirSync(shot,{recursive:true});await page.screenshot({path:join(shot,'album-desktop.png'),fullPage:true});}
  await page.getByRole('button',{name:'Remove Après la pluie from album',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.catalog-track-row').length===1);assert.ok(studio.project(b.id));
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  if(shot)await page.screenshot({path:join(shot,'album-mobile.png'),fullPage:true});
