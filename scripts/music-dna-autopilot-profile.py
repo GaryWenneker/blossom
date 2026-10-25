@@ -39,8 +39,8 @@ def generic_entry(profile):
         return None, "held_missing_edition", "Specify an exact mix/edition before autonomous YouTube matching"
     uid = profile["id"].replace("-", "")
     slug = "99_" + uid
-    base = re.sub(r"\\([^)]*\\)", " ", title)
-    base = re.split(r"\\s[-–]\\s(?=live|radio|remix|original|extended)", base, flags=re.I)[0]
+    base = re.sub(r"\([^)]*\)", " ", title)
+    base = re.split(r"\s[-–]\s(?=live|radio|remix|original|extended)", base, flags=re.I)[0]
     core = [token for token in autopilot.normalize(base).split()
             if token not in {"the", "a", "and", "feat", "ft", "mix", "version"}]
     if not core or len(core) > 12:
