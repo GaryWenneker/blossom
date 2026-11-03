@@ -14,6 +14,8 @@ const recipe = { provider: "suno", lyrics: "[Verse]\nMy own lyrics",
 
 function fakeBrowser() {
   const typed = [];
+  const values = {};
+  let instrumental = false;
   const events = {};
   const form = {
     urlValue: SUNO_CREATE_URL,
@@ -21,7 +23,11 @@ function fakeBrowser() {
     url() { return this.urlValue; },
     async goto(url) { this.urlValue = url; },
     async bringToFront() {},
-    getByRole(_role,{name}) { return fakeLocator(String(name),true); },
+    getByRole(role,{name}) {
+      if (role === "switch") return { count: async () => 1, isVisible: async () => true, isChecked: async () => instrumental, click: async () => { instrumental = !instrumental; } };
+      if (role === "checkbox") return { count: async () => 0 };
+      return fakeLocator(String(name),true);
+    },
     locator(query) { return fakeLocator(query,false); }
   };
   function fakeLocator(name,role) {
@@ -32,7 +38,8 @@ function fakeBrowser() {
     return {
       async count() { return role && key ? 1 : 0; },
       async isVisible() { return true; },
-      async fill(value) { typed.push({ key, value }); }
+      async fill(value) { values[key] = value; typed.push({ key, value }); },
+      async inputValue() { return values[key]; }
     };
   }
   const context = {
@@ -139,4 +146,29 @@ test("Signed-in Studio project can open and prepare Suno draft but unauthenticat
   assert.equal((await post(prefix+"prefill",{},cookie)).status,200);
   const missing=await post("/api/studio/projects/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa/suno-browser/open",{},cookie);
   assert.equal(missing.status,404);
+});
+
+
+test("Suno prefill sets and verifies instrumental mode and rejects missing controls", async () => {
+  const tmp = await mkdtemp(join(tmpdir(), "blossom-suno-mode-"));
+  try {
+    const browser = fakeBrowser();
+    let checked = true;
+    const original = browser.form.getByRole.bind(browser.form);
+    browser.form.getByRole = (role, options) => {
+      if (role === "switch") return { count: async () => 1, isVisible: async () => true,
+        isChecked: async () => checked, click: async () => { checked = !checked; } };
+      return original(role, options);
+    };
+    const bridge = new SunoBrowserHandoff({profileDir:join(tmp,"chrome"),loader:async()=>browser.library});
+    await bridge.open();
+    await bridge.prefill(recipe);
+    assert.equal(checked, false, "vocal recipe disables retained instrumental mode");
+    await bridge.prefill({...recipe, instrumental:true});
+    assert.equal(checked, true, "instrumental recipe enables instrumental mode");
+    browser.form.getByRole = (role, options) => role === "switch" || role === "checkbox"
+      ? { count: async () => 0 } : original(role, options);
+    await assert.rejects(bridge.prefill(recipe), /Cannot verify Suno instrumental/);
+    await bridge.close();
+  } finally { await rm(tmp, {recursive:true, force:true}); }
 });
