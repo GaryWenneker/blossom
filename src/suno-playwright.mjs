@@ -118,6 +118,25 @@ export class SunoBrowserHandoff {
           this.page.locator('input[placeholder*="title" i]')
         ]
       };
+      // A retained Suno toggle can override the recipe even when lyrics are present.
+      // Fail closed if the visible form does not expose a unique readable control.
+      const switches = this.page.getByRole("switch", { name: /instrumental/i });
+      const checks = this.page.getByRole("checkbox", { name: /instrumental/i });
+      const candidatesForMode = [switches, checks];
+      let modeControl = null;
+      for (const locator of candidatesForMode) {
+        if (await locator.count() === 1 && await locator.isVisible()) {
+          if (modeControl) throw new DomainError("Suno instrumental control is ambiguous; review the form", 409);
+          modeControl = locator;
+        }
+      }
+      if (!modeControl) throw new DomainError("Cannot verify Suno instrumental setting; review the form before generating", 409);
+      const expectedMode = recipe.instrumental === true;
+      if (await modeControl.isChecked() !== expectedMode) await modeControl.click({ timeout: 8000 });
+      if (await modeControl.isChecked() !== expectedMode)
+        throw new DomainError("Could not set the Suno instrumental control; generation stopped", 409);
+      if (!expectedMode && !fields.lyrics.trim())
+        throw new DomainError("A vocal song requires lyrics before Suno generation", 409);
       const filled = [], skipped = [];
       for (const [key, value] of Object.entries(fields)) {
         if (!value) continue;
@@ -126,6 +145,7 @@ export class SunoBrowserHandoff {
           // Only fill an unambiguous, visible input. UI changes fail safely.
           if (await locator.count() !== 1 || !await locator.isVisible()) continue;
           await locator.fill(value, { timeout: 8000 });
+          if (await locator.inputValue() !== value) throw new DomainError("Suno did not retain the " + key + " field", 409);
           filled.push(key);
           matched = true;
           break;
